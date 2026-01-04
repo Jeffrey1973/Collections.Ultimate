@@ -1,6 +1,165 @@
 @CollectionsUltimate.Api_HostAddress = http://localhost:5258
 
-GET {{CollectionsUltimate.Api_HostAddress}}/weatherforecast/
+CREATE REQUESTS
+
+### Create a household
+POST {{CollectionsUltimate.Api_HostAddress}}/api/households
+Content-Type: application/json
+
+{
+  "name": "My Household"
+}
+
+###
+
+# One-shot ingest: create Work + Edition + Item + metadata
+# 1) Replace {householdId} with the id returned from the create-household request above.
+# 2) Optionally adjust RoleId values (ContributorRoles: 1=Author, 2=Editor, 3=Translator, 4=Illustrator)
+# 3) IdentifierTypeId values (IdentifierTypes: 1=ISBN10, 2=ISBN13, 3=ASIN, 4=LCCN, 5=EAN, 6=UPC)
+POST {{CollectionsUltimate.Api_HostAddress}}/api/households/{{householdId}}/library/books
+Content-Type: application/json
+
+{
+  "work": {
+    "title": "The Lord of the Rings",
+    "subtitle": null,
+    "sortTitle": "Lord of the Rings",
+    "description": null
+  },
+  "item": {
+    "title": null,
+    "subtitle": null,
+    "notes": "Imported sample",
+    "barcode": "HB-0001",
+    "location": "Living room",
+    "status": "Owned",
+    "condition": "Good",
+    "acquiredOn": "2025-01-01",
+    "price": 10.00
+  },
+  "edition": {
+    "editionTitle": "The Lord of the Rings",
+    "editionSubtitle": null,
+    "publisher": "Houghton Mifflin",
+    "publishedYear": 2004,
+    "pageCount": 1216,
+    "description": null,
+    "identifiers": [
+      { "identifierTypeId": 2, "value": "9780618640157", "isPrimary": true }
+    ]
+  },
+  "contributors": [
+    { "personId": null, "displayName": "J.R.R. Tolkien", "roleId": 1, "ordinal": 1, "sortName": "Tolkien, J.R.R.", "birthYear": 1892, "deathYear": 1973 }
+  ],
+  "tags": [
+    "fantasy",
+    "classic"
+  ],
+  "subjects": [
+    { "schemeId": 1, "text": "Epic fantasy" }
+  ]
+}
+
+###
+
+# Update item inventory fields (full example)
+# Replace {itemId} with an item id.
+PATCH {{CollectionsUltimate.Api_HostAddress}}/api/items/{{itemId}}
+Content-Type: application/json
+
+{
+  "barcode": "HB-0001",
+  "location": "Office shelf",
+  "status": "Loaned",
+  "condition": "Fair",
+  "acquiredOn": "2025-01-02",
+  "price": 12.50,
+  "notes": "Updated via PATCH"
+}
+
+###
+
+# Partial PATCH: omitted fields are preserved
+# This request only changes Status; Location/Barcode/etc remain unchanged.
+PATCH {{CollectionsUltimate.Api_HostAddress}}/api/items/{{itemId}}
+Content-Type: application/json
+
+{
+  "status": "Owned"
+}
+
+###
+
+# Partial PATCH: explicit null clears a field
+# This request clears Barcode.
+PATCH {{CollectionsUltimate.Api_HostAddress}}/api/items/{{itemId}}
+Content-Type: application/json
+
+{
+  "barcode": null
+}
+
+###
+
+# Normalized item search
+GET {{CollectionsUltimate.Api_HostAddress}}/api/households/{{householdId}}/items?take=50&skip=0
+Accept: application/json
+
+###
+
+GET {{CollectionsUltimate.Api_HostAddress}}/api/households/{{householdId}}/items?q=tolkien
+Accept: application/json
+
+###
+
+GET {{CollectionsUltimate.Api_HostAddress}}/api/households/{{householdId}}/items?barcode=HB-0001
+Accept: application/json
+
+###
+
+GET {{CollectionsUltimate.Api_HostAddress}}/api/households/{{householdId}}/items?tag=fantasy
+Accept: application/json
+
+###
+
+GET {{CollectionsUltimate.Api_HostAddress}}/api/households/{{householdId}}/items?subject=epic%20fantasy
+Accept: application/json
+
+###
+
+GET {{CollectionsUltimate.Api_HostAddress}}/api/households/{{householdId}}/items?status=Owned&location=Living%20room
+Accept: application/json
+
+###
+
+# Optional: fetch entities by id
+GET {{CollectionsUltimate.Api_HostAddress}}/api/works/{{workId}}
+Accept: application/json
+
+###
+
+GET {{CollectionsUltimate.Api_HostAddress}}/api/editions/{{editionId}}
+Accept: application/json
+
+###
+
+GET {{CollectionsUltimate.Api_HostAddress}}/api/items/{{itemId}}
+Accept: application/json
+
+###
+
+# Import monitoring
+GET {{CollectionsUltimate.Api_HostAddress}}/api/households/{{householdId}}/imports?take=50&skip=0
+Accept: application/json
+
+###
+
+GET {{CollectionsUltimate.Api_HostAddress}}/api/imports/batches/{{batchId}}
+Accept: application/json
+
+###
+
+GET {{CollectionsUltimate.Api_HostAddress}}/api/imports/batches/{{batchId}}/errors?take=50&skip=0
 Accept: application/json
 
 ###
