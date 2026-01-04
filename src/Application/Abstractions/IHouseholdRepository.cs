@@ -7,4 +7,5 @@ public interface IHouseholdRepository
     Task<Household?> GetByIdAsync(HouseholdId id, CancellationToken ct);
     Task<IReadOnlyList<Household>> ListAsync(CancellationToken ct);
     Task CreateAsync(Household household, CancellationToken ct);
+    Task<bool> DeleteAsync(HouseholdId id, CancellationToken ct);
 }

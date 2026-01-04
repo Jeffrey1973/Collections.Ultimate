@@ -9,6 +9,30 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
+    },
+    "http-localdb": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:5258",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DOTNET_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://localhost:5258",
+        "ConnectionStrings__Collections": "Server=(localdb)\\MSSQLLocalDB;Database=CollectionsUltimate;Trusted_Connection=True;TrustServerCertificate=True"
+      }
+    },
+    "http-sqlserver": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:5258",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DOTNET_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://localhost:5258",
+        "ConnectionStrings__Collections": "Server=localhost;Database=CollectionsUltimate;Trusted_Connection=True;TrustServerCertificate=True"
+      }
     }
   }
 }

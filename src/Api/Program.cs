@@ -5,6 +5,8 @@ using CollectionsUltimate.Infrastructure.Sql;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 var connectionString = builder.Configuration.GetConnectionString("Collections")
     ?? builder.Configuration["Collections:ConnectionString"]
@@ -19,6 +21,8 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
 app.MapGet("/api/households", async (IHouseholdRepository repo, CancellationToken ct) =>
@@ -32,6 +36,15 @@ app.MapPost("/api/households", async (CreateHouseholdRequest request, IHousehold
     var household = new Household { Name = request.Name };
     await repo.CreateAsync(household, ct);
     return Results.Created($"/api/households/{household.Id.Value}", household);
+});
+
+app.MapDelete("/api/households/{householdId:guid}", async (
+    Guid householdId,
+    IHouseholdRepository repo,
+    CancellationToken ct) =>
+{
+    var deleted = await repo.DeleteAsync(new HouseholdId(householdId), ct);
+    return deleted ? Results.NoContent() : Results.NotFound();
 });
 
 app.MapGet("/api/households/{householdId:guid}/books", async (

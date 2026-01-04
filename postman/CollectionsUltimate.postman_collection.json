@@ -1,0 +1,65 @@
+{
+  "info": {
+    "name": "CollectionsUltimate",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5258" },
+    { "key": "householdId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Households - List",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/api/households", "host": ["{{baseUrl}}"], "path": ["api", "households"] }
+      }
+    },
+    {
+      "name": "Households - Create",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test Household\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/api/households", "host": ["{{baseUrl}}"], "path": ["api", "households"] }
+      }
+    },
+    {
+      "name": "Books - Search (by household)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/households/{{householdId}}/books?q=&take=50&skip=0",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "households", "{{householdId}}", "books"],
+          "query": [
+            { "key": "q", "value": "" },
+            { "key": "take", "value": "50" },
+            { "key": "skip", "value": "0" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Books - Create (by household)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Dune\",\n  \"subtitle\": null,\n  \"authors\": \"Frank Herbert\",\n  \"isbn10\": null,\n  \"isbn13\": null,\n  \"publishedYear\": 1965,\n  \"publisher\": null,\n  \"notes\": null\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/households/{{householdId}}/books",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "households", "{{householdId}}", "books"]
+        }
+      }
+    }
+  ]
+}
