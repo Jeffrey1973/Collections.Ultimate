@@ -16,7 +16,7 @@ public sealed class WorkRepository : IWorkRepository
     public async Task CreateAsync(Work work, CancellationToken ct)
     {
         const string sql = """
-            insert into dbo.Works
+            insert into dbo.Work
             (
                 Id,
                 Title,
@@ -55,7 +55,7 @@ public sealed class WorkRepository : IWorkRepository
     {
         const string sql = """
             select Id, Title, Subtitle, SortTitle, Description, NormalizedTitle, CreatedUtc
-            from dbo.Works
+            from dbo.Work
             where Id = @Id;
             """;
 

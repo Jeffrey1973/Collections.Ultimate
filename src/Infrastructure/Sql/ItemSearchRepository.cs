@@ -35,8 +35,8 @@ public sealed class ItemSearchRepository : IItemSearchRepository
                 select
                     wc.WorkId,
                     string_agg(p.DisplayName, N', ') within group (order by wc.Ordinal) as Authors
-                from dbo.WorkContributors wc
-                inner join dbo.People p on p.Id = wc.PersonId
+                from dbo.WorkContributor wc
+                inner join dbo.Person p on p.Id = wc.PersonId
                 where wc.RoleId = 1
                 group by wc.WorkId
             )
@@ -56,10 +56,10 @@ public sealed class ItemSearchRepository : IItemSearchRepository
                 i.CreatedUtc,
                 w.Title as WorkTitle,
                 a.Authors
-            from dbo.Items i
-            inner join dbo.Works w on w.Id = i.WorkId
+            from dbo.LibraryItem i
+            inner join dbo.Work w on w.Id = i.WorkId
             left join Authors a on a.WorkId = i.WorkId
-            where i.OwnerHouseholdId = @OwnerHouseholdId
+            where i.HouseholdId = @HouseholdId
               and (@Barcode is null or i.Barcode = @Barcode)
               and (@Status is null or i.Status = @Status)
               and (@Location is null or i.Location = @Location)
@@ -74,10 +74,10 @@ public sealed class ItemSearchRepository : IItemSearchRepository
                     @TagNorm is null
                  or exists (
                         select 1
-                        from dbo.WorkTags wt
-                        inner join dbo.Tags t on t.Id = wt.TagId
+                        from dbo.WorkTag wt
+                        inner join dbo.Tag t on t.Id = wt.TagId
                         where wt.WorkId = i.WorkId
-                          and t.OwnerHouseholdId = @OwnerHouseholdId
+                          and t.HouseholdId = @HouseholdId
                           and t.NormalizedName = @TagNorm
                  )
               )
@@ -85,8 +85,8 @@ public sealed class ItemSearchRepository : IItemSearchRepository
                     @SubjectNorm is null
                  or exists (
                         select 1
-                        from dbo.WorkSubjects ws
-                        inner join dbo.SubjectHeadings sh on sh.Id = ws.SubjectHeadingId
+                        from dbo.WorkSubject ws
+                        inner join dbo.SubjectHeading sh on sh.Id = ws.SubjectHeadingId
                         where ws.WorkId = i.WorkId
                           and sh.NormalizedText = @SubjectNorm
                  )
@@ -98,7 +98,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         using var conn = _connectionFactory.Create();
         var rows = await conn.QueryAsync<ItemRow>(new CommandDefinition(sql, new
         {
-            OwnerHouseholdId = householdId.Value,
+            HouseholdId = householdId.Value,
             Q = q,
             TagNorm = tagNorm,
             SubjectNorm = subjectNorm,

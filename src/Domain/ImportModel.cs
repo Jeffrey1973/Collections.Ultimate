@@ -1,7 +1,7 @@
 namespace CollectionsUltimate.Domain;
 
 public readonly record struct ImportBatchId(Guid Value);
-public readonly record struct ImportRecordId(Guid Value);
+public readonly record struct ImportRowId(Guid Value);
 
 public enum ImportStatus
 {
@@ -13,29 +13,32 @@ public enum ImportStatus
 public sealed class ImportBatch
 {
     public ImportBatchId Id { get; init; } = new(Guid.NewGuid());
-    public required HouseholdId OwnerHouseholdId { get; init; }
-    public required string Source { get; init; }
+    public required HouseholdId HouseholdId { get; init; }
     public string? FileName { get; init; }
-    public DateTimeOffset StartedUtc { get; init; } = DateTimeOffset.UtcNow;
-    public DateTimeOffset? FinishedUtc { get; init; }
     public ImportStatus Status { get; init; } = ImportStatus.Pending;
-}
-
-public sealed class ImportRecord
-{
-    public ImportRecordId Id { get; init; } = new(Guid.NewGuid());
-    public required ImportBatchId BatchId { get; init; }
-    public string? ExternalId { get; init; }
-    public required string PayloadJson { get; init; }
-    public required byte[] PayloadSha256 { get; init; }
+    public int? TotalRows { get; init; }
+    public int? ProcessedRows { get; init; }
+    public int? SuccessRows { get; init; }
+    public int? FailedRows { get; init; }
+    public DateTimeOffset? StartedUtc { get; init; }
+    public DateTimeOffset? CompletedUtc { get; init; }
     public DateTimeOffset CreatedUtc { get; init; } = DateTimeOffset.UtcNow;
-    public ImportStatus Status { get; init; } = ImportStatus.Pending;
-    public string? Error { get; init; }
 }
 
-public sealed record ImportRecordFailure(
-    ImportRecordId Id,
-    string? ExternalId,
-    DateTimeOffset CreatedUtc,
+public sealed class ImportRow
+{
+    public ImportRowId Id { get; init; } = new(Guid.NewGuid());
+    public required ImportBatchId BatchId { get; init; }
+    public required int RowNumber { get; init; }
+    public ImportStatus Status { get; init; } = ImportStatus.Pending;
+    public string? RawData { get; init; }
+    public string? ErrorMessage { get; init; }
+    public Guid? CreatedItemId { get; init; }
+    public DateTimeOffset? ProcessedUtc { get; init; }
+}
+
+public sealed record ImportRowFailure(
+    ImportRowId Id,
+    int RowNumber,
     DateTimeOffset? ProcessedUtc,
-    string Error);
+    string ErrorMessage);

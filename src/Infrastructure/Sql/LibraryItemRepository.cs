@@ -16,10 +16,10 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
     public async Task CreateAsync(LibraryItem item, CancellationToken ct)
     {
         const string sql = """
-            insert into dbo.Items
+            insert into dbo.LibraryItem
             (
                 Id,
-                OwnerHouseholdId,
+                HouseholdId,
                 Kind,
                 WorkId,
                 EditionId,
@@ -32,12 +32,13 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
                 Condition,
                 AcquiredOn,
                 Price,
+                MetadataJson,
                 CreatedUtc
             )
             values
             (
                 @Id,
-                @OwnerHouseholdId,
+                @HouseholdId,
                 @Kind,
                 @WorkId,
                 @EditionId,
@@ -50,6 +51,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
                 @Condition,
                 @AcquiredOn,
                 @Price,
+                @MetadataJson,
                 @CreatedUtc
             );
             """;
@@ -58,7 +60,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
         await conn.ExecuteAsync(new CommandDefinition(sql, new
         {
             Id = item.Id.Value,
-            OwnerHouseholdId = item.OwnerHouseholdId.Value,
+            HouseholdId = item.OwnerHouseholdId.Value,
             Kind = (int)item.Kind,
             WorkId = item.WorkId.Value,
             EditionId = item.EditionId?.Value,
@@ -71,6 +73,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
             item.Condition,
             AcquiredOn = item.AcquiredOn is null ? (DateTime?)null : item.AcquiredOn.Value.ToDateTime(TimeOnly.MinValue),
             item.Price,
+            item.MetadataJson,
             item.CreatedUtc
         }, cancellationToken: ct));
     }
@@ -80,7 +83,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
         const string sql = """
             select
                 Id,
-                OwnerHouseholdId,
+                HouseholdId,
                 Kind,
                 WorkId,
                 EditionId,
@@ -93,8 +96,9 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
                 Condition,
                 AcquiredOn,
                 Price,
+                MetadataJson,
                 CreatedUtc
-            from dbo.Items
+            from dbo.LibraryItem
             where Id = @Id;
             """;
 
@@ -106,7 +110,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
     private static LibraryItem Map(ItemRow r) => new()
     {
         Id = new ItemId(r.Id),
-        OwnerHouseholdId = new HouseholdId(r.OwnerHouseholdId),
+        OwnerHouseholdId = new HouseholdId(r.HouseholdId),
         Kind = (ItemKind)r.Kind,
         WorkId = new WorkId(r.WorkId),
         EditionId = r.EditionId is null ? null : new EditionId(r.EditionId.Value),
@@ -119,12 +123,13 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
         Condition = r.Condition,
         AcquiredOn = r.AcquiredOn is null ? null : DateOnly.FromDateTime(r.AcquiredOn.Value),
         Price = r.Price,
+        MetadataJson = r.MetadataJson,
         CreatedUtc = r.CreatedUtc
     };
 
     private sealed record ItemRow(
         Guid Id,
-        Guid OwnerHouseholdId,
+        Guid HouseholdId,
         int Kind,
         Guid WorkId,
         Guid? EditionId,
@@ -137,5 +142,6 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
         string? Condition,
         DateTime? AcquiredOn,
         decimal? Price,
+        string? MetadataJson,
         DateTimeOffset CreatedUtc);
 }

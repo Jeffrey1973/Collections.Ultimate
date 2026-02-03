@@ -29,6 +29,7 @@ public sealed class Edition
     public int? PublishedYear { get; init; }
     public int? PageCount { get; init; }
     public string? Description { get; init; }
+    public string? CoverImageUrl { get; init; }
 
     public DateTimeOffset CreatedUtc { get; init; } = DateTimeOffset.UtcNow;
 }
@@ -53,6 +54,11 @@ public sealed class LibraryItem
     public string? Condition { get; init; }
     public DateOnly? AcquiredOn { get; init; }
     public decimal? Price { get; init; }
+
+    /// <summary>
+    /// Flexible JSON storage for type-specific metadata (e.g., ISBN, authors for books).
+    /// </summary>
+    public string? MetadataJson { get; init; }
 
     public DateTimeOffset CreatedUtc { get; init; } = DateTimeOffset.UtcNow;
 }

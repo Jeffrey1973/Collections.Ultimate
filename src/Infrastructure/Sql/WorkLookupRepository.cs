@@ -17,14 +17,14 @@ public sealed class WorkLookupRepository : IWorkLookupRepository
     {
         const string sql = """
             select top (1) w.Id
-            from dbo.Works w
+            from dbo.Work w
             where w.NormalizedTitle = @NormalizedTitle
               and (
                     @FirstAuthor is null
                  or exists (
                         select 1
-                        from dbo.WorkContributors wc
-                        inner join dbo.People p on p.Id = wc.PersonId
+                        from dbo.WorkContributor wc
+                        inner join dbo.Person p on p.Id = wc.PersonId
                         where wc.WorkId = w.Id
                           and wc.RoleId = 1
                           and wc.Ordinal = 1

@@ -16,7 +16,7 @@ public sealed class EditionRepository : IEditionRepository
     public async Task CreateAsync(Edition edition, CancellationToken ct)
     {
         const string sql = """
-            insert into dbo.Editions
+            insert into dbo.Edition
             (
                 Id,
                 WorkId,
@@ -26,6 +26,7 @@ public sealed class EditionRepository : IEditionRepository
                 PublishedYear,
                 PageCount,
                 Description,
+                CoverImageUrl,
                 CreatedUtc
             )
             values
@@ -38,6 +39,7 @@ public sealed class EditionRepository : IEditionRepository
                 @PublishedYear,
                 @PageCount,
                 @Description,
+                @CoverImageUrl,
                 @CreatedUtc
             );
             """;
@@ -53,6 +55,7 @@ public sealed class EditionRepository : IEditionRepository
             edition.PublishedYear,
             edition.PageCount,
             edition.Description,
+            edition.CoverImageUrl,
             edition.CreatedUtc
         }, cancellationToken: ct));
     }
@@ -69,14 +72,45 @@ public sealed class EditionRepository : IEditionRepository
                 PublishedYear,
                 PageCount,
                 Description,
+                CoverImageUrl,
                 CreatedUtc
-            from dbo.Editions
+            from dbo.Edition
             where Id = @Id;
             """;
 
         using var conn = _connectionFactory.Create();
         var row = await conn.QuerySingleOrDefaultAsync<EditionRow>(new CommandDefinition(sql, new { Id = id.Value }, cancellationToken: ct));
         return row is null ? null : Map(row);
+    }
+
+    public async Task<bool> UpdateCoverUrlAsync(EditionId id, string? coverImageUrl, CancellationToken ct)
+    {
+        const string sql = """
+            update dbo.Edition
+            set CoverImageUrl = @CoverImageUrl
+            where Id = @Id;
+            """;
+
+        using var conn = _connectionFactory.Create();
+        var affected = await conn.ExecuteAsync(new CommandDefinition(sql, new
+        {
+            Id = id.Value,
+            CoverImageUrl = coverImageUrl
+        }, cancellationToken: ct));
+
+        return affected > 0;
+    }
+
+    public async Task<string?> GetCoverUrlAsync(EditionId id, CancellationToken ct)
+    {
+        const string sql = """
+            select CoverImageUrl
+            from dbo.Edition
+            where Id = @Id;
+            """;
+
+        using var conn = _connectionFactory.Create();
+        return await conn.QuerySingleOrDefaultAsync<string?>(new CommandDefinition(sql, new { Id = id.Value }, cancellationToken: ct));
     }
 
     private static Edition Map(EditionRow r) => new()
@@ -89,6 +123,7 @@ public sealed class EditionRepository : IEditionRepository
         PublishedYear = r.PublishedYear,
         PageCount = r.PageCount,
         Description = r.Description,
+        CoverImageUrl = r.CoverImageUrl,
         CreatedUtc = r.CreatedUtc
     };
 
@@ -101,5 +136,6 @@ public sealed class EditionRepository : IEditionRepository
         int? PublishedYear,
         int? PageCount,
         string? Description,
+        string? CoverImageUrl,
         DateTimeOffset CreatedUtc);
 }

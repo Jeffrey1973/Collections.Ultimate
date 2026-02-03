@@ -17,7 +17,7 @@ public sealed class EditionLookupRepository : IEditionLookupRepository
     {
         const string sql = """
             select top (1) EditionId
-            from dbo.EditionIdentifiers
+            from dbo.EditionIdentifier
             where IdentifierTypeId = @IdentifierTypeId
               and NormalizedValue = @NormalizedValue;
             """;

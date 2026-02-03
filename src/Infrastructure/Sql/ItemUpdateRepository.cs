@@ -17,7 +17,7 @@ public sealed class ItemUpdateRepository : IItemUpdateRepository
     public async Task<bool> UpdateInventoryAsync(ItemId itemId, ItemInventoryPatch patch, CancellationToken ct)
     {
         const string sql = """
-            update dbo.Items
+            update dbo.LibraryItem
             set
                 Barcode = case when @Barcode_IsSpecified = 1 then @Barcode else Barcode end,
                 Location = case when @Location_IsSpecified = 1 then @Location else Location end,

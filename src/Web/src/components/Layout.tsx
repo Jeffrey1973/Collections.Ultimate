@@ -1,48 +1,77 @@
-import { Outlet, NavLink } from 'react-router-dom'
+import { Link } from 'react-router-dom'
+import { ReactNode } from 'react'
+import HouseholdSelector from './HouseholdSelector.tsx'
 
-function Layout() {
+interface LayoutProps {
+  children: ReactNode
+}
+
+function Layout({ children }: LayoutProps) {
   return (
-    <>
-      <nav className="nav">
-        <div className="container nav-content">
-          <NavLink to="/" className="nav-brand">
-            📚 Collections Ultimate
-          </NavLink>
-          <ul className="nav-links">
-            <li>
-              <NavLink 
-                to="/" 
-                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-                end
-              >
-                Home
-              </NavLink>
-            </li>
-            <li>
-              <NavLink 
-                to="/library" 
-                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-              >
-                My Library
-              </NavLink>
-            </li>
-            <li>
-              <NavLink 
-                to="/add-book" 
-                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-              >
-                Add Book
-              </NavLink>
-            </li>
-          </ul>
-        </div>
-      </nav>
-      <main className="page">
-        <div className="container">
-          <Outlet />
-        </div>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <header style={{
+        backgroundColor: 'white',
+        borderBottom: '1px solid #e2e8f0',
+        padding: '1rem 2rem',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+      }}>
+        <nav style={{
+          maxWidth: '1200px',
+          margin: '0 auto',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '2rem',
+        }}>
+          <Link to="/" style={{
+            fontSize: '1.5rem',
+            fontWeight: 700,
+            color: '#1e293b',
+            textDecoration: 'none',
+          }}>
+            📚 Collections
+          </Link>
+          <HouseholdSelector />
+          <div style={{ display: 'flex', gap: '1.5rem', marginLeft: 'auto' }}>
+            <Link to="/" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 500 }}>
+              Home
+            </Link>
+            <Link to="/library" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 500 }}>
+              Library
+            </Link>
+            <Link to="/add-book" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 500 }}>
+              Add Book
+            </Link>
+            <Link to="/api-test" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 500 }}>
+              API Test
+            </Link>
+          </div>
+        </nav>
+      </header>
+
+      {/* Main Content */}
+      <main style={{
+        flex: 1,
+        maxWidth: '1200px',
+        width: '100%',
+        margin: '0 auto',
+        padding: '2rem',
+      }}>
+        {children}
       </main>
-    </>
+
+      {/* Footer */}
+      <footer style={{
+        backgroundColor: 'white',
+        borderTop: '1px solid #e2e8f0',
+        padding: '1.5rem 2rem',
+        textAlign: 'center',
+        color: '#64748b',
+        fontSize: '0.875rem',
+      }}>
+        Collections Ultimate © 2026
+      </footer>
+    </div>
   )
 }
 

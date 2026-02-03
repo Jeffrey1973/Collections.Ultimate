@@ -1,18 +1,25 @@
-import { Routes, Route } from 'react-router-dom'
-import Layout from './components/Layout'
-import HomePage from './pages/HomePage'
-import LibraryPage from './pages/LibraryPage'
-import AddBookPage from './pages/AddBookPage'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import Layout from './components/Layout.tsx'
+import HomePage from './pages/HomePage.tsx'
+import LibraryPage from './pages/LibraryPage.tsx'
+import AddBookPage from './pages/AddBookPage.tsx'
+import ApiTestPage from './pages/ApiTestPage.tsx'
+import { HouseholdProvider } from './context/HouseholdContext.tsx'
 
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Layout />}>
-        <Route index element={<HomePage />} />
-        <Route path="library" element={<LibraryPage />} />
-        <Route path="add-book" element={<AddBookPage />} />
-      </Route>
-    </Routes>
+    <HouseholdProvider>
+      <BrowserRouter>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/library" element={<LibraryPage />} />
+            <Route path="/add-book" element={<AddBookPage />} />
+            <Route path="/api-test" element={<ApiTestPage />} />
+          </Routes>
+        </Layout>
+      </BrowserRouter>
+    </HouseholdProvider>
   )
 }
 

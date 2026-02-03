@@ -2,6 +2,7 @@ using System.Text.Json;
 using CollectionsUltimate.Application.Abstractions;
 using CollectionsUltimate.Domain;
 using CollectionsUltimate.Infrastructure.Sql;
+using CollectionsUltimate.Infrastructure.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,6 +36,41 @@ builder.Services.AddScoped<ILibraryItemLookupRepository, LibraryItemLookupReposi
 builder.Services.AddScoped<IItemSearchRepository, ItemSearchRepository>();
 builder.Services.AddScoped<IItemUpdateRepository, ItemUpdateRepository>();
 
+// Register blob storage service
+var storageProvider = builder.Configuration["Storage:Provider"] ?? "Local";
+if (storageProvider.Equals("Azure", StringComparison.OrdinalIgnoreCase))
+{
+    var azureConnectionString = builder.Configuration["Storage:Azure:ConnectionString"]
+        ?? throw new InvalidOperationException("Azure storage connection string not configured.");
+    var containerName = builder.Configuration["Storage:Azure:ContainerName"] ?? "covers";
+    builder.Services.AddSingleton<IBlobStorageService>(new AzureBlobStorageService(azureConnectionString, containerName));
+}
+else
+{
+    var basePath = Path.Combine(builder.Environment.ContentRootPath, builder.Configuration["Storage:Local:BasePath"] ?? "wwwroot/uploads");
+    var baseUrl = builder.Configuration["Storage:Local:BaseUrl"] ?? "/uploads";
+    builder.Services.AddSingleton<IBlobStorageService>(new LocalFileStorageService(basePath, baseUrl));
+}
+
+// Add CORS policy
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? ["http://localhost:5173", "http://localhost:3000"];
+
+// Before var app = builder.Build();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins(
+                "http://localhost:5174",  // Current Vite port
+                "http://localhost:5173"   // Original Vite port
+            )
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
+    });
+});
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -43,6 +79,13 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+
+// Use CORS (must be before endpoints)
+app.UseCors("AllowFrontend");
+
+
+app.UseStaticFiles();
 
 app.MapGet("/api/households", async (IHouseholdRepository repo, CancellationToken ct) =>
 {
@@ -60,9 +103,12 @@ app.MapPost("/api/households", async (CreateHouseholdRequest request, IHousehold
 app.MapDelete("/api/households/{householdId:guid}", async (
     Guid householdId,
     IHouseholdRepository repo,
+    IAccountHouseholdRepository accountHouseholdRepo,
     CancellationToken ct) =>
 {
-    var deleted = await repo.DeleteAsync(new HouseholdId(householdId), ct);
+    var id = new HouseholdId(householdId);
+    await accountHouseholdRepo.DeleteByHouseholdIdAsync(id, ct);
+    var deleted = await repo.DeleteAsync(id, ct);
     return deleted ? Results.NoContent() : Results.NotFound();
 });
 
@@ -166,6 +212,8 @@ app.MapGet("/api/accounts/{accountId:guid}/households", async (
     return Results.Ok(households.Select(h => new { id = h.Value }));
 });
 
+// DEPRECATED: Use /api/households/{householdId}/items with kind filter instead.
+// This endpoint will be removed in a future version.
 app.MapGet("/api/households/{householdId:guid}/books", async (
     Guid householdId,
     string? q,
@@ -176,8 +224,10 @@ app.MapGet("/api/households/{householdId:guid}/books", async (
 {
     var result = await repo.SearchAsync(new HouseholdId(householdId), q, Math.Clamp(take ?? 50, 1, 200), Math.Max(skip ?? 0, 0), ct);
     return Results.Ok(result);
-});
+}).WithTags("Deprecated");
 
+// DEPRECATED: Use POST /api/households/{householdId}/library/books for normalized model.
+// This endpoint will be removed in a future version.
 app.MapPost("/api/households/{householdId:guid}/books", async (
     Guid householdId,
     CreateBookRequest request,
@@ -200,7 +250,7 @@ app.MapPost("/api/households/{householdId:guid}/books", async (
 
     await repo.CreateAsync(book, ct);
     return Results.Created($"/api/books/{book.Id.Value}", book);
-});
+}).WithTags("Deprecated");
 
 // Normalized model endpoints
 app.MapGet("/api/works/{workId:guid}", async (Guid workId, IWorkRepository repo, CancellationToken ct) =>
@@ -273,7 +323,8 @@ app.MapPost("/api/households/{householdId:guid}/items", async (
         Status = request.Status,
         Condition = request.Condition,
         AcquiredOn = request.AcquiredOn,
-        Price = request.Price
+        Price = request.Price,
+        MetadataJson = request.MetadataJson
     };
 
     await repo.CreateAsync(item, ct);
@@ -339,7 +390,8 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
         Status = request.Item.Status,
         Condition = request.Item.Condition,
         AcquiredOn = request.Item.AcquiredOn,
-        Price = request.Item.Price
+        Price = request.Item.Price,
+        MetadataJson = request.Item.MetadataJson
     };
 
     await itemRepo.CreateAsync(item, ct);
@@ -472,11 +524,96 @@ static PatchField<decimal?> ToPatchDecimal(JsonElement? el)
 static string NormalizeTitle(string title)
     => string.Join(' ', title.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant();
 
+// Cover image upload
+app.MapPost("/api/editions/{editionId:guid}/cover", async (
+    Guid editionId,
+    IFormFile file,
+    IBlobStorageService blobService,
+    IEditionRepository editionRepo,
+    CancellationToken ct) =>
+{
+    if (file.Length == 0)
+        return Results.BadRequest(new { message = "File is empty." });
+
+    if (file.Length > 5 * 1024 * 1024) // 5MB limit
+        return Results.BadRequest(new { message = "File size exceeds 5MB limit." });
+
+    var allowedTypes = new[] { "image/jpeg", "image/png", "image/webp", "image/gif" };
+    if (!allowedTypes.Contains(file.ContentType.ToLowerInvariant()))
+        return Results.BadRequest(new { message = "Invalid file type. Allowed: jpeg, png, webp, gif." });
+
+    var edition = await editionRepo.GetByIdAsync(new EditionId(editionId), ct);
+    if (edition is null)
+        return Results.NotFound();
+
+    var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+    if (string.IsNullOrEmpty(extension))
+        extension = file.ContentType switch
+        {
+            "image/jpeg" => ".jpg",
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            "image/gif" => ".gif",
+            _ => ".jpg"
+        };
+
+    var fileName = $"covers/{editionId}/{Guid.NewGuid()}{extension}";
+
+    await using var stream = file.OpenReadStream();
+    var url = await blobService.UploadAsync(fileName, stream, file.ContentType, ct);
+
+    await editionRepo.UpdateCoverUrlAsync(new EditionId(editionId), url, ct);
+
+    return Results.Ok(new { coverImageUrl = url });
+})
+.DisableAntiforgery();
+
+// Get cover image URL
+app.MapGet("/api/editions/{editionId:guid}/cover", async (
+    Guid editionId,
+    IEditionRepository editionRepo,
+    CancellationToken ct) =>
+{
+    var url = await editionRepo.GetCoverUrlAsync(new EditionId(editionId), ct);
+
+    if (string.IsNullOrEmpty(url))
+        return Results.NotFound();
+
+    return Results.Ok(new { coverImageUrl = url });
+});
+
+// Delete cover image
+app.MapDelete("/api/editions/{editionId:guid}/cover", async (
+    Guid editionId,
+    IBlobStorageService blobService,
+    IEditionRepository editionRepo,
+    CancellationToken ct) =>
+{
+    var edition = await editionRepo.GetByIdAsync(new EditionId(editionId), ct);
+    if (edition is null)
+        return Results.NotFound();
+
+    if (!string.IsNullOrEmpty(edition.CoverImageUrl))
+    {
+        // Extract path from URL for deletion
+        var uri = new Uri(edition.CoverImageUrl);
+        var path = uri.AbsolutePath.TrimStart('/');
+        await blobService.DeleteAsync(path, ct);
+    }
+
+    await editionRepo.UpdateCoverUrlAsync(new EditionId(editionId), null, ct);
+    return Results.NoContent();
+});
+
 app.Run();
 
 public sealed record CreateHouseholdRequest(string Name);
 public sealed record CreateAccountRequest(string DisplayName, string? Email);
 
+/// <summary>
+/// Deprecated: Use CreateBookIngestRequest with POST /api/households/{id}/library/books instead.
+/// </summary>
+[Obsolete("Use CreateBookIngestRequest with the normalized model endpoints instead.")]
 public sealed record CreateBookRequest(
     string Title,
     string? Subtitle,
@@ -502,18 +639,19 @@ public sealed record CreateEditionRequest(
     string? Description);
 
 public sealed record CreateItemRequest(
-    ItemKind Kind,
-    Guid WorkId,
-    Guid? EditionId,
-    string Title,
-    string? Subtitle,
-    string? Notes,
-    string? Barcode,
-    string? Location,
-    string? Status,
-    string? Condition,
-    DateOnly? AcquiredOn,
-    decimal? Price);
+ItemKind Kind,
+Guid WorkId,
+Guid? EditionId,
+string Title,
+string? Subtitle,
+string? Notes,
+string? Barcode,
+string? Location,
+string? Status,
+string? Condition,
+DateOnly? AcquiredOn,
+decimal? Price,
+string? MetadataJson);
 
 public sealed record AddContributorRequest(
     Guid? PersonId,
@@ -539,15 +677,16 @@ public sealed record CreateBookIngestRequest(
     IReadOnlyList<CreateBookIngestSubject>? Subjects);
 
 public sealed record CreateBookIngestItem(
-    string? Title,
-    string? Subtitle,
-    string? Notes,
-    string? Barcode,
-    string? Location,
-    string? Status,
-    string? Condition,
-    DateOnly? AcquiredOn,
-    decimal? Price);
+string? Title,
+string? Subtitle,
+string? Notes,
+string? Barcode,
+string? Location,
+string? Status,
+string? Condition,
+DateOnly? AcquiredOn,
+decimal? Price,
+string? MetadataJson);
 
 public sealed record CreateBookIngestEdition(
     string? EditionTitle,

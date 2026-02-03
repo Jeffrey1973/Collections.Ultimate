@@ -17,15 +17,15 @@ public sealed class WorkMetadataRepository : IWorkMetadataRepository
     public async Task AddContributorAsync(WorkId workId, Person person, ContributorRoleId roleId, int ordinal, CancellationToken ct)
     {
         const string ensurePersonSql = """
-            if not exists (select 1 from dbo.People where Id = @Id)
+            if not exists (select 1 from dbo.Person where Id = @Id)
             begin
-                insert into dbo.People (Id, DisplayName, SortName, BirthYear, DeathYear, CreatedUtc)
+                insert into dbo.Person (Id, DisplayName, SortName, BirthYear, DeathYear, CreatedUtc)
                 values (@Id, @DisplayName, @SortName, @BirthYear, @DeathYear, @CreatedUtc);
             end
             """;
 
         const string insertSql = """
-            insert into dbo.WorkContributors (WorkId, PersonId, RoleId, Ordinal)
+            insert into dbo.WorkContributor (WorkId, PersonId, RoleId, Ordinal)
             values (@WorkId, @PersonId, @RoleId, @Ordinal);
             """;
 
@@ -64,23 +64,23 @@ public sealed class WorkMetadataRepository : IWorkMetadataRepository
             declare @TagId uniqueidentifier;
 
             select @TagId = Id
-            from dbo.Tags
-            where OwnerHouseholdId = @OwnerHouseholdId
+            from dbo.Tag
+            where HouseholdId = @HouseholdId
               and NormalizedName = @NormalizedName;
 
             if @TagId is null
             begin
                 set @TagId = newid();
-                insert into dbo.Tags (Id, OwnerHouseholdId, Name, NormalizedName)
-                values (@TagId, @OwnerHouseholdId, @Name, @NormalizedName);
+                insert into dbo.Tag (Id, HouseholdId, Name, NormalizedName)
+                values (@TagId, @HouseholdId, @Name, @NormalizedName);
             end
 
             select @TagId;
             """;
 
         const string linkSql = """
-            if not exists (select 1 from dbo.WorkTags where WorkId = @WorkId and TagId = @TagId)
-                insert into dbo.WorkTags (WorkId, TagId) values (@WorkId, @TagId);
+            if not exists (select 1 from dbo.WorkTag where WorkId = @WorkId and TagId = @TagId)
+                insert into dbo.WorkTag (WorkId, TagId) values (@WorkId, @TagId);
             """;
 
         using var conn = _connectionFactory.Create();
@@ -91,7 +91,7 @@ public sealed class WorkMetadataRepository : IWorkMetadataRepository
 
         var tagId = await conn.ExecuteScalarAsync<Guid>(new CommandDefinition(upsertTagSql, new
         {
-            OwnerHouseholdId = householdId.Value,
+            HouseholdId = householdId.Value,
             Name = tagName.Trim(),
             NormalizedName = normalized
         }, transaction: tx, cancellationToken: ct));
@@ -113,14 +113,14 @@ public sealed class WorkMetadataRepository : IWorkMetadataRepository
             declare @SubjectId uniqueidentifier;
 
             select @SubjectId = Id
-            from dbo.SubjectHeadings
+            from dbo.SubjectHeading
             where SchemeId = @SchemeId
               and NormalizedText = @NormalizedText;
 
             if @SubjectId is null
             begin
                 set @SubjectId = newid();
-                insert into dbo.SubjectHeadings (Id, SchemeId, Text, NormalizedText)
+                insert into dbo.SubjectHeading (Id, SchemeId, Text, NormalizedText)
                 values (@SubjectId, @SchemeId, @Text, @NormalizedText);
             end
 
@@ -128,8 +128,8 @@ public sealed class WorkMetadataRepository : IWorkMetadataRepository
             """;
 
         const string linkSql = """
-            if not exists (select 1 from dbo.WorkSubjects where WorkId = @WorkId and SubjectHeadingId = @SubjectId)
-                insert into dbo.WorkSubjects (WorkId, SubjectHeadingId) values (@WorkId, @SubjectId);
+            if not exists (select 1 from dbo.WorkSubject where WorkId = @WorkId and SubjectHeadingId = @SubjectId)
+                insert into dbo.WorkSubject (WorkId, SubjectHeadingId) values (@WorkId, @SubjectId);
             """;
 
         using var conn = _connectionFactory.Create();
@@ -161,13 +161,13 @@ public sealed class WorkMetadataRepository : IWorkMetadataRepository
         const string sql = """
             if not exists (
                 select 1
-                from dbo.EditionIdentifiers
+                from dbo.EditionIdentifier
                 where EditionId = @EditionId
                   and IdentifierTypeId = @IdentifierTypeId
                   and NormalizedValue = @NormalizedValue
             )
             begin
-                insert into dbo.EditionIdentifiers (EditionId, IdentifierTypeId, Value, NormalizedValue, IsPrimary)
+                insert into dbo.EditionIdentifier (EditionId, IdentifierTypeId, Value, NormalizedValue, IsPrimary)
                 values (@EditionId, @IdentifierTypeId, @Value, @NormalizedValue, @IsPrimary);
             end
             """;

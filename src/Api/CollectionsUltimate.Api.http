@@ -1,6 +1,6 @@
 @CollectionsUltimate.Api_HostAddress = http://localhost:5258
 
-CREATE REQUESTS
+### CREATE REQUESTS
 
 ### Create a household
 POST {{CollectionsUltimate.Api_HostAddress}}/api/households
@@ -12,10 +12,10 @@ Content-Type: application/json
 
 ###
 
-# One-shot ingest: create Work + Edition + Item + metadata
-# 1) Replace {householdId} with the id returned from the create-household request above.
-# 2) Optionally adjust RoleId values (ContributorRoles: 1=Author, 2=Editor, 3=Translator, 4=Illustrator)
-# 3) IdentifierTypeId values (IdentifierTypes: 1=ISBN10, 2=ISBN13, 3=ASIN, 4=LCCN, 5=EAN, 6=UPC)
+### One-shot ingest: create Work + Edition + Item + metadata
+### 1) Replace {householdId} with the id returned from the create-household request above.
+### 2) Optionally adjust RoleId values (ContributorRoles: 1=Author, 2=Editor, 3=Translator, 4=Illustrator)
+### 3) IdentifierTypeId values (IdentifierTypes: 1=ISBN10, 2=ISBN13, 3=ASIN, 4=LCCN, 5=EAN, 6=UPC)
 POST {{CollectionsUltimate.Api_HostAddress}}/api/households/{{householdId}}/library/books
 Content-Type: application/json
 

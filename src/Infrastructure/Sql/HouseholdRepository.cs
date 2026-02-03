@@ -16,18 +16,18 @@ public sealed class HouseholdRepository : IHouseholdRepository
     public async Task CreateAsync(Household household, CancellationToken ct)
     {
         const string sql = """
-            insert into dbo.Households (Id, Name)
-            values (@Id, @Name);
+            insert into dbo.Household (Id, Name, CreatedUtc)
+            values (@Id, @Name, @CreatedUtc);
             """;
 
         using var conn = _connectionFactory.Create();
-        await conn.ExecuteAsync(new CommandDefinition(sql, new { Id = household.Id.Value, household.Name }, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(sql, new { Id = household.Id.Value, household.Name, CreatedUtc = DateTimeOffset.UtcNow }, cancellationToken: ct));
     }
 
     public async Task<bool> DeleteAsync(HouseholdId id, CancellationToken ct)
     {
         const string sql = """
-            delete from dbo.Households
+            delete from dbo.Household
             where Id = @Id;
             """;
 
@@ -40,7 +40,7 @@ public sealed class HouseholdRepository : IHouseholdRepository
     {
         const string sql = """
             select Id, Name
-            from dbo.Households
+            from dbo.Household
             where Id = @Id;
             """;
 
@@ -56,7 +56,7 @@ public sealed class HouseholdRepository : IHouseholdRepository
     {
         const string sql = """
             select Id, Name
-            from dbo.Households
+            from dbo.Household
             order by Name;
             """;
 

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test</title>
+</head>
+<body>
+    <h1>Backend API Test</h1>
+    <button onclick="testGetHouseholds()">Test GET /api/households</button>
+    <button onclick="testCreateBook()">Test POST /api/households/.../library/books</button>
+    <pre id="output"></pre>
+
+    <script>
+        const API_BASE = 'http://localhost:5258';
+        const HOUSEHOLD_ID = '00000000-0000-0000-0000-000000000001';
+
+        function log(message) {
+            document.getElementById('output').textContent += message + '\n\n';
+            console.log(message);
+        }
+
+        async function testGetHouseholds() {
+            document.getElementById('output').textContent = '';
+            log('Testing GET /api/households...');
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/households`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                    }
+                });
+                
+                log(`Status: ${response.status} ${response.statusText}`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    log('Response: ' + JSON.stringify(data, null, 2));
+                } else {
+                    const error = await response.text();
+                    log('Error: ' + error);
+                }
+            } catch (err) {
+                log('Network Error: ' + err.message);
+                log('Check CORS settings on backend!');
+            }
+        }
+
+        async function testCreateBook() {
+            document.getElementById('output').textContent = '';
+            log('Testing POST /api/households/.../library/books...');
+            
+            const bookData = {
+                work: {
+                    title: "Test Book",
+                    subtitle: "A Test",
+                    sortTitle: "Test Book",
+                    description: "Testing the API"
+                },
+                edition: {
+                    editionTitle: "Test Book",
+                    publisher: "Test Publisher",
+                    publishedYear: 2024,
+                    pageCount: 100,
+                    identifiers: [
+                        {
+                            identifierTypeId: 2,
+                            value: "9781234567890",
+                            isPrimary: true
+                        }
+                    ]
+                },
+                item: {
+                    title: "Test Book",
+                    barcode: "9781234567890"
+                },
+                contributors: [
+                    {
+                        displayName: "Test Author",
+                        roleId: 1,
+                        ordinal: 1,
+                        sortName: "Author, Test"
+                    }
+                ],
+                tags: ["test"],
+                subjects: []
+            };
+
+            log('Request URL: ' + `${API_BASE}/api/households/${HOUSEHOLD_ID}/library/books`);
+            log('Request Body: ' + JSON.stringify(bookData, null, 2));
+            
+            try {
+                const response = await fetch(
+                    `${API_BASE}/api/households/${HOUSEHOLD_ID}/library/books`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                        },
+                        body: JSON.stringify(bookData)
+                    }
+                );
+                
+                log(`Status: ${response.status} ${response.statusText}`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    log('Success! Response: ' + JSON.stringify(data, null, 2));
+                } else {
+                    const contentType = response.headers.get('content-type');
+                    if (contentType?.includes('json')) {
+                        const error = await response.json();
+                        log('Error (JSON): ' + JSON.stringify(error, null, 2));
+                    } else {
+                        const error = await response.text();
+                        log('Error (Text): ' + error);
+                    }
+                }
+            } catch (err) {
+                log('Network Error: ' + err.message);
+                log('This usually means CORS is blocking the request!');
+                log('Add CORS policy to your .NET backend.');
+            }
+        }
+    </script>
+</body>
+</html>

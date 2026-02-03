@@ -16,10 +16,11 @@ public sealed class BookRepository : IBookRepository
     public async Task CreateAsync(Book book, CancellationToken ct)
     {
         const string sql = """
-            insert into dbo.Books
+            insert into dbo.Book
             (
                 Id,
-                OwnerHouseholdId,
+                HouseholdId,
+                Kind,
                 Title,
                 Subtitle,
                 Notes,
@@ -33,7 +34,8 @@ public sealed class BookRepository : IBookRepository
             values
             (
                 @Id,
-                @OwnerHouseholdId,
+                @HouseholdId,
+                @Kind,
                 @Title,
                 @Subtitle,
                 @Notes,
@@ -50,7 +52,8 @@ public sealed class BookRepository : IBookRepository
         await conn.ExecuteAsync(new CommandDefinition(sql, new
         {
             Id = book.Id.Value,
-            OwnerHouseholdId = book.OwnerHouseholdId.Value,
+            HouseholdId = book.OwnerHouseholdId.Value,
+            Kind = (int)book.Kind,
             book.Title,
             book.Subtitle,
             book.Notes,
@@ -68,7 +71,8 @@ public sealed class BookRepository : IBookRepository
         const string sql = """
             select
                 Id,
-                OwnerHouseholdId,
+                HouseholdId,
+                Kind,
                 Title,
                 Subtitle,
                 Notes,
@@ -78,7 +82,7 @@ public sealed class BookRepository : IBookRepository
                 Authors,
                 PublishedYear,
                 Publisher
-            from dbo.Books
+            from dbo.Book
             where Id = @Id;
             """;
 
@@ -95,7 +99,8 @@ public sealed class BookRepository : IBookRepository
         const string sql = """
             select
                 Id,
-                OwnerHouseholdId,
+                HouseholdId,
+                Kind,
                 Title,
                 Subtitle,
                 Notes,
@@ -105,8 +110,8 @@ public sealed class BookRepository : IBookRepository
                 Authors,
                 PublishedYear,
                 Publisher
-            from dbo.Books
-            where OwnerHouseholdId = @OwnerHouseholdId
+            from dbo.Book
+            where HouseholdId = @HouseholdId
               and (
                     @Q is null
                  or Title like @Q
@@ -121,7 +126,7 @@ public sealed class BookRepository : IBookRepository
         using var conn = _connectionFactory.Create();
         var rows = await conn.QueryAsync<BookRow>(new CommandDefinition(sql, new
         {
-            OwnerHouseholdId = householdId.Value,
+            HouseholdId = householdId.Value,
             Q = q,
             Take = take,
             Skip = skip
@@ -133,8 +138,8 @@ public sealed class BookRepository : IBookRepository
     private static Book Map(BookRow r) => new()
     {
         Id = new ItemId(r.Id),
-        OwnerHouseholdId = new HouseholdId(r.OwnerHouseholdId),
-        Kind = ItemKind.Book,
+        OwnerHouseholdId = new HouseholdId(r.HouseholdId),
+        Kind = (ItemKind)r.Kind,
         Title = r.Title,
         Subtitle = r.Subtitle,
         Notes = r.Notes,
@@ -148,7 +153,8 @@ public sealed class BookRepository : IBookRepository
 
     private sealed record BookRow(
         Guid Id,
-        Guid OwnerHouseholdId,
+        Guid HouseholdId,
+        int Kind,
         string Title,
         string? Subtitle,
         string? Notes,

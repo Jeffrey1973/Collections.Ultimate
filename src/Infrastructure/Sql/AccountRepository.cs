@@ -16,7 +16,7 @@ public sealed class AccountRepository : IAccountRepository
     public async Task CreateAsync(Account account, CancellationToken ct)
     {
         const string sql = """
-            insert into dbo.Accounts (Id, DisplayName, Email, CreatedUtc)
+            insert into dbo.Account (Id, DisplayName, Email, CreatedUtc)
             values (@Id, @DisplayName, @Email, @CreatedUtc);
             """;
 
@@ -34,7 +34,7 @@ public sealed class AccountRepository : IAccountRepository
     {
         const string sql = """
             select Id, DisplayName, Email, CreatedUtc
-            from dbo.Accounts
+            from dbo.Account
             where Id = @Id;
             """;
 

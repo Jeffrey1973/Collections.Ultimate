@@ -17,8 +17,8 @@ public sealed class LibraryItemLookupRepository : ILibraryItemLookupRepository
     {
         const string sql = """
             select top (1) Id
-            from dbo.Items
-            where OwnerHouseholdId = @OwnerHouseholdId
+            from dbo.LibraryItem
+            where HouseholdId = @HouseholdId
               and Barcode = @Barcode
             order by CreatedUtc asc;
             """;
@@ -26,7 +26,7 @@ public sealed class LibraryItemLookupRepository : ILibraryItemLookupRepository
         using var conn = _connectionFactory.Create();
         var id = await conn.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition(sql, new
         {
-            OwnerHouseholdId = householdId.Value,
+            HouseholdId = householdId.Value,
             Barcode = barcode
         }, cancellationToken: ct));
 
@@ -37,8 +37,8 @@ public sealed class LibraryItemLookupRepository : ILibraryItemLookupRepository
     {
         const string sql = """
             select top (1) Id
-            from dbo.Items
-            where OwnerHouseholdId = @OwnerHouseholdId
+            from dbo.LibraryItem
+            where HouseholdId = @HouseholdId
               and WorkId = @WorkId
             order by CreatedUtc asc;
             """;
@@ -46,7 +46,7 @@ public sealed class LibraryItemLookupRepository : ILibraryItemLookupRepository
         using var conn = _connectionFactory.Create();
         var id = await conn.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition(sql, new
         {
-            OwnerHouseholdId = householdId.Value,
+            HouseholdId = householdId.Value,
             WorkId = workId.Value
         }, cancellationToken: ct));
 
