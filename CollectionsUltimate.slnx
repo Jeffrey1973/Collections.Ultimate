@@ -1,15 +1,15 @@
 <Solution>
-  <Folder Name="/src/" />
-  <Folder Name="/src/Api/">
-    <Project Path="src/Api/CollectionsUltimate.Api.csproj" />
+  <Folder Name="/api/" />
+  <Folder Name="/api/Api/">
+    <Project Path="api/Api/CollectionsUltimate.Api.csproj" />
   </Folder>
-  <Folder Name="/src/Application/">
-    <Project Path="src/Application/CollectionsUltimate.Application.csproj" />
+  <Folder Name="/api/Application/">
+    <Project Path="api/Application/CollectionsUltimate.Application.csproj" />    
   </Folder>
-  <Folder Name="/src/Domain/">
-    <Project Path="src/Domain/CollectionsUltimate.Domain.csproj" />
+  <Folder Name="/api/Domain/">
+    <Project Path="api/Domain/CollectionsUltimate.Domain.csproj" />
   </Folder>
-  <Folder Name="/src/Infrastructure/">
-    <Project Path="src/Infrastructure/CollectionsUltimate.Infrastructure.csproj" />
+  <Folder Name="/api/Infrastructure/">
+    <Project Path="api/Infrastructure/CollectionsUltimate.Infrastructure.csproj" />
   </Folder>
 </Solution>

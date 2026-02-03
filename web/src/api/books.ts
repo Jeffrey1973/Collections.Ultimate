@@ -11,6 +11,7 @@ import {
   lookupFromBetterWorldBooks,
   lookupFromWikidata,
 } from './book-apis-extended'
+import type { GoogleBooksVolume } from './google-books-types'
 
 // Proxy configuration
 const PROXY_URL = import.meta.env.VITE_PROXY_URL || 'http://localhost:3001'
@@ -22,90 +23,224 @@ async function fetchThroughProxy(url: string, options?: RequestInit): Promise<Re
   return fetch(proxyUrl, options)
 }
 
-// Book type definition
+// Book type definition - comprehensive fields from all sources
 export interface Book {
+  // Core identification
   id: string
   householdId: string
   title: string
   author: string
-  isbn?: string
-  isbn10?: string
-  isbn13?: string
+  dateAdded: string
+  
+  // Basic Info (from volumeInfo)
+  subtitle?: string
+  originalTitle?: string
   coverImageUrl?: string
   description?: string
   publisher?: string
   publishedDate?: string
   pageCount?: number
-  categories?: string[]
   language?: string
-  dateAdded: string
   
-  // Traditional library catalog fields
-  callNumber?: string
-  edition?: string
-  placeOfPublication?: string
-  physicalDescription?: string
-  series?: string
+  // Categories & Classification
+  mainCategory?: string
+  categories?: string[]
   subjects?: string[]
-  notes?: string
-  dimensions?: string
+  deweyDecimal?: string
+  deweyEdition?: string // Edition of Dewey system used
+  lcc?: string // Library of Congress Classification
+  lccEdition?: string // Edition of LC system used
+  callNumber?: string
+  bisacCodes?: string[] // Book Industry Standards
+  thema?: string[] // International subject codes
+  fastSubjects?: string[] // FAST (Faceted Application of Subject Terminology)
   
-  // Extended metadata
-  subtitle?: string
-  originalTitle?: string
-  translatedFrom?: string
+  // Identifiers (from industryIdentifiers)
+  isbn?: string // Legacy/general
+  isbn10?: string
+  isbn13?: string
+  issn?: string
+  lccn?: string // Library of Congress Control Number
+  oclcNumber?: string
+  oclcWorkId?: string
+  doi?: string // Digital Object Identifier
+  asin?: string // Amazon
+  googleBooksId?: string
+  goodreadsId?: string
+  libraryThingId?: string
+  olid?: string // Open Library ID
+  
+  // National Library Identifiers
+  dnbId?: string // Deutsche Nationalbibliothek (German National Library)
+  bnfId?: string // Bibliothèque nationale de France
+  nlaId?: string // National Library of Australia
+  ndlId?: string // National Diet Library (Japan)
+  lacId?: string // Library and Archives Canada
+  blId?: string // British Library
+  
+  // Contributors
   translator?: string
   illustrator?: string
   editor?: string
   narrator?: string // For audiobooks
-  format?: string // Hardcover, Paperback, eBook, Audiobook, etc.
-  weight?: string
-  deweyDecimal?: string
-  lcc?: string // Library of Congress Classification
-  oclcNumber?: string
-  lccn?: string // Library of Congress Control Number
-  bisacCodes?: string[] // Book Industry Standards
-  thema?: string[] // International subject codes
-  awards?: string[]
+  contributors?: Array<{ // Detailed contributor info
+    name: string
+    role: string // "author", "editor", "translator", "illustrator", etc.
+    ordinal?: number
+  }>
   
-  // Content details
-  tableOfContents?: string
-  firstSentence?: string
-  excerpt?: string
-  readingAge?: string
-  lexileScore?: string
-  arLevel?: string // Accelerated Reader level
-  
-  // Publication details
-  printingHistory?: string
-  copyright?: string
-  originalPublicationDate?: string
+  // Edition & Publication Details
+  edition?: string
   editionStatement?: string
+  printType?: string // "BOOK" | "MAGAZINE"
+  format?: string // Hardcover, Paperback, eBook, Audiobook, etc.
+  placeOfPublication?: string
+  originalPublicationDate?: string
+  copyright?: string
+  printingHistory?: string
+  
+  // Physical Details
+  dimensions?: string // Formatted string from height/width/thickness
+  dimensionsHeight?: string
+  dimensionsWidth?: string
+  dimensionsThickness?: string
+  weight?: string
+  shippingWeight?: string
+  binding?: string // Hardcover, Paperback, Mass Market, etc.
+  pagination?: string // Detailed page info (e.g., "viii, 342 p.")
+  physicalDescription?: string
+  
+  // Series Information
+  series?: string // Legacy field
+  seriesInfo?: {
+    seriesId?: string
+    seriesName?: string
+    volumeNumber?: string
+  }
   numberOfVolumes?: number
   volumeNumber?: string
   
-  // Identifiers
-  asin?: string // Amazon
-  goodreadsId?: string
-  libraryThingId?: string
-  googleBooksId?: string
-  olid?: string // Open Library ID
-  oclcWorkId?: string
-  doi?: string // Digital Object Identifier
+  // Content & Reading Info
+  tableOfContents?: string
+  firstSentence?: string
+  excerpt?: string
+  textSnippet?: string // From searchInfo
+  readingAge?: string
+  lexileScore?: string
+  arLevel?: string // Accelerated Reader level
+  maturityRating?: string
   
-  // Reviews & Ratings
+  // Google Books Specific Fields
+  etag?: string
+  selfLink?: string
+  contentVersion?: string
+  readingModesText?: boolean
+  readingModesImage?: boolean
+  allowAnonLogging?: boolean
+  panelizationContainsEpubBubbles?: boolean
+  panelizationContainsImageBubbles?: boolean
+  subtitleLanguage?: string
+  otherTitles?: string[]
+  canonicalVolumeLink?: string
+  
+  // Image Links (all sizes from Google Books)
+  coverImageSmallThumbnail?: string
+  coverImageThumbnail?: string
+  coverImageSmall?: string
+  coverImageMedium?: string
+  coverImageLarge?: string
+  coverImageExtraLarge?: string
+  
+  // Ratings & Reviews
   averageRating?: number
   ratingsCount?: number
   reviewsCount?: number
+  reviewsTextCount?: number // Number of text reviews (vs just ratings)
+  fiveStarPercent?: number // Percentage of 5-star reviews
+  communityRating?: number // From Goodreads or other community sources
+  
+  // Sale Information
+  saleCountry?: string
+  saleability?: string // "FOR_SALE" | "NOT_FOR_SALE" | "FREE"
+  onSaleDate?: string
+  isEbook?: boolean
+  listPriceAmount?: number
+  listPriceCurrency?: string
+  retailPriceAmount?: number
+  retailPriceCurrency?: string
+  buyLink?: string
+  
+  // Commercial & Availability (from retailers/WorldCat)
+  currentPrice?: number
+  discount?: number // Percentage off
+  usedPrices?: number[] // Array of used book prices
+  availability?: string // "In stock", "Out of stock", etc.
+  bestsellerRank?: number
+  librariesOwning?: number // How many libraries own this (WorldCat)
+  nearbyLibraries?: Array<{ name: string; distance: string }>
+  
+  // Access Information
+  accessCountry?: string
+  viewability?: string // "PARTIAL" | "ALL_PAGES" | "NO_PAGES"
+  embeddable?: boolean
+  publicDomain?: boolean
+  textToSpeechPermission?: string
+  epubAvailable?: boolean
+  epubDownloadLink?: string
+  epubAcsTokenLink?: string
+  pdfAvailable?: boolean
+  pdfDownloadLink?: string
+  pdfAcsTokenLink?: string
+  webReaderLink?: string
+  accessViewStatus?: string
+  quoteSharingAllowed?: boolean
+  
+  // Download Access Details
+  downloadRestricted?: boolean
+  downloadDeviceAllowed?: boolean
+  downloadMaxDevices?: number
+  downloadAcquired?: number
+  
+  // User Information (if user is authenticated with Google)
+  isPurchased?: boolean
+  isPreordered?: boolean
+  userRating?: number
+  userReviewText?: string
+  userReviewDate?: string
+  readingPositionPosition?: string
+  readingPositionUpdated?: string
+  userInfoUpdated?: string
   
   // Links
   previewLink?: string
   infoLink?: string
-  buyLink?: string
+  
+  // Enhanced content fields
+  byStatement?: string // Attribution statement (e.g., "by Jane Austen ; edited by...")
+  bibliography?: string // "Includes bibliographical references and index"
+  colophon?: string // Publishing/printing details
+  printRun?: string // "First printing: 5000 copies"
+  
+  // Translation details
+  originalLanguage?: string
+  translatedFrom?: string
+  
+  // Traditional library catalog fields
+  notes?: string
+  awards?: string[]
+  
+  // Community & Enhanced Metadata
+  quotes?: string[] // Memorable quotes from the book
+  trivia?: string[] // Interesting facts about the book
+  popularShelves?: string[] // Goodreads shelves (to-read, favorites, etc.)
+  similarBooks?: string[] // Related/similar book ISBNs or IDs
   
   // Metadata tracking
   dataSources?: string[]
   lastUpdated?: string
+  
+  // Custom fields (user-defined)
+  customFields?: Record<string, any>
 }
 
 // Google Books API response type
@@ -298,69 +433,157 @@ async function searchOpenLibrary(title: string, author?: string): Promise<{ isbn
   }
 }
 
-// Optimized parallel lookup by ISBN (Google Books + Open Library)
-async function fastISBNLookup(isbn: string): Promise<Partial<Book> | null> {
-  console.log('⚡ Fast ISBN lookup:', isbn)
-  
-  const results = await Promise.allSettled([
-    lookupFromGoogleBooks(isbn),
-    lookupFromOpenLibrary(isbn),
-  ])
-  
-  let merged: Partial<Book> = {}
-  
-  for (const result of results) {
-    if (result.status === 'fulfilled' && result.value) {
-      merged = mergeBookData(merged, result.value, 'Fast lookup')
-    }
+// Search Open Library and return multiple results
+async function searchOpenLibraryMultiple(title: string, author?: string, limit: number = 10): Promise<Array<{ isbn?: string; data: Partial<Book> }>> {
+  try {
+    const params = new URLSearchParams()
+    params.append('title', title)
+    if (author) params.append('author', author)
+    params.append('limit', limit.toString())
+
+    const url = `https://openlibrary.org/search.json?${params}`
+    console.log('🔍 Searching Open Library (multiple):', { title, author, limit })
+
+    const response = await fetch(url)
+    if (!response.ok) return []
+
+    const data = await response.json()
+    if (!data.docs || data.docs.length === 0) return []
+
+    // Map all results
+    return data.docs.map((book: any) => {
+      const isbn = book.isbn?.find((i: string) => i.length === 13) || book.isbn?.[0]
+      return {
+        isbn,
+        data: {
+          title: book.title,
+          author: book.author_name?.join(', '),
+          publishedDate: book.first_publish_year?.toString(),
+          publisher: book.publisher?.[0],
+          pageCount: book.number_of_pages_median,
+          coverImageUrl: book.cover_i ? `https://covers.openlibrary.org/b/id/${book.cover_i}-L.jpg` : undefined,
+          dataSources: ['Open Library'],
+        }
+      }
+    }).filter((result: any) => result.isbn) // Only include results with ISBNs
+  } catch (error) {
+    console.error('Open Library multiple search error:', error)
+    return []
   }
-  
-  return Object.keys(merged).length > 0 ? merged : null
 }
 
-// MAIN OPTIMIZED SEARCH FUNCTION
-export async function searchBook(
+// Search Google Books and return multiple results
+async function searchGoogleBooksMultiple(title: string, author?: string, limit: number = 10): Promise<Array<{ isbn?: string; data: Partial<Book> }>> {
+  try {
+    const API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_API_KEY
+    let query = title
+    if (author) query += ` inauthor:${author}`
+    
+    const params = new URLSearchParams()
+    params.append('q', query)
+    params.append('maxResults', Math.min(limit, 40).toString())
+    if (API_KEY) params.append('key', API_KEY)
+
+    const url = `https://www.googleapis.com/books/v1/volumes?${params}`
+    console.log('🔍 Searching Google Books (multiple):', { title, author, limit })
+
+    const response = await fetch(url)
+    if (!response.ok) return []
+
+    const data = await response.json()
+    if (!data.items || data.items.length === 0) return []
+
+    return data.items.map((item: any) => {
+      const volumeInfo = item.volumeInfo
+      const isbn13 = volumeInfo.industryIdentifiers?.find((id: any) => id.type === 'ISBN_13')?.identifier
+      const isbn10 = volumeInfo.industryIdentifiers?.find((id: any) => id.type === 'ISBN_10')?.identifier
+      const isbn = isbn13 || isbn10
+
+      return {
+        isbn,
+        data: {
+          title: volumeInfo.title,
+          subtitle: volumeInfo.subtitle,
+          author: volumeInfo.authors?.join(', '),
+          publishedDate: volumeInfo.publishedDate,
+          publisher: volumeInfo.publisher,
+          pageCount: volumeInfo.pageCount,
+          description: volumeInfo.description,
+          categories: volumeInfo.categories,
+          isbn13,
+          isbn10,
+          coverImageUrl: volumeInfo.imageLinks?.thumbnail?.replace('http:', 'https:'),
+          language: volumeInfo.language,
+          dataSources: ['Google Books'],
+        }
+      }
+    }).filter((result: any) => result.isbn)
+  } catch (error) {
+    console.error('Google Books multiple search error:', error)
+    return []
+  }
+}
+
+// NEW: Search for multiple book results
+export async function searchBookMultiple(
   query: string,
   onProgress?: (current: number, total: number, status: string) => void
-): Promise<Partial<Book> | null> {
-  console.log('🔎 Smart search:', query)
-  
+): Promise<Array<Partial<Book> & { isbn?: string }>> {
+  console.log('🔎 Smart search (multiple results):', query)
+
   // Stage 1: Detect input type
   const isbn = detectISBN(query)
-  
+
   if (isbn) {
-    // Fast path: Direct ISBN lookup
+    // Fast path: Direct ISBN lookup returns single result
     if (onProgress) onProgress(1, 2, 'Looking up ISBN...')
     const result = await fastISBNLookup(isbn)
     if (onProgress) onProgress(2, 2, 'Complete')
-    return result
+    return result ? [{ ...result, isbn }] : []
   }
-  
-  // Stage 2: Text search → Find ISBN → Detailed lookup
+
+  // Stage 2: Text search - get multiple results from both APIs
   const { title, author } = parseQuery(query)
-  
-  if (onProgress) onProgress(1, 3, 'Searching for book...')
-  
-  // Search Open Library to find the book
-  const searchResult = await searchOpenLibrary(title!, author)
-  
-  if (!searchResult.isbn) {
-    // No ISBN found, return whatever we got
-    if (onProgress) onProgress(3, 3, 'Found limited data')
-    return searchResult.data || null
+
+  if (onProgress) onProgress(1, 3, 'Searching multiple sources...')
+
+  // Search both Google Books and Open Library in parallel
+  const [googleResults, openLibResults] = await Promise.all([
+    searchGoogleBooksMultiple(title!, author, 10),
+    searchOpenLibraryMultiple(title!, author, 10)
+  ])
+
+  if (onProgress) onProgress(2, 3, 'Found results, enriching data...')
+
+  // Combine and deduplicate by ISBN
+  const resultsMap = new Map<string, Partial<Book> & { isbn?: string }>()
+
+  // Add Google Books results first (usually better quality)
+  for (const result of googleResults) {
+    if (result.isbn) {
+      resultsMap.set(result.isbn, { ...result.data, isbn: result.isbn })
+    }
   }
-  
-  if (onProgress) onProgress(2, 3, 'Found! Getting full details...')
-  
-  // Use the found ISBN for detailed lookup
-  const detailedData = await fastISBNLookup(searchResult.isbn)
-  
-  // Merge search result with detailed data
-  const finalData = mergeBookData(searchResult.data || {}, detailedData || {}, 'Combined')
-  
-  if (onProgress) onProgress(3, 3, 'Complete')
-  
-  return finalData
+
+  // Merge Open Library results
+  for (const result of openLibResults) {
+    if (result.isbn) {
+      const existing = resultsMap.get(result.isbn)
+      if (existing) {
+        // Merge data from both sources
+        resultsMap.set(result.isbn, mergeBookData(existing, result.data, 'Combined'))
+      } else {
+        resultsMap.set(result.isbn, { ...result.data, isbn: result.isbn })
+      }
+    }
+  }
+
+  const results = Array.from(resultsMap.values())
+
+  if (onProgress) onProgress(3, 3, `Found ${results.length} results`)
+
+  console.log(`✅ Found ${results.length} unique books`)
+  return results.slice(0, 20) // Return max 20 results
 }
 
 // Lookup book info by ISBN using multiple APIs with progress callback
@@ -599,33 +822,150 @@ async function lookupFromGoogleBooks(isbn: string): Promise<Partial<Book> | null
       return null
     }
 
-    const bookInfo: GoogleBookInfo = data.items[0]
-    const { volumeInfo } = bookInfo
+    const bookInfo: GoogleBooksVolume = data.items[0]
+    const { volumeInfo, saleInfo, accessInfo, searchInfo, userInfo } = bookInfo
 
     console.log('Book found in Google Books:', volumeInfo.title)
 
-    return {
+    // Parse all available fields from the Google Books response
+    const book: Partial<Book> = {
+      // Core Info
       title: volumeInfo.title || 'Unknown Title',
       subtitle: volumeInfo.subtitle,
       author: volumeInfo.authors?.join(', ') || 'Unknown Author',
-      isbn: isbn,
-      isbn13: volumeInfo.industryIdentifiers?.find(id => id.type === 'ISBN_13')?.identifier,
-      isbn10: volumeInfo.industryIdentifiers?.find(id => id.type === 'ISBN_10')?.identifier,
       description: volumeInfo.description,
       publisher: volumeInfo.publisher,
       publishedDate: volumeInfo.publishedDate,
       pageCount: volumeInfo.pageCount,
-      categories: volumeInfo.categories,
       language: volumeInfo.language || 'en',
-      coverImageUrl: volumeInfo.imageLinks?.thumbnail?.replace('http:', 'https:'),
-      previewLink: bookInfo.volumeInfo.previewLink,
-      infoLink: bookInfo.volumeInfo.infoLink,
+      
+      // Categories
+      mainCategory: volumeInfo.mainCategory,
+      categories: volumeInfo.categories,
+      
+      // Identifiers
+      isbn: isbn,
+      isbn13: volumeInfo.industryIdentifiers?.find(id => id.type === 'ISBN_13')?.identifier,
+      isbn10: volumeInfo.industryIdentifiers?.find(id => id.type === 'ISBN_10')?.identifier,
+      issn: volumeInfo.industryIdentifiers?.find(id => id.type === 'ISSN')?.identifier,
       googleBooksId: bookInfo.id,
+      
+      // Google Books Metadata
+      etag: bookInfo.etag,
+      selfLink: bookInfo.selfLink,
+      contentVersion: volumeInfo.contentVersion,
+      
+      // Reading Modes
+      readingModesText: volumeInfo.readingModes?.text,
+      readingModesImage: volumeInfo.readingModes?.image,
+      
+      // Print Info
+      printType: volumeInfo.printType,
+      format: volumeInfo.printType,
+      
+      // Ratings
       averageRating: volumeInfo.averageRating,
       ratingsCount: volumeInfo.ratingsCount,
-      format: volumeInfo.printType,
-      dimensions: volumeInfo.dimensions ? `${volumeInfo.dimensions.height} x ${volumeInfo.dimensions.width} x ${volumeInfo.dimensions.thickness}` : undefined,
+      maturityRating: volumeInfo.maturityRating,
+      
+      // Additional metadata
+      allowAnonLogging: volumeInfo.allowAnonLogging,
+      subtitleLanguage: volumeInfo.subtitleLanguage,
+      otherTitles: volumeInfo.otherTitles,
+      
+      // Panelization
+      panelizationContainsEpubBubbles: volumeInfo.panelizationSummary?.containsEpubBubbles,
+      panelizationContainsImageBubbles: volumeInfo.panelizationSummary?.containsImageBubbles,
+      
+      // Image Links (all sizes)
+      coverImageUrl: volumeInfo.imageLinks?.thumbnail?.replace('http:', 'https:'),
+      coverImageSmallThumbnail: volumeInfo.imageLinks?.smallThumbnail?.replace('http:', 'https:'),
+      coverImageThumbnail: volumeInfo.imageLinks?.thumbnail?.replace('http:', 'https:'),
+      coverImageSmall: volumeInfo.imageLinks?.small?.replace('http:', 'https:'),
+      coverImageMedium: volumeInfo.imageLinks?.medium?.replace('http:', 'https:'),
+      coverImageLarge: volumeInfo.imageLinks?.large?.replace('http:', 'https:'),
+      coverImageExtraLarge: volumeInfo.imageLinks?.extraLarge?.replace('http:', 'https:'),
+      
+      // Links
+      previewLink: volumeInfo.previewLink,
+      infoLink: volumeInfo.infoLink,
+      canonicalVolumeLink: volumeInfo.canonicalVolumeLink,
+      
+      // Dimensions
+      dimensionsHeight: volumeInfo.dimensions?.height,
+      dimensionsWidth: volumeInfo.dimensions?.width,
+      dimensionsThickness: volumeInfo.dimensions?.thickness,
+      dimensions: volumeInfo.dimensions 
+        ? `${volumeInfo.dimensions.height || '?'} x ${volumeInfo.dimensions.width || '?'} x ${volumeInfo.dimensions.thickness || '?'}`
+        : undefined,
+      
+      // Series Info
+      seriesInfo: volumeInfo.seriesInfo ? {
+        seriesId: volumeInfo.seriesInfo.seriesId,
+        seriesName: volumeInfo.seriesInfo.seriesName,
+        volumeNumber: volumeInfo.seriesInfo.volumeNumber,
+      } : undefined,
+      series: volumeInfo.seriesInfo?.seriesName,
+      volumeNumber: volumeInfo.seriesInfo?.volumeNumber,
     }
+
+    // Sale Information
+    if (saleInfo) {
+      book.saleCountry = saleInfo.country
+      book.saleability = saleInfo.saleability
+      book.onSaleDate = saleInfo.onSaleDate
+      book.isEbook = saleInfo.isEbook
+      book.listPriceAmount = saleInfo.listPrice?.amount
+      book.listPriceCurrency = saleInfo.listPrice?.currencyCode
+      book.retailPriceAmount = saleInfo.retailPrice?.amount
+      book.retailPriceCurrency = saleInfo.retailPrice?.currencyCode
+      book.buyLink = saleInfo.buyLink
+    }
+
+    // Access Information
+    if (accessInfo) {
+      book.accessCountry = accessInfo.country
+      book.viewability = accessInfo.viewability
+      book.embeddable = accessInfo.embeddable
+      book.publicDomain = accessInfo.publicDomain
+      book.textToSpeechPermission = accessInfo.textToSpeechPermission
+      book.epubAvailable = accessInfo.epub?.isAvailable
+      book.epubDownloadLink = accessInfo.epub?.downloadLink
+      book.epubAcsTokenLink = accessInfo.epub?.acsTokenLink
+      book.pdfAvailable = accessInfo.pdf?.isAvailable
+      book.pdfDownloadLink = accessInfo.pdf?.downloadLink
+      book.pdfAcsTokenLink = accessInfo.pdf?.acsTokenLink
+      book.webReaderLink = accessInfo.webReaderLink
+      book.accessViewStatus = accessInfo.accessViewStatus
+      book.quoteSharingAllowed = accessInfo.quoteSharingAllowed
+      
+      // Download Access
+      if (accessInfo.downloadAccess) {
+        book.downloadRestricted = accessInfo.downloadAccess.restricted
+        book.downloadDeviceAllowed = accessInfo.downloadAccess.deviceAllowed
+        book.downloadMaxDevices = accessInfo.downloadAccess.maxDownloadDevices
+        book.downloadAcquired = accessInfo.downloadAccess.downloadsAcquired
+      }
+    }
+
+    // Search Info
+    if (searchInfo) {
+      book.textSnippet = searchInfo.textSnippet
+    }
+
+    // User Info (if authenticated)
+    if (userInfo) {
+      book.isPurchased = userInfo.isPurchased
+      book.isPreordered = userInfo.isPreordered
+      book.userRating = userInfo.review?.rating
+      book.userReviewText = userInfo.review?.text
+      book.userReviewDate = userInfo.review?.date
+      book.readingPositionPosition = userInfo.readingPosition?.position
+      book.readingPositionUpdated = userInfo.readingPosition?.updated
+      book.userInfoUpdated = userInfo.updated
+    }
+
+    return book
   } catch (error) {
     console.error('Google Books lookup failed:', error)
     return null
@@ -655,10 +995,51 @@ async function lookupFromOpenLibrary(isbn: string): Promise<Partial<Book> | null
     const book = data[bookKey]
     console.log('Book found in Open Library:', book.title)
 
+    // Extract Open Library ID from URLs
+    let olid: string | undefined
+    if (book.key) {
+      const match = book.key.match(/\/works\/(OL\w+)/)
+      olid = match?.[1]
+    } else if (book.url) {
+      const match = book.url.match(/\/works\/(OL\w+)/)
+      olid = match?.[1]
+    }
+
+    // Try to get extended data including community info
+    let communityRating: number | undefined
+    let popularShelves: string[] | undefined
+    if (olid) {
+      try {
+        const worksResponse = await fetch(`https://openlibrary.org/works/${olid}.json`)
+        if (worksResponse.ok) {
+          const worksData = await worksResponse.json()
+          // Get ratings from ratings API
+          try {
+            const ratingsResponse = await fetch(`https://openlibrary.org/works/${olid}/ratings.json`)
+            if (ratingsResponse.ok) {
+              const ratingsData = await ratingsResponse.json()
+              communityRating = ratingsData.summary?.average
+            }
+          } catch (e) {
+            // Ratings optional
+          }
+          // Get subjects as popular "shelves"
+          if (worksData.subjects && Array.isArray(worksData.subjects)) {
+            popularShelves = worksData.subjects.slice(0, 10) // Top 10
+          }
+        }
+      } catch (e) {
+        // Extended data optional
+      }
+    }
+
     return {
       title: book.title || 'Unknown Title',
       author: book.authors?.map((a: any) => a.name).join(', ') || 'Unknown Author',
       isbn: isbn,
+      olid: olid || undefined,
+      communityRating: communityRating || undefined,
+      popularShelves: popularShelves || undefined,
       description: book.notes || book.subtitle,
       publisher: book.publishers?.map((p: any) => p.name).join(', '),
       publishedDate: book.publish_date,
@@ -721,6 +1102,9 @@ async function lookupFromISBNdb(isbn: string): Promise<Partial<Book> | null> {
       edition: book.edition,
       subjects: book.subjects,
       dimensions: book.dimensions,
+      binding: book.binding, // New field: e.g., "Hardcover", "Paperback"
+      deweyDecimal: book.dewey_decimal,
+      // msrp: book.msrp, // TODO: Add to Book interface if needed
     }
   } catch (error) {
     console.error('ISBNdb lookup failed:', error)
@@ -787,6 +1171,8 @@ async function lookupFromLibraryOfCongress(isbn: string): Promise<Partial<Book> 
     const publisherMatch = text.match(/<mods:publisher[^>]*>([^<]+)<\/mods:publisher>/)
     const dateMatch = text.match(/<mods:dateIssued[^>]*>([^<]+)<\/mods:dateIssued>/)
     const placeMatch = text.match(/<mods:placeTerm[^>]*>([^<]+)<\/mods:placeTerm>/)
+    const lccnMatch = text.match(/<mods:identifier[^>]*type="lccn"[^>]*>([^<]+)<\/mods:identifier>/)
+    const lccMatch = text.match(/<mods:classification[^>]*edition="([^"]*)"[^>]*>([^<]+)<\/mods:classification>/)
     
     if (!titleMatch) {
       console.log('No books found in Library of Congress for ISBN:', isbn)
@@ -799,6 +1185,9 @@ async function lookupFromLibraryOfCongress(isbn: string): Promise<Partial<Book> 
       title: titleMatch[1] || 'Unknown Title',
       author: nameMatch?.[1] || 'Unknown Author',
       isbn: isbn,
+      lccn: lccnMatch?.[1],
+      lcc: lccMatch?.[2],
+      lccEdition: lccMatch?.[1],
       publisher: publisherMatch?.[1],
       publishedDate: dateMatch?.[1],
       placeOfPublication: placeMatch?.[1],
@@ -880,13 +1269,34 @@ async function lookupFromOCLCClassify(isbn: string): Promise<Partial<Book> | nul
     
     console.log('Book found in OCLC Classify:', title)
 
-    // Extract Dewey Decimal number
-    const dewey = xml.querySelector('recommendations > ddc > mostPopular')?.getAttribute('nsfa')
+    // Extract Dewey Decimal number and edition
+    const deweyPopular = xml.querySelector('recommendations > ddc > mostPopular')
+    const dewey = deweyPopular?.getAttribute('nsfa')
+    const deweyEdition = deweyPopular?.getAttribute('edition')
+
+    // Extract Library of Congress Classification and edition
+    const lccPopular = xml.querySelector('recommendations > lcc > mostPopular')
+    const lcc = lccPopular?.getAttribute('nsfa')
+    const lccEdition = lccPopular?.getAttribute('edition')
+
+    // Extract FAST subjects (Faceted Application of Subject Terminology)
+    const fastElements = xml.querySelectorAll('fast')
+    const fastSubjects: string[] = []
+    fastElements.forEach(el => {
+      const heading = el.getAttribute('heading')
+      if (heading) fastSubjects.push(heading)
+    })
 
     return {
       title: title || 'Unknown Title',
       author: author || 'Unknown Author',
       isbn: isbn,
+      deweyDecimal: dewey,
+      deweyEdition: deweyEdition || undefined,
+      lcc: lcc,
+      lccEdition: lccEdition || undefined,
+      fastSubjects: fastSubjects.length > 0 ? fastSubjects : undefined,
+      oclcWorkId: owi || undefined,
       callNumber: dewey ? `DDC: ${dewey}` : undefined,
     }
   } catch (error) {
@@ -931,12 +1341,14 @@ async function lookupFromBritishLibrary(isbn: string): Promise<Partial<Book> | n
     }
 
     const result = data.results.bindings[0]
+    const blId = result.book?.value?.match(/resource\/(.+)$/)?.[1] // Extract BL ID from URI
     console.log('Book found in British Library:', result.title?.value)
 
     return {
       title: result.title?.value || 'Unknown Title',
       author: result.author?.value || 'Unknown Author',
       isbn: isbn,
+      blId: blId, // British Library ID
       publisher: result.publisher?.value,
       publishedDate: result.date?.value,
     }
@@ -1144,6 +1556,7 @@ async function lookupFromNDL(isbn: string): Promise<Partial<Book> | null> {
     const authorMatch = text.match(/<dc:creator[^>]*>([^<]+)<\/dc:creator>/)
     const publisherMatch = text.match(/<dc:publisher[^>]*>([^<]+)<\/dc:publisher>/)
     const dateMatch = text.match(/<pubDate[^>]*>([^<]+)<\/pubDate>/)
+    const ndlIdMatch = text.match(/<link[^>]*>https?:\/\/ndlsearch\.ndl\.go\.jp\/books\/([^<]+)<\/link>/)
 
     console.log('Book found in NDL:', titles[1])
 
