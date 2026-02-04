@@ -19,6 +19,7 @@ export interface CreateBookIngestRequest {
     subtitle?: string
     sortTitle?: string
     description?: string
+    metadata?: Record<string, any> // JSONB for extended work fields
   }
   edition: {
     editionTitle?: string
@@ -32,6 +33,7 @@ export interface CreateBookIngestRequest {
       value: string
       isPrimary: boolean
     }>
+    metadata?: Record<string, any> // JSONB for extended edition fields
   }
   item: {
     title?: string
@@ -43,6 +45,7 @@ export interface CreateBookIngestRequest {
     condition?: string
     acquiredOn?: string
     price?: number
+    metadata?: Record<string, any> // JSONB for extended item fields
   }
   contributors?: Array<{
     personId?: string
@@ -79,6 +82,8 @@ export interface ItemResponse {
   work?: WorkResponse
   edition?: EditionResponse
   tags?: string[]
+  subjects?: Array<{ schemeId: number; text: string }>
+  metadata?: Record<string, any> // JSONB extended fields
 }
 
 export interface WorkResponse {
@@ -88,6 +93,7 @@ export interface WorkResponse {
   sortTitle?: string
   description?: string
   contributors?: ContributorResponse[]
+  metadata?: Record<string, any> // JSONB extended fields
 }
 
 export interface EditionResponse {
@@ -100,6 +106,7 @@ export interface EditionResponse {
   pageCount?: number
   description?: string
   identifiers?: IdentifierResponse[]
+  metadata?: Record<string, any> // JSONB extended fields
 }
 
 export interface ContributorResponse {
@@ -142,6 +149,18 @@ export const IdentifierType = {
   OCLC: 4,
   ISSN: 5,
   DOI: 6,
+  ASIN: 7, // Amazon
+  GoogleBooksId: 8,
+  GoodreadsId: 9,
+  LibraryThingId: 10,
+  OpenLibraryId: 11,
+  DNB: 12, // Deutsche Nationalbibliothek (German)
+  BNF: 13, // Bibliothèque nationale de France
+  NLA: 14, // National Library of Australia
+  NDL: 15, // National Diet Library (Japan)
+  LAC: 16, // Library and Archives Canada
+  BL: 17, // British Library
+  OCLCWorkId: 18, // OCLC Work-level ID
   // Add more as needed
 } as const
 
@@ -152,6 +171,12 @@ export const ContributorRole = {
   Translator: 3,
   Illustrator: 4,
   Contributor: 5,
+  Narrator: 6, // For audiobooks
+  Introduction: 7,
+  Foreword: 8,
+  Afterword: 9,
+  Photographer: 10,
+  Designer: 11,
   // Add more as needed
 } as const
 
@@ -162,6 +187,298 @@ export const SubjectScheme = {
   Custom: 99,
   // Add more as needed
 } as const
+
+/**
+ * Map frontend Book interface to backend CreateBookIngestRequest
+ * Handles all ~180 fields by placing them in appropriate locations
+ */
+export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
+  // Helper to extract year from date string
+  const extractYear = (dateStr?: string): number | undefined => {
+    if (!dateStr) return undefined
+    const match = dateStr.match(/\d{4}/)
+    return match ? parseInt(match[0]) : undefined
+  }
+
+  // Prepare work metadata (fields that apply to all editions)
+  const workMetadata: Record<string, any> = {}
+  if (book.originalTitle) workMetadata.originalTitle = book.originalTitle
+  if (book.mainCategory) workMetadata.mainCategory = book.mainCategory
+  if (book.deweyDecimal) workMetadata.deweyDecimal = book.deweyDecimal
+  if (book.deweyEdition) workMetadata.deweyEdition = book.deweyEdition
+  if (book.lcc) workMetadata.lcc = book.lcc
+  if (book.lccEdition) workMetadata.lccEdition = book.lccEdition
+  if (book.callNumber) workMetadata.callNumber = book.callNumber
+  if (book.bisacCodes) workMetadata.bisacCodes = book.bisacCodes
+  if (book.thema) workMetadata.thema = book.thema
+  if (book.fastSubjects) workMetadata.fastSubjects = book.fastSubjects
+  if (book.tableOfContents) workMetadata.tableOfContents = book.tableOfContents
+  if (book.firstSentence) workMetadata.firstSentence = book.firstSentence
+  if (book.excerpt) workMetadata.excerpt = book.excerpt
+  if (book.readingAge) workMetadata.readingAge = book.readingAge
+  if (book.lexileScore) workMetadata.lexileScore = book.lexileScore
+  if (book.arLevel) workMetadata.arLevel = book.arLevel
+  if (book.averageRating) workMetadata.averageRating = book.averageRating
+  if (book.ratingsCount) workMetadata.ratingsCount = book.ratingsCount
+  if (book.communityRating) workMetadata.communityRating = book.communityRating
+  if (book.seriesInfo) workMetadata.seriesInfo = book.seriesInfo
+  if (book.series) workMetadata.series = book.series
+  if (book.volumeNumber) workMetadata.volumeNumber = book.volumeNumber
+  if (book.numberOfVolumes) workMetadata.numberOfVolumes = book.numberOfVolumes
+  
+  // Historical & Theological fields
+  if (book.churchHistoryPeriod) workMetadata.churchHistoryPeriod = book.churchHistoryPeriod
+  if (book.dateWritten) workMetadata.dateWritten = book.dateWritten
+  if (book.religiousTradition) workMetadata.religiousTradition = book.religiousTradition
+
+  // Prepare edition metadata (publication-specific fields)
+  const editionMetadata: Record<string, any> = {}
+  if (book.edition) editionMetadata.edition = book.edition
+  if (book.editionStatement) editionMetadata.editionStatement = book.editionStatement
+  if (book.printType) editionMetadata.printType = book.printType
+  if (book.format) editionMetadata.format = book.format
+  if (book.binding) editionMetadata.binding = book.binding
+  if (book.placeOfPublication) editionMetadata.placeOfPublication = book.placeOfPublication
+  if (book.originalPublicationDate) editionMetadata.originalPublicationDate = book.originalPublicationDate
+  if (book.copyright) editionMetadata.copyright = book.copyright
+  if (book.printingHistory) editionMetadata.printingHistory = book.printingHistory
+  if (book.dimensions) editionMetadata.dimensions = book.dimensions
+  if (book.dimensionsHeight) editionMetadata.dimensionsHeight = book.dimensionsHeight
+  if (book.dimensionsWidth) editionMetadata.dimensionsWidth = book.dimensionsWidth
+  if (book.dimensionsThickness) editionMetadata.dimensionsThickness = book.dimensionsThickness
+  if (book.weight) editionMetadata.weight = book.weight
+  if (book.shippingWeight) editionMetadata.shippingWeight = book.shippingWeight
+  if (book.pagination) editionMetadata.pagination = book.pagination
+  if (book.physicalDescription) editionMetadata.physicalDescription = book.physicalDescription
+  if (book.language) editionMetadata.language = book.language
+  if (book.maturityRating) editionMetadata.maturityRating = book.maturityRating
+  
+  // Cover images
+  if (book.coverImageUrl) editionMetadata.coverImageUrl = book.coverImageUrl
+  if (book.coverImageSmallThumbnail) editionMetadata.coverImageSmallThumbnail = book.coverImageSmallThumbnail
+  if (book.coverImageThumbnail) editionMetadata.coverImageThumbnail = book.coverImageThumbnail
+  if (book.coverImageSmall) editionMetadata.coverImageSmall = book.coverImageSmall
+  if (book.coverImageMedium) editionMetadata.coverImageMedium = book.coverImageMedium
+  if (book.coverImageLarge) editionMetadata.coverImageLarge = book.coverImageLarge
+  if (book.coverImageExtraLarge) editionMetadata.coverImageExtraLarge = book.coverImageExtraLarge
+  
+  // Google Books specific
+  if (book.etag) editionMetadata.etag = book.etag
+  if (book.selfLink) editionMetadata.selfLink = book.selfLink
+  if (book.contentVersion) editionMetadata.contentVersion = book.contentVersion
+  if (book.canonicalVolumeLink) editionMetadata.canonicalVolumeLink = book.canonicalVolumeLink
+  if (book.readingModesText !== undefined) editionMetadata.readingModesText = book.readingModesText
+  if (book.readingModesImage !== undefined) editionMetadata.readingModesImage = book.readingModesImage
+  if (book.allowAnonLogging !== undefined) editionMetadata.allowAnonLogging = book.allowAnonLogging
+  if (book.textSnippet) editionMetadata.textSnippet = book.textSnippet
+  
+  // Sale information
+  if (book.saleCountry) editionMetadata.saleCountry = book.saleCountry
+  if (book.saleability) editionMetadata.saleability = book.saleability
+  if (book.onSaleDate) editionMetadata.onSaleDate = book.onSaleDate
+  if (book.isEbook !== undefined) editionMetadata.isEbook = book.isEbook
+  if (book.listPriceAmount) editionMetadata.listPriceAmount = book.listPriceAmount
+  if (book.listPriceCurrency) editionMetadata.listPriceCurrency = book.listPriceCurrency
+  if (book.retailPriceAmount) editionMetadata.retailPriceAmount = book.retailPriceAmount
+  if (book.retailPriceCurrency) editionMetadata.retailPriceCurrency = book.retailPriceCurrency
+  if (book.buyLink) editionMetadata.buyLink = book.buyLink
+  
+  // Access information
+  if (book.viewability) editionMetadata.viewability = book.viewability
+  if (book.embeddable !== undefined) editionMetadata.embeddable = book.embeddable
+  if (book.publicDomain !== undefined) editionMetadata.publicDomain = book.publicDomain
+  if (book.textToSpeechPermission) editionMetadata.textToSpeechPermission = book.textToSpeechPermission
+  if (book.epubAvailable !== undefined) editionMetadata.epubAvailable = book.epubAvailable
+  if (book.pdfAvailable !== undefined) editionMetadata.pdfAvailable = book.pdfAvailable
+  if (book.webReaderLink) editionMetadata.webReaderLink = book.webReaderLink
+
+  // Prepare item metadata (instance-specific fields)
+  const itemMetadata: Record<string, any> = {}
+  if (book.currentPrice) itemMetadata.currentPrice = book.currentPrice
+  if (book.discount) itemMetadata.discount = book.discount
+  if (book.usedPrices) itemMetadata.usedPrices = book.usedPrices
+  if (book.availability) itemMetadata.availability = book.availability
+  if (book.bestsellerRank) itemMetadata.bestsellerRank = book.bestsellerRank
+  if (book.librariesOwning) itemMetadata.librariesOwning = book.librariesOwning
+  if (book.nearbyLibraries) itemMetadata.nearbyLibraries = book.nearbyLibraries
+  
+  // Custom fields
+  if (book.customFields) itemMetadata.customFields = book.customFields
+
+  // Build identifiers array
+  const identifiers: Array<{ identifierTypeId: number; value: string; isPrimary: boolean }> = []
+  
+  if (book.isbn13) {
+    identifiers.push({ identifierTypeId: IdentifierType.ISBN13, value: book.isbn13, isPrimary: true })
+  }
+  if (book.isbn10) {
+    identifiers.push({ identifierTypeId: IdentifierType.ISBN10, value: book.isbn10, isPrimary: !book.isbn13 })
+  }
+  if (book.isbn && !book.isbn13 && !book.isbn10) {
+    identifiers.push({
+      identifierTypeId: book.isbn.length === 13 ? IdentifierType.ISBN13 : IdentifierType.ISBN10,
+      value: book.isbn,
+      isPrimary: true
+    })
+  }
+  if (book.issn) identifiers.push({ identifierTypeId: IdentifierType.ISSN, value: book.issn, isPrimary: false })
+  if (book.lccn) identifiers.push({ identifierTypeId: IdentifierType.LCCN, value: book.lccn, isPrimary: false })
+  if (book.oclcNumber) identifiers.push({ identifierTypeId: IdentifierType.OCLC, value: book.oclcNumber, isPrimary: false })
+  if (book.oclcWorkId) identifiers.push({ identifierTypeId: IdentifierType.OCLCWorkId, value: book.oclcWorkId, isPrimary: false })
+  if (book.doi) identifiers.push({ identifierTypeId: IdentifierType.DOI, value: book.doi, isPrimary: false })
+  if (book.asin) identifiers.push({ identifierTypeId: IdentifierType.ASIN, value: book.asin, isPrimary: false })
+  if (book.googleBooksId) identifiers.push({ identifierTypeId: IdentifierType.GoogleBooksId, value: book.googleBooksId, isPrimary: false })
+  if (book.goodreadsId) identifiers.push({ identifierTypeId: IdentifierType.GoodreadsId, value: book.goodreadsId, isPrimary: false })
+  if (book.libraryThingId) identifiers.push({ identifierTypeId: IdentifierType.LibraryThingId, value: book.libraryThingId, isPrimary: false })
+  if (book.olid) identifiers.push({ identifierTypeId: IdentifierType.OpenLibraryId, value: book.olid, isPrimary: false })
+  if (book.dnbId) identifiers.push({ identifierTypeId: IdentifierType.DNB, value: book.dnbId, isPrimary: false })
+  if (book.bnfId) identifiers.push({ identifierTypeId: IdentifierType.BNF, value: book.bnfId, isPrimary: false })
+  if (book.nlaId) identifiers.push({ identifierTypeId: IdentifierType.NLA, value: book.nlaId, isPrimary: false })
+  if (book.ndlId) identifiers.push({ identifierTypeId: IdentifierType.NDL, value: book.ndlId, isPrimary: false })
+  if (book.lacId) identifiers.push({ identifierTypeId: IdentifierType.LAC, value: book.lacId, isPrimary: false })
+  if (book.blId) identifiers.push({ identifierTypeId: IdentifierType.BL, value: book.blId, isPrimary: false })
+
+  // Build contributors array
+  const contributors: Array<{
+    displayName: string
+    roleId: number
+    ordinal: number
+    sortName?: string
+  }> = []
+
+  // Primary author(s)
+  if (book.author) {
+    const authors = book.author.split(/[,;&]/).map((a: string) => a.trim()).filter((a: string) => a)
+    authors.forEach((name: string, index: number) => {
+      contributors.push({
+        displayName: name,
+        roleId: ContributorRole.Author,
+        ordinal: contributors.length + 1,
+        sortName: name
+      })
+    })
+  }
+
+  // Additional contributors
+  if (book.translator) {
+    const translators = book.translator.split(/[,;&]/).map((t: string) => t.trim()).filter((t: string) => t)
+    translators.forEach((name: string) => {
+      contributors.push({
+        displayName: name,
+        roleId: ContributorRole.Translator,
+        ordinal: contributors.length + 1,
+        sortName: name
+      })
+    })
+  }
+
+  if (book.illustrator) {
+    const illustrators = book.illustrator.split(/[,;&]/).map((i: string) => i.trim()).filter((i: string) => i)
+    illustrators.forEach((name: string) => {
+      contributors.push({
+        displayName: name,
+        roleId: ContributorRole.Illustrator,
+        ordinal: contributors.length + 1,
+        sortName: name
+      })
+    })
+  }
+
+  if (book.editor) {
+    const editors = book.editor.split(/[,;&]/).map((e: string) => e.trim()).filter((e: string) => e)
+    editors.forEach((name: string) => {
+      contributors.push({
+        displayName: name,
+        roleId: ContributorRole.Editor,
+        ordinal: contributors.length + 1,
+        sortName: name
+      })
+    })
+  }
+
+  if (book.narrator) {
+    const narrators = book.narrator.split(/[,;&]/).map((n: string) => n.trim()).filter((n: string) => n)
+    narrators.forEach((name: string) => {
+      contributors.push({
+        displayName: name,
+        roleId: ContributorRole.Narrator,
+        ordinal: contributors.length + 1,
+        sortName: name
+      })
+    })
+  }
+
+  // Detailed contributors array
+  if (book.contributors?.length > 0) {
+    book.contributors.forEach((contrib: any) => {
+      const roleMap: Record<string, number> = {
+        'author': ContributorRole.Author,
+        'editor': ContributorRole.Editor,
+        'translator': ContributorRole.Translator,
+        'illustrator': ContributorRole.Illustrator,
+        'narrator': ContributorRole.Narrator,
+        'introduction': ContributorRole.Introduction,
+        'foreword': ContributorRole.Foreword,
+        'afterword': ContributorRole.Afterword,
+      }
+      
+      const roleId = roleMap[contrib.role?.toLowerCase()] || ContributorRole.Contributor
+      
+      contributors.push({
+        displayName: contrib.name,
+        roleId,
+        ordinal: contrib.ordinal || contributors.length + 1,
+        sortName: contrib.name
+      })
+    })
+  }
+
+  // Build subjects array
+  const subjects: Array<{ schemeId: number; text: string }> = []
+  if (book.subjects?.length > 0) {
+    book.subjects.forEach((subject: string) => {
+      subjects.push({
+        schemeId: SubjectScheme.LCSH,
+        text: subject
+      })
+    })
+  }
+
+  return {
+    work: {
+      title: book.title || 'Untitled',
+      subtitle: book.subtitle,
+      sortTitle: book.title,
+      description: book.description,
+      metadata: Object.keys(workMetadata).length > 0 ? workMetadata : undefined
+    },
+    edition: {
+      editionTitle: book.title,
+      editionSubtitle: book.subtitle,
+      publisher: book.publisher,
+      publishedYear: extractYear(book.publishedDate),
+      pageCount: book.pageCount,
+      description: book.description,
+      identifiers,
+      metadata: Object.keys(editionMetadata).length > 0 ? editionMetadata : undefined
+    },
+    item: {
+      title: book.title,
+      subtitle: book.subtitle,
+      notes: book.notes,
+      barcode: book.isbn || book.isbn13 || book.isbn10,
+      location: book.location,
+      status: book.status,
+      condition: book.condition,
+      acquiredOn: book.dateAdded,
+      price: book.price,
+      metadata: Object.keys(itemMetadata).length > 0 ? itemMetadata : undefined
+    },
+    contributors: contributors.length > 0 ? contributors : undefined,
+    tags: book.categories || [],
+    subjects: subjects.length > 0 ? subjects : undefined
+  }
+}
 
 /**
  * Create a new book in the library
@@ -352,6 +669,7 @@ export async function updateItem(
     acquiredOn?: string
     price?: number
     notes?: string
+    tags?: string[]
   }
 ): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/items/${itemId}`, {
@@ -364,6 +682,291 @@ export async function updateItem(
 
   if (!response.ok) {
     throw new Error('Failed to update item')
+  }
+}
+
+/**
+ * Map backend ItemResponse to frontend Book interface
+ * Extracts all fields from structured data and metadata JSONB
+ */
+export function mapItemResponseToBook(item: ItemResponse): any {
+  
+  // Extract work details
+  const title = item.title || item.work?.title || 'Untitled'
+  const subtitle = item.subtitle || item.work?.subtitle
+  const description = item.work?.description || item.edition?.description
+  
+  // Handle author field - backend returns flat 'authors' field OR nested contributors
+  let author = 'Unknown Author'
+  
+  // Check for flat authors field first (current backend structure)
+  if ((item as any).authors) {
+    author = (item as any).authors
+    console.log('✍️ Author from flat authors field:', author)
+  } else if ((item as any).workTitle && (item as any).authors) {
+    // Also check workTitle structure
+    author = (item as any).authors
+    console.log('✍️ Author from workTitle structure:', author)
+  } else if ((item as any).work?.authors) {
+    // Check work object for authors field
+    author = (item as any).work.authors
+    console.log('✍️ Author from work.authors field:', author)
+  } else if (item.work?.contributors && item.work.contributors.length > 0) {
+    // Extract from nested contributors array
+    const contributors = item.work.contributors.sort((a, b) => a.ordinal - b.ordinal)
+    author = contributors
+      .filter(c => c.roleId === ContributorRole.Author)
+      .map(c => c.displayName)
+      .join(', ')
+    if (author) {
+      console.log('✍️ Author from work.contributors array:', author)
+    } else {
+      // If no authors in contributors, try to get any contributor
+      author = contributors.map(c => c.displayName).join(', ') || 'Unknown Author'
+      console.log('✍️ Author from any contributors:', author)
+    }
+  } else {
+    console.warn('⚠️ No author found in any location, using "Unknown Author"')
+  }
+  
+  // Extract other contributors (only if we have the full structure)
+  const contributors = item.work?.contributors?.sort((a, b) => a.ordinal - b.ordinal) || []
+  
+  const translator = contributors
+    .filter(c => c.roleId === ContributorRole.Translator)
+    .map(c => c.displayName)
+    .join(', ') || undefined
+  
+  const illustrator = contributors
+    .filter(c => c.roleId === ContributorRole.Illustrator)
+    .map(c => c.displayName)
+    .join(', ') || undefined
+  
+  const editor = contributors
+    .filter(c => c.roleId === ContributorRole.Editor)
+    .map(c => c.displayName)
+    .join(', ') || undefined
+  
+  const narrator = contributors
+    .filter(c => c.roleId === ContributorRole.Narrator)
+    .map(c => c.displayName)
+    .join(', ') || undefined
+
+  // Extract identifiers
+  const identifiers = item.edition?.identifiers || []
+  const isbn13 = identifiers.find(id => id.identifierTypeId === IdentifierType.ISBN13)?.value
+  const isbn10 = identifiers.find(id => id.identifierTypeId === IdentifierType.ISBN10)?.value
+  
+  // Fallback: use barcode as ISBN if identifiers not present
+  const barcodeValue = item.barcode
+  const isbnFromBarcode = barcodeValue && barcodeValue.match(/^\d{10,13}$/) ? barcodeValue : undefined
+  const finalIsbn13 = isbn13 || (isbnFromBarcode && isbnFromBarcode.length === 13 ? isbnFromBarcode : undefined)
+  const finalIsbn10 = isbn10 || (isbnFromBarcode && isbnFromBarcode.length === 10 ? isbnFromBarcode : undefined)
+  
+  const issn = identifiers.find(id => id.identifierTypeId === IdentifierType.ISSN)?.value
+  const lccn = identifiers.find(id => id.identifierTypeId === IdentifierType.LCCN)?.value
+  const oclcNumber = identifiers.find(id => id.identifierTypeId === IdentifierType.OCLC)?.value
+  const oclcWorkId = identifiers.find(id => id.identifierTypeId === IdentifierType.OCLCWorkId)?.value
+  const doi = identifiers.find(id => id.identifierTypeId === IdentifierType.DOI)?.value
+  const asin = identifiers.find(id => id.identifierTypeId === IdentifierType.ASIN)?.value
+  const googleBooksId = identifiers.find(id => id.identifierTypeId === IdentifierType.GoogleBooksId)?.value
+  const goodreadsId = identifiers.find(id => id.identifierTypeId === IdentifierType.GoodreadsId)?.value
+  const libraryThingId = identifiers.find(id => id.identifierTypeId === IdentifierType.LibraryThingId)?.value
+  const olid = identifiers.find(id => id.identifierTypeId === IdentifierType.OpenLibraryId)?.value
+  const dnbId = identifiers.find(id => id.identifierTypeId === IdentifierType.DNB)?.value
+  const bnfId = identifiers.find(id => id.identifierTypeId === IdentifierType.BNF)?.value
+  const nlaId = identifiers.find(id => id.identifierTypeId === IdentifierType.NLA)?.value
+  const ndlId = identifiers.find(id => id.identifierTypeId === IdentifierType.NDL)?.value
+  const lacId = identifiers.find(id => id.identifierTypeId === IdentifierType.LAC)?.value
+  const blId = identifiers.find(id => id.identifierTypeId === IdentifierType.BL)?.value
+
+  // Extract edition details
+  const publisher = item.edition?.publisher
+  const publishedYear = item.edition?.publishedYear
+  const pageCount = item.edition?.pageCount
+  
+  // Generate cover URL - only if edition has cover (don't create 404s)
+  const coverImageUrl = item.editionId && item.edition?.coverImageUrl !== undefined
+    ? `${API_BASE_URL}/api/editions/${item.editionId}/cover` 
+    : undefined
+
+  // Extract work metadata
+  const workMetadata = item.work?.metadata || {}
+  const editionMetadata = item.edition?.metadata || {}
+  const itemMetadata = item.metadata || {}
+
+  // Build comprehensive Book object
+  return {
+    // Core identification
+    id: item.itemId,
+    householdId: item.householdId,
+    title,
+    author,
+    dateAdded: item.acquiredOn || new Date().toISOString(),
+    
+    // Basic Info
+    subtitle,
+    originalTitle: workMetadata.originalTitle,
+    coverImageUrl,
+    description,
+    publisher,
+    publishedDate: publishedYear ? `${publishedYear}` : undefined,
+    pageCount,
+    language: editionMetadata.language,
+    
+    // Categories & Classification
+    mainCategory: workMetadata.mainCategory,
+    categories: item.tags?.map((tag: any) => {
+      if (typeof tag === 'string') return tag
+      if (tag && typeof tag === 'object') {
+        return tag.name || tag.tagName || tag.text || tag.value || JSON.stringify(tag)
+      }
+      return String(tag)
+    }) || [],
+    subjects: item.subjects?.map((s: any) => s.text) || [],
+    deweyDecimal: workMetadata.deweyDecimal,
+    deweyEdition: workMetadata.deweyEdition,
+    lcc: workMetadata.lcc,
+    lccEdition: workMetadata.lccEdition,
+    callNumber: workMetadata.callNumber,
+    bisacCodes: workMetadata.bisacCodes,
+    thema: workMetadata.thema,
+    fastSubjects: workMetadata.fastSubjects,
+    
+    // Identifiers
+    isbn: finalIsbn13 || finalIsbn10 || isbnFromBarcode,
+    isbn10: finalIsbn10,
+    isbn13: finalIsbn13,
+    issn,
+    lccn,
+    oclcNumber,
+    oclcWorkId,
+    doi,
+    asin,
+    googleBooksId,
+    goodreadsId,
+    libraryThingId,
+    olid,
+    dnbId,
+    bnfId,
+    nlaId,
+    ndlId,
+    lacId,
+    blId,
+    
+    // Contributors
+    translator,
+    illustrator,
+    editor,
+    narrator,
+    contributors: contributors.map(c => ({
+      name: c.displayName,
+      role: Object.keys(ContributorRole).find(k => ContributorRole[k as keyof typeof ContributorRole] === c.roleId)?.toLowerCase() || 'contributor',
+      ordinal: c.ordinal
+    })),
+    
+    // Edition & Publication Details
+    edition: editionMetadata.edition,
+    editionStatement: editionMetadata.editionStatement,
+    printType: editionMetadata.printType,
+    format: editionMetadata.format,
+    binding: editionMetadata.binding,
+    placeOfPublication: editionMetadata.placeOfPublication,
+    originalPublicationDate: editionMetadata.originalPublicationDate,
+    copyright: editionMetadata.copyright,
+    printingHistory: editionMetadata.printingHistory,
+    
+    // Physical Details
+    dimensions: editionMetadata.dimensions,
+    dimensionsHeight: editionMetadata.dimensionsHeight,
+    dimensionsWidth: editionMetadata.dimensionsWidth,
+    dimensionsThickness: editionMetadata.dimensionsThickness,
+    weight: editionMetadata.weight,
+    shippingWeight: editionMetadata.shippingWeight,
+    pagination: editionMetadata.pagination,
+    physicalDescription: editionMetadata.physicalDescription,
+    
+    // Series Information
+    series: workMetadata.series,
+    seriesInfo: workMetadata.seriesInfo,
+    volumeNumber: workMetadata.volumeNumber,
+    numberOfVolumes: workMetadata.numberOfVolumes,
+    
+    // Content & Reading Info
+    tableOfContents: workMetadata.tableOfContents,
+    firstSentence: workMetadata.firstSentence,
+    excerpt: workMetadata.excerpt,
+    textSnippet: editionMetadata.textSnippet,
+    readingAge: workMetadata.readingAge,
+    lexileScore: workMetadata.lexileScore,
+    arLevel: workMetadata.arLevel,
+    maturityRating: editionMetadata.maturityRating,
+    
+    // Historical & Theological
+    churchHistoryPeriod: workMetadata.churchHistoryPeriod,
+    dateWritten: workMetadata.dateWritten,
+    religiousTradition: workMetadata.religiousTradition,
+    
+    // Google Books Specific
+    etag: editionMetadata.etag,
+    selfLink: editionMetadata.selfLink,
+    contentVersion: editionMetadata.contentVersion,
+    canonicalVolumeLink: editionMetadata.canonicalVolumeLink,
+    readingModesText: editionMetadata.readingModesText,
+    readingModesImage: editionMetadata.readingModesImage,
+    allowAnonLogging: editionMetadata.allowAnonLogging,
+    
+    // Image Links
+    coverImageSmallThumbnail: editionMetadata.coverImageSmallThumbnail,
+    coverImageThumbnail: editionMetadata.coverImageThumbnail,
+    coverImageSmall: editionMetadata.coverImageSmall,
+    coverImageMedium: editionMetadata.coverImageMedium,
+    coverImageLarge: editionMetadata.coverImageLarge,
+    coverImageExtraLarge: editionMetadata.coverImageExtraLarge,
+    
+    // Ratings & Reviews
+    averageRating: workMetadata.averageRating,
+    ratingsCount: workMetadata.ratingsCount,
+    communityRating: workMetadata.communityRating,
+    
+    // Sale Information
+    saleCountry: editionMetadata.saleCountry,
+    saleability: editionMetadata.saleability,
+    onSaleDate: editionMetadata.onSaleDate,
+    isEbook: editionMetadata.isEbook,
+    listPriceAmount: editionMetadata.listPriceAmount,
+    listPriceCurrency: editionMetadata.listPriceCurrency,
+    retailPriceAmount: editionMetadata.retailPriceAmount,
+    retailPriceCurrency: editionMetadata.retailPriceCurrency,
+    buyLink: editionMetadata.buyLink,
+    
+    // Commercial & Availability
+    currentPrice: itemMetadata.currentPrice,
+    discount: itemMetadata.discount,
+    usedPrices: itemMetadata.usedPrices,
+    availability: itemMetadata.availability,
+    bestsellerRank: itemMetadata.bestsellerRank,
+    librariesOwning: itemMetadata.librariesOwning,
+    nearbyLibraries: itemMetadata.nearbyLibraries,
+    
+    // Access Information
+    viewability: editionMetadata.viewability,
+    embeddable: editionMetadata.embeddable,
+    publicDomain: editionMetadata.publicDomain,
+    textToSpeechPermission: editionMetadata.textToSpeechPermission,
+    epubAvailable: editionMetadata.epubAvailable,
+    pdfAvailable: editionMetadata.pdfAvailable,
+    webReaderLink: editionMetadata.webReaderLink,
+    
+    // User-Specific
+    location: item.location,
+    status: item.status,
+    condition: item.condition,
+    notes: item.notes,
+    price: item.price,
+    
+    // Custom Fields
+    customFields: itemMetadata.customFields
   }
 }
 

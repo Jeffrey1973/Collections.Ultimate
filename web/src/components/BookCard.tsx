@@ -11,6 +11,10 @@ function BookCard({ book }: BookCardProps) {
         <img
           src={book.coverImageUrl}
           alt={book.title}
+          onError={(e) => {
+            // Hide image if it fails to load (404)
+            e.currentTarget.style.display = 'none'
+          }}
           style={{
             width: '100%',
             height: '200px',

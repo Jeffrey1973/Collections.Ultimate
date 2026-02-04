@@ -27,6 +27,12 @@ public sealed class EditionRepository : IEditionRepository
                 PageCount,
                 Description,
                 CoverImageUrl,
+                Format,
+                Binding,
+                EditionStatement,
+                PlaceOfPublication,
+                Language,
+                MetadataJson,
                 CreatedUtc
             )
             values
@@ -40,6 +46,12 @@ public sealed class EditionRepository : IEditionRepository
                 @PageCount,
                 @Description,
                 @CoverImageUrl,
+                @Format,
+                @Binding,
+                @EditionStatement,
+                @PlaceOfPublication,
+                @Language,
+                @MetadataJson,
                 @CreatedUtc
             );
             """;
@@ -56,6 +68,12 @@ public sealed class EditionRepository : IEditionRepository
             edition.PageCount,
             edition.Description,
             edition.CoverImageUrl,
+            edition.Format,
+            edition.Binding,
+            edition.EditionStatement,
+            edition.PlaceOfPublication,
+            edition.Language,
+            edition.MetadataJson,
             edition.CreatedUtc
         }, cancellationToken: ct));
     }
@@ -73,6 +91,12 @@ public sealed class EditionRepository : IEditionRepository
                 PageCount,
                 Description,
                 CoverImageUrl,
+                Format,
+                Binding,
+                EditionStatement,
+                PlaceOfPublication,
+                Language,
+                MetadataJson,
                 CreatedUtc
             from dbo.Edition
             where Id = @Id;
@@ -124,6 +148,12 @@ public sealed class EditionRepository : IEditionRepository
         PageCount = r.PageCount,
         Description = r.Description,
         CoverImageUrl = r.CoverImageUrl,
+        Format = r.Format,
+        Binding = r.Binding,
+        EditionStatement = r.EditionStatement,
+        PlaceOfPublication = r.PlaceOfPublication,
+        Language = r.Language,
+        MetadataJson = r.MetadataJson,
         CreatedUtc = r.CreatedUtc
     };
 
@@ -137,5 +167,11 @@ public sealed class EditionRepository : IEditionRepository
         int? PageCount,
         string? Description,
         string? CoverImageUrl,
+        string? Format,
+        string? Binding,
+        string? EditionStatement,
+        string? PlaceOfPublication,
+        string? Language,
+        string? MetadataJson,
         DateTimeOffset CreatedUtc);
 }

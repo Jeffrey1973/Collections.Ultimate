@@ -8,4 +8,5 @@ public interface IWorkMetadataRepository
     Task AddTagAsync(WorkId workId, HouseholdId householdId, string tagName, CancellationToken ct);
     Task AddSubjectAsync(WorkId workId, SubjectSchemeId schemeId, string text, CancellationToken ct);
     Task AddEditionIdentifierAsync(EditionId editionId, IdentifierTypeId typeId, string value, bool isPrimary, CancellationToken ct);
+    Task AddSeriesAsync(WorkId workId, string seriesName, string? volumeNumber, int? ordinal, CancellationToken ct);
 }

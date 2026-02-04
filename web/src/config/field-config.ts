@@ -20,6 +20,7 @@ export interface FieldConfig {
 
 export type CategoryKey = 
   | 'basic'
+  | 'historical'
   | 'identifiers'
   | 'classification'
   | 'publication'
@@ -53,6 +54,12 @@ export const FIELD_CATEGORIES: CategoryConfig[] = [
     icon: '📚',
     description: 'Essential book details',
     defaultExpanded: true,
+  },
+  {
+    key: 'historical',
+    label: 'Historical & Theological',
+    icon: '✝️',
+    description: 'Church history period, tradition, and theological context',
   },
   {
     key: 'identifiers',
@@ -208,6 +215,35 @@ export const FIELD_DEFINITIONS: FieldConfig[] = [
     type: 'number',
     category: 'basic',
     source: 'google-books',
+  },
+
+  // ===== HISTORICAL & THEOLOGICAL =====
+  {
+    key: 'churchHistoryPeriod',
+    label: 'Period of Church History',
+    type: 'text',
+    category: 'historical',
+    description: 'Church history period (e.g., Apostolic, Ante-Nicene, Nicene, Post-Nicene, Medieval, Reformation, Enlightenment)',
+    placeholder: 'e.g., Reformation',
+    source: 'user',
+  },
+  {
+    key: 'dateWritten',
+    label: 'Date Written',
+    type: 'text',
+    category: 'historical',
+    description: 'Original composition date (may differ from publication date)',
+    placeholder: 'e.g., 325 AD, 1517, 1st century',
+    source: 'user',
+  },
+  {
+    key: 'religiousTradition',
+    label: 'Tradition',
+    type: 'array',
+    category: 'historical',
+    description: 'Religious tradition(s) or denomination(s) - can specify multiple',
+    placeholder: 'e.g., Catholic, Eastern Orthodox, Baptist',
+    source: 'user',
   },
 
   // ===== IDENTIFIERS =====

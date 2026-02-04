@@ -24,6 +24,9 @@ public sealed class WorkRepository : IWorkRepository
                 SortTitle,
                 Description,
                 NormalizedTitle,
+                OriginalTitle,
+                Language,
+                MetadataJson,
                 CreatedUtc
             )
             values
@@ -34,6 +37,9 @@ public sealed class WorkRepository : IWorkRepository
                 @SortTitle,
                 @Description,
                 @NormalizedTitle,
+                @OriginalTitle,
+                @Language,
+                @MetadataJson,
                 @CreatedUtc
             );
             """;
@@ -47,6 +53,9 @@ public sealed class WorkRepository : IWorkRepository
             work.SortTitle,
             work.Description,
             work.NormalizedTitle,
+            work.OriginalTitle,
+            work.Language,
+            work.MetadataJson,
             work.CreatedUtc
         }, cancellationToken: ct));
     }
@@ -54,7 +63,7 @@ public sealed class WorkRepository : IWorkRepository
     public async Task<Work?> GetByIdAsync(WorkId id, CancellationToken ct)
     {
         const string sql = """
-            select Id, Title, Subtitle, SortTitle, Description, NormalizedTitle, CreatedUtc
+            select Id, Title, Subtitle, SortTitle, Description, NormalizedTitle, OriginalTitle, Language, MetadataJson, CreatedUtc
             from dbo.Work
             where Id = @Id;
             """;
@@ -72,8 +81,21 @@ public sealed class WorkRepository : IWorkRepository
         SortTitle = r.SortTitle,
         Description = r.Description,
         NormalizedTitle = r.NormalizedTitle,
+        OriginalTitle = r.OriginalTitle,
+        Language = r.Language,
+        MetadataJson = r.MetadataJson,
         CreatedUtc = r.CreatedUtc
     };
 
-    private sealed record WorkRow(Guid Id, string Title, string? Subtitle, string? SortTitle, string? Description, string? NormalizedTitle, DateTimeOffset CreatedUtc);
+    private sealed record WorkRow(
+        Guid Id,
+        string Title,
+        string? Subtitle,
+        string? SortTitle,
+        string? Description,
+        string? NormalizedTitle,
+        string? OriginalTitle,
+        string? Language,
+        string? MetadataJson,
+        DateTimeOffset CreatedUtc);
 }

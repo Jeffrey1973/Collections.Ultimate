@@ -4,6 +4,8 @@ import HomePage from './pages/HomePage.tsx'
 import LibraryPage from './pages/LibraryPage.tsx'
 import AddBookPage from './pages/AddBookPage.tsx'
 import ApiTestPage from './pages/ApiTestPage.tsx'
+import BookDetailPage from './pages/BookDetailPage.tsx'
+import BookEditPage from './pages/BookEditPage.tsx'
 import { HouseholdProvider } from './context/HouseholdContext.tsx'
 
 function App() {
@@ -14,6 +16,8 @@ function App() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/library" element={<LibraryPage />} />
+            <Route path="/book/:id" element={<BookDetailPage />} />
+            <Route path="/book/:id/edit" element={<BookEditPage />} />
             <Route path="/add-book" element={<AddBookPage />} />
             <Route path="/api-test" element={<ApiTestPage />} />
           </Routes>

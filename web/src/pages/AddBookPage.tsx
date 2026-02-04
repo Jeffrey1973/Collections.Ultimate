@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import BarcodeScanner from '../components/BarcodeScanner'
 import BookSelectionModal from '../components/BookSelectionModal'
 import { searchBook, searchBookMultiple, Book } from '../api/books'
-import { createBook, IdentifierType, ContributorRole, SubjectScheme, type CreateBookIngestRequest } from '../api/backend'
+import { createBook, mapBookToIngestRequest, IdentifierType, ContributorRole, SubjectScheme, type CreateBookIngestRequest } from '../api/backend'
 import { useHousehold } from '../context/HouseholdContext'
 import { 
   FIELD_CATEGORIES, 
@@ -78,9 +78,11 @@ function AddBookPage() {
         setError('No books found. Please try a different search or enter details manually.')
         setSearchInput('')
       }
-    } catch (err) {
-      setError('Failed to search. Please try again.')
+    } catch (err: any) {
+      const errorMsg = err?.message || 'Failed to search. Please try again.'
+      setError(errorMsg)
       console.error('Search error:', err)
+      console.error('Error details:', err?.stack)
     } finally {
       setIsLoading(false)
       setSearchProgress(null)
@@ -179,67 +181,8 @@ function AddBookPage() {
         customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
       }
 
-      // Map frontend Book format to backend CreateBookIngestRequest format
-      const bookRequest: CreateBookIngestRequest = {
-        work: {
-          title: finalData.title!,
-          subtitle: finalData.subtitle,
-          sortTitle: finalData.title,
-          description: finalData.description,
-        },
-        edition: {
-          editionTitle: finalData.title,
-          editionSubtitle: finalData.subtitle,
-          publisher: finalData.publisher,
-          publishedYear: finalData.publishedDate ? parseInt(finalData.publishedDate.split('-')[0]) : undefined,
-          pageCount: finalData.pageCount,
-          description: finalData.description,
-          identifiers: [
-            ...(finalData.isbn13 ? [{
-              identifierTypeId: IdentifierType.ISBN13,
-              value: finalData.isbn13,
-              isPrimary: true,
-            }] : []),
-            ...(finalData.isbn10 ? [{
-              identifierTypeId: IdentifierType.ISBN10,
-              value: finalData.isbn10,
-              isPrimary: !finalData.isbn13,
-            }] : []),
-            ...(finalData.isbn && !finalData.isbn13 && !finalData.isbn10 ? [{
-              identifierTypeId: finalData.isbn.length === 13 ? IdentifierType.ISBN13 : IdentifierType.ISBN10,
-              value: finalData.isbn,
-              isPrimary: true,
-            }] : []),
-            ...(finalData.lccn ? [{
-              identifierTypeId: IdentifierType.LCCN,
-              value: finalData.lccn,
-              isPrimary: false,
-            }] : []),
-            ...(finalData.oclcNumber ? [{
-              identifierTypeId: IdentifierType.OCLC,
-              value: finalData.oclcNumber,
-              isPrimary: false,
-            }] : []),
-          ],
-        },
-        item: {
-          title: finalData.title,
-          subtitle: finalData.subtitle,
-          notes: finalData.notes,
-          barcode: finalData.isbn || finalData.isbn13 || finalData.isbn10,
-        },
-        contributors: finalData.author ? finalData.author.split(/[,;&]/).map((name, index) => ({
-          displayName: name.trim(),
-          roleId: ContributorRole.Author,
-          ordinal: index + 1,
-          sortName: name.trim(),
-        })) : [],
-        tags: finalData.categories || [],
-        subjects: finalData.subjects?.map(subject => ({
-          schemeId: SubjectScheme.LCSH,
-          text: subject,
-        })) || [],
-      }
+      // Use the comprehensive mapping function to send ALL fields to backend
+      const bookRequest = mapBookToIngestRequest(finalData)
 
       await createBook(bookRequest, selectedHousehold.id)
       
@@ -500,7 +443,36 @@ function AddBookPage() {
                 disabled={isLoading || !searchInput.trim()}
                 style={{ flex: 1 }}
               >
-                {isLoading ? 'Searching...' : ' Search Book'}
+                {isLoading ? 'Searching...' : '🔍 Search Book'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData({
+                    title: '',
+                    author: '',
+                    isbn: '',
+                    description: '',
+                    publisher: '',
+                    publishedDate: '',
+                    pageCount: undefined,
+                    coverImageUrl: '',
+                    language: 'en',
+                    subtitle: '',
+                    customFields: {},
+                  })
+                  setCustomFields({})
+                  setSearchInput('')
+                  setError(null)
+                }}
+                className="btn"
+                style={{
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  padding: '0.75rem 1.25rem',
+                }}
+              >
+                🗑️ Clear
               </button>
               <button
                 type="button"

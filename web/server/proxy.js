@@ -102,7 +102,18 @@ app.post('/proxy', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`📡 CORS Proxy server running on http://localhost:${PORT}`);
   console.log(`   Use: http://localhost:${PORT}/proxy?url=<encoded-url>`);
+  console.log(`   Server address:`, server.address());
+}).on('error', (err) => {
+  console.error('❌ Failed to start server:', err);
+  process.exit(1);
 });
+
+// Add a test to verify server is actually listening
+setTimeout(() => {
+  console.log('🔍 Verifying server is listening...');
+  console.log('   Server listening:', server.listening);
+  console.log('   Server address:', server.address());
+}, 1000);

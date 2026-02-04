@@ -1,4 +1,4 @@
-using System.Text.Json;
+    using System.Text.Json;
 using CollectionsUltimate.Application.Abstractions;
 using CollectionsUltimate.Domain;
 using CollectionsUltimate.Infrastructure.Sql;
@@ -35,6 +35,7 @@ builder.Services.AddScoped<ILibraryItemLookupRepository, LibraryItemLookupReposi
 
 builder.Services.AddScoped<IItemSearchRepository, ItemSearchRepository>();
 builder.Services.AddScoped<IItemUpdateRepository, ItemUpdateRepository>();
+builder.Services.AddScoped<ITagRepository, TagRepository>();
 
 // Register blob storage service
 var storageProvider = builder.Configuration["Storage:Provider"] ?? "Local";
@@ -212,46 +213,6 @@ app.MapGet("/api/accounts/{accountId:guid}/households", async (
     return Results.Ok(households.Select(h => new { id = h.Value }));
 });
 
-// DEPRECATED: Use /api/households/{householdId}/items with kind filter instead.
-// This endpoint will be removed in a future version.
-app.MapGet("/api/households/{householdId:guid}/books", async (
-    Guid householdId,
-    string? q,
-    int? take,
-    int? skip,
-    IBookRepository repo,
-    CancellationToken ct) =>
-{
-    var result = await repo.SearchAsync(new HouseholdId(householdId), q, Math.Clamp(take ?? 50, 1, 200), Math.Max(skip ?? 0, 0), ct);
-    return Results.Ok(result);
-}).WithTags("Deprecated");
-
-// DEPRECATED: Use POST /api/households/{householdId}/library/books for normalized model.
-// This endpoint will be removed in a future version.
-app.MapPost("/api/households/{householdId:guid}/books", async (
-    Guid householdId,
-    CreateBookRequest request,
-    IBookRepository repo,
-    CancellationToken ct) =>
-{
-    var book = new Book
-    {
-        OwnerHouseholdId = new HouseholdId(householdId),
-        Kind = ItemKind.Book,
-        Title = request.Title,
-        Subtitle = request.Subtitle,
-        Authors = request.Authors,
-        Isbn10 = request.Isbn10,
-        Isbn13 = request.Isbn13,
-        PublishedYear = request.PublishedYear,
-        Publisher = request.Publisher,
-        Notes = request.Notes
-    };
-
-    await repo.CreateAsync(book, ct);
-    return Results.Created($"/api/books/{book.Id.Value}", book);
-}).WithTags("Deprecated");
-
 // Normalized model endpoints
 app.MapGet("/api/works/{workId:guid}", async (Guid workId, IWorkRepository repo, CancellationToken ct) =>
 {
@@ -267,7 +228,7 @@ app.MapGet("/api/editions/{editionId:guid}", async (Guid editionId, IEditionRepo
 
 app.MapGet("/api/items/{itemId:guid}", async (Guid itemId, ILibraryItemRepository repo, CancellationToken ct) =>
 {
-    var item = await repo.GetByIdAsync(new ItemId(itemId), ct);
+    var item = await repo.GetFullByIdAsync(new ItemId(itemId), ct);
     return item is null ? Results.NotFound() : Results.Ok(item);
 });
 
@@ -279,6 +240,9 @@ app.MapPost("/api/works", async (CreateWorkRequest request, IWorkRepository repo
         Subtitle = request.Subtitle,
         SortTitle = request.SortTitle,
         Description = request.Description,
+        OriginalTitle = request.OriginalTitle,
+        Language = request.Language,
+        MetadataJson = request.MetadataJson,
         NormalizedTitle = NormalizeTitle(request.Title)
     };
 
@@ -296,7 +260,13 @@ app.MapPost("/api/works/{workId:guid}/editions", async (Guid workId, CreateEditi
         Publisher = request.Publisher,
         PublishedYear = request.PublishedYear,
         PageCount = request.PageCount,
-        Description = request.Description
+        Description = request.Description,
+        Format = request.Format,
+        Binding = request.Binding,
+        EditionStatement = request.EditionStatement,
+        PlaceOfPublication = request.PlaceOfPublication,
+        Language = request.Language,
+        MetadataJson = request.MetadataJson
     };
 
     await repo.CreateAsync(edition, ct);
@@ -347,6 +317,9 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
         Subtitle = request.Work.Subtitle,
         SortTitle = request.Work.SortTitle,
         Description = request.Work.Description,
+        OriginalTitle = request.Work.OriginalTitle,
+        Language = request.Work.Language,
+        MetadataJson = request.Work.MetadataJson,
         NormalizedTitle = NormalizeTitle(request.Work.Title)
     };
 
@@ -363,7 +336,13 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
             Publisher = request.Edition.Publisher,
             PublishedYear = request.Edition.PublishedYear,
             PageCount = request.Edition.PageCount,
-            Description = request.Edition.Description
+            Description = request.Edition.Description,
+            Format = request.Edition.Format,
+            Binding = request.Edition.Binding,
+            EditionStatement = request.Edition.EditionStatement,
+            PlaceOfPublication = request.Edition.PlaceOfPublication,
+            Language = request.Edition.Language,
+            MetadataJson = request.Edition.MetadataJson
         };
 
         await editionRepo.CreateAsync(edition, ct);
@@ -425,6 +404,11 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
             await metaRepo.AddSubjectAsync(work.Id, new SubjectSchemeId(s.SchemeId), s.Text, ct);
     }
 
+    if (request.Series is not null)
+    {
+        await metaRepo.AddSeriesAsync(work.Id, request.Series.Name, request.Series.VolumeNumber, request.Series.Ordinal, ct);
+    }
+
     var response = new CreateBookIngestResponse(work.Id.Value, editionId?.Value, item.Id.Value);
     return Results.Created($"/api/items/{item.Id.Value}", response);
 });
@@ -465,9 +449,16 @@ app.MapPost("/api/editions/{editionId:guid}/identifiers", async (Guid editionId,
 app.MapPatch("/api/items/{itemId:guid}", async (
     Guid itemId,
     PatchItemRequest request,
-    IItemUpdateRepository repo,
+    IItemUpdateRepository updateRepo,
+    ILibraryItemRepository itemRepo,
+    ITagRepository tagRepo,
     CancellationToken ct) =>
 {
+    // Get item first to have access to WorkId and HouseholdId for tags
+    var item = await itemRepo.GetByIdAsync(new ItemId(itemId), ct);
+    if (item is null)
+        return Results.NotFound();
+
     var patch = new ItemInventoryPatch(
         Barcode: ToPatchString(request.Barcode),
         Location: ToPatchString(request.Location),
@@ -479,14 +470,84 @@ app.MapPatch("/api/items/{itemId:guid}", async (
 
     try
     {
-        var updated = await repo.UpdateInventoryAsync(new ItemId(itemId), patch, ct);
-        return updated ? Results.NoContent() : Results.NotFound();
+        await updateRepo.UpdateInventoryAsync(new ItemId(itemId), patch, ct);
     }
     catch (InvalidOperationException ex) when (ex.InnerException is not null)
     {
         return Results.Conflict(new { message = ex.Message });
     }
+
+    // Handle tags if provided
+    if (request.TagNames is not null && request.TagNames.Value.ValueKind != JsonValueKind.Undefined)
+    {
+        var tagNames = ParseTagNames(request.TagNames.Value);
+
+        if (tagNames is not null)
+        {
+            if (tagNames.Count == 0)
+            {
+                // Clear all tags
+                await tagRepo.SetWorkTagsAsync(item.WorkId, [], ct);
+            }
+            else
+            {
+                var householdId = item.OwnerHouseholdId;
+                var cleanedNames = tagNames
+                    .Select(n => n.Trim())
+                    .Where(n => !string.IsNullOrEmpty(n))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                // Find existing tags
+                var existingTags = await tagRepo.GetByNamesAsync(householdId, cleanedNames, ct);
+                var existingNormalized = existingTags
+                    .Select(t => t.NormalizedName)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                // Create missing tags
+                var newTags = new List<Tag>();
+                foreach (var name in cleanedNames)
+                {
+                    var normalized = name.ToUpperInvariant();
+                    if (!existingNormalized.Contains(normalized))
+                    {
+                        var newTag = new Tag
+                        {
+                            OwnerHouseholdId = householdId,
+                            Name = name,
+                            NormalizedName = normalized
+                        };
+                        await tagRepo.CreateAsync(newTag, ct);
+                        newTags.Add(newTag);
+                        existingNormalized.Add(normalized);
+                    }
+                }
+
+                // Set all tag relationships
+                var allTagIds = existingTags.Select(t => t.Id).Concat(newTags.Select(t => t.Id));
+                await tagRepo.SetWorkTagsAsync(item.WorkId, allTagIds, ct);
+            }
+        }
+    }
+
+    // Return full response with updated tags
+    var fullItem = await itemRepo.GetFullByIdAsync(new ItemId(itemId), ct);
+    return Results.Ok(fullItem);
 });
+
+static List<string>? ParseTagNames(JsonElement el)
+{
+    if (el.ValueKind == JsonValueKind.Null)
+        return null;
+
+    if (el.ValueKind == JsonValueKind.Array)
+        return el.EnumerateArray()
+            .Where(e => e.ValueKind == JsonValueKind.String)
+            .Select(e => e.GetString()!)
+            .ToList();
+
+    return null;
+}
 
 static PatchField<string> ToPatchString(JsonElement? el)
 {
@@ -628,7 +689,10 @@ public sealed record CreateWorkRequest(
     string Title,
     string? Subtitle,
     string? SortTitle,
-    string? Description);
+    string? Description,
+    string? OriginalTitle,
+    string? Language,
+    string? MetadataJson);
 
 public sealed record CreateEditionRequest(
     string? EditionTitle,
@@ -636,7 +700,13 @@ public sealed record CreateEditionRequest(
     string? Publisher,
     int? PublishedYear,
     int? PageCount,
-    string? Description);
+    string? Description,
+    string? Format,
+    string? Binding,
+    string? EditionStatement,
+    string? PlaceOfPublication,
+    string? Language,
+    string? MetadataJson);
 
 public sealed record CreateItemRequest(
 ItemKind Kind,
@@ -669,12 +739,27 @@ public sealed record AddSubjectRequest(int SchemeId, string Text);
 public sealed record AddEditionIdentifierRequest(int IdentifierTypeId, string Value, bool IsPrimary);
 
 public sealed record CreateBookIngestRequest(
-    CreateWorkRequest Work,
+    CreateBookIngestWork Work,
     CreateBookIngestItem Item,
     CreateBookIngestEdition? Edition,
     IReadOnlyList<CreateBookIngestContributor>? Contributors,
     IReadOnlyList<string>? Tags,
-    IReadOnlyList<CreateBookIngestSubject>? Subjects);
+    IReadOnlyList<CreateBookIngestSubject>? Subjects,
+    CreateBookIngestSeries? Series);
+
+public sealed record CreateBookIngestWork(
+    string Title,
+    string? Subtitle,
+    string? SortTitle,
+    string? Description,
+    string? OriginalTitle,
+    string? Language,
+    string? MetadataJson);
+
+public sealed record CreateBookIngestSeries(
+    string Name,
+    string? VolumeNumber,
+    int? Ordinal);
 
 public sealed record CreateBookIngestItem(
 string? Title,
@@ -689,13 +774,19 @@ decimal? Price,
 string? MetadataJson);
 
 public sealed record CreateBookIngestEdition(
-    string? EditionTitle,
-    string? EditionSubtitle,
-    string? Publisher,
-    int? PublishedYear,
-    int? PageCount,
-    string? Description,
-    IReadOnlyList<CreateBookIngestIdentifier>? Identifiers);
+string? EditionTitle,
+string? EditionSubtitle,
+string? Publisher,
+int? PublishedYear,
+int? PageCount,
+string? Description,
+string? Format,
+string? Binding,
+string? EditionStatement,
+string? PlaceOfPublication,
+string? Language,
+string? MetadataJson,
+IReadOnlyList<CreateBookIngestIdentifier>? Identifiers);
 
 public sealed record CreateBookIngestIdentifier(int IdentifierTypeId, string Value, bool IsPrimary);
 
@@ -713,10 +804,12 @@ public sealed record CreateBookIngestSubject(int SchemeId, string Text);
 public sealed record CreateBookIngestResponse(Guid WorkId, Guid? EditionId, Guid ItemId);
 
 public sealed record PatchItemRequest(
-    JsonElement? Barcode,
-    JsonElement? Location,
-    JsonElement? Status,
-    JsonElement? Condition,
-    JsonElement? AcquiredOn,
-    JsonElement? Price,
-    JsonElement? Notes);
+JsonElement? Barcode,
+JsonElement? Location,
+JsonElement? Status,
+JsonElement? Condition,
+JsonElement? AcquiredOn,
+JsonElement? Price,
+JsonElement? Notes,
+JsonElement? TagNames);
+

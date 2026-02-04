@@ -155,37 +155,87 @@ public sealed class WorkMetadataRepository : IWorkMetadataRepository
     }
 
     public async Task AddEditionIdentifierAsync(EditionId editionId, IdentifierTypeId typeId, string value, bool isPrimary, CancellationToken ct)
-    {
-        var normalized = NormalizeIdentifierValue(value);
-
-        const string sql = """
-            if not exists (
-                select 1
-                from dbo.EditionIdentifier
-                where EditionId = @EditionId
-                  and IdentifierTypeId = @IdentifierTypeId
-                  and NormalizedValue = @NormalizedValue
-            )
-            begin
-                insert into dbo.EditionIdentifier (EditionId, IdentifierTypeId, Value, NormalizedValue, IsPrimary)
-                values (@EditionId, @IdentifierTypeId, @Value, @NormalizedValue, @IsPrimary);
-            end
-            """;
-
-        using var conn = _connectionFactory.Create();
-        await conn.ExecuteAsync(new CommandDefinition(sql, new
         {
-            EditionId = editionId.Value,
-            IdentifierTypeId = typeId.Value,
-            Value = value.Trim(),
-            NormalizedValue = normalized,
-            IsPrimary = isPrimary
-        }, cancellationToken: ct));
+            var normalized = NormalizeIdentifierValue(value);
+
+            const string sql = """
+                if not exists (
+                    select 1
+                    from dbo.EditionIdentifier
+                    where EditionId = @EditionId
+                      and IdentifierTypeId = @IdentifierTypeId
+                      and NormalizedValue = @NormalizedValue
+                )
+                begin
+                    insert into dbo.EditionIdentifier (EditionId, IdentifierTypeId, Value, NormalizedValue, IsPrimary)
+                    values (@EditionId, @IdentifierTypeId, @Value, @NormalizedValue, @IsPrimary);
+                end
+                """;
+
+            using var conn = _connectionFactory.Create();
+            await conn.ExecuteAsync(new CommandDefinition(sql, new
+            {
+                EditionId = editionId.Value,
+                IdentifierTypeId = typeId.Value,
+                Value = value.Trim(),
+                NormalizedValue = normalized,
+                IsPrimary = isPrimary
+            }, cancellationToken: ct));
+        }
+
+        public async Task AddSeriesAsync(WorkId workId, string seriesName, string? volumeNumber, int? ordinal, CancellationToken ct)
+        {
+            var normalized = NormalizeKey(seriesName);
+
+            const string upsertSeriesSql = """
+                declare @SeriesId uniqueidentifier;
+
+                select @SeriesId = Id
+                from dbo.Series
+                where NormalizedName = @NormalizedName;
+
+                if @SeriesId is null
+                begin
+                    set @SeriesId = newid();
+                    insert into dbo.Series (Id, Name, NormalizedName, CreatedUtc)
+                    values (@SeriesId, @Name, @NormalizedName, sysdatetimeoffset());
+                end
+
+                select @SeriesId;
+                """;
+
+            const string linkSql = """
+                if not exists (select 1 from dbo.WorkSeries where WorkId = @WorkId and SeriesId = @SeriesId)
+                    insert into dbo.WorkSeries (WorkId, SeriesId, VolumeNumber, Ordinal)
+                    values (@WorkId, @SeriesId, @VolumeNumber, @Ordinal);
+                """;
+
+            using var conn = _connectionFactory.Create();
+            if (conn.State != System.Data.ConnectionState.Open)
+                conn.Open();
+
+            using var tx = conn.BeginTransaction();
+
+            var seriesId = await conn.ExecuteScalarAsync<Guid>(new CommandDefinition(upsertSeriesSql, new
+            {
+                Name = seriesName.Trim(),
+                NormalizedName = normalized
+            }, transaction: tx, cancellationToken: ct));
+
+            await conn.ExecuteAsync(new CommandDefinition(linkSql, new
+            {
+                WorkId = workId.Value,
+                SeriesId = seriesId,
+                VolumeNumber = volumeNumber,
+                Ordinal = ordinal
+            }, transaction: tx, cancellationToken: ct));
+
+            tx.Commit();
+        }
+
+        private static string NormalizeKey(string value)
+            => string.Join(' ', value.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant();
+
+        private static string NormalizeIdentifierValue(string value)
+            => new string(value.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
     }
-
-    private static string NormalizeKey(string value)
-        => string.Join(' ', value.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant();
-
-    private static string NormalizeIdentifierValue(string value)
-        => new string(value.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
-}

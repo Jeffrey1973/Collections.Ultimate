@@ -130,6 +130,11 @@ export interface Book {
   arLevel?: string // Accelerated Reader level
   maturityRating?: string
   
+  // Historical & Theological
+  churchHistoryPeriod?: string // Apostolic, Ante-Nicene, Nicene, Post-Nicene, Medieval, Reformation, Enlightenment
+  dateWritten?: string // Original composition date (may differ from publication date)
+  religiousTradition?: string[] // Catholic, Eastern Orthodox, Protestant, Baptist, etc. (can be multiple)
+  
   // Google Books Specific Fields
   etag?: string
   selfLink?: string
@@ -1153,8 +1158,10 @@ async function lookupFromWorldCat(isbn: string): Promise<Partial<Book> | null> {
 async function lookupFromLibraryOfCongress(isbn: string): Promise<Partial<Book> | null> {
   try {
     console.log('Looking up ISBN from Library of Congress:', isbn)
-    // Try the SRU API first
-    const url = `https://lx2.loc.gov:210/lcdb?operation=searchRetrieve&version=1.1&query=bath.isbn=${isbn}&maximumRecords=1&recordSchema=mods`
+    
+    // Use the public search API instead of the SRU endpoint
+    // The SRU endpoint (lx2.loc.gov:210) uses Z39.50 protocol which doesn't work over HTTP
+    const url = `https://www.loc.gov/search/?q=${isbn}&fo=json&at=results&c=150`
     
     const response = await fetchThroughProxy(url)
     console.log('Library of Congress response status:', response.status)
@@ -1163,34 +1170,27 @@ async function lookupFromLibraryOfCongress(isbn: string): Promise<Partial<Book> 
       return null
     }
 
-    const text = await response.text()
+    const data = await response.json()
     
-    // Basic XML parsing
-    const titleMatch = text.match(/<mods:title[^>]*>([^<]+)<\/mods:title>/)
-    const nameMatch = text.match(/<mods:namePart[^>]*>([^<]+)<\/mods:namePart>/)
-    const publisherMatch = text.match(/<mods:publisher[^>]*>([^<]+)<\/mods:publisher>/)
-    const dateMatch = text.match(/<mods:dateIssued[^>]*>([^<]+)<\/mods:dateIssued>/)
-    const placeMatch = text.match(/<mods:placeTerm[^>]*>([^<]+)<\/mods:placeTerm>/)
-    const lccnMatch = text.match(/<mods:identifier[^>]*type="lccn"[^>]*>([^<]+)<\/mods:identifier>/)
-    const lccMatch = text.match(/<mods:classification[^>]*edition="([^"]*)"[^>]*>([^<]+)<\/mods:classification>/)
-    
-    if (!titleMatch) {
+    // Check if we got results
+    if (!data.results || data.results.length === 0) {
       console.log('No books found in Library of Congress for ISBN:', isbn)
       return null
     }
 
-    console.log('Book found in Library of Congress:', titleMatch[1])
+    const result = data.results[0]
+    console.log('Book found in Library of Congress:', result.title)
 
+    // Extract available fields
     return {
-      title: titleMatch[1] || 'Unknown Title',
-      author: nameMatch?.[1] || 'Unknown Author',
+      title: result.title || 'Unknown Title',
+      author: result.contributor?.[0] || 'Unknown Author',
       isbn: isbn,
-      lccn: lccnMatch?.[1],
-      lcc: lccMatch?.[2],
-      lccEdition: lccMatch?.[1],
-      publisher: publisherMatch?.[1],
-      publishedDate: dateMatch?.[1],
-      placeOfPublication: placeMatch?.[1],
+      publishedDate: result.date,
+      placeOfPublication: result.location?.[0],
+      publisher: result.contributor?.find((c: string) => c.includes('Publisher')),
+      description: result.description?.[0],
+      language: result.language?.[0],
     }
   } catch (error) {
     console.error('Library of Congress lookup failed:', error)
