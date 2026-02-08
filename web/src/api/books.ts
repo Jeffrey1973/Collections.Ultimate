@@ -36,6 +36,7 @@ export interface Book {
   subtitle?: string
   originalTitle?: string
   coverImageUrl?: string
+  coverImageFallbacks?: string[] // Ordered list of fallback cover URLs to try
   description?: string
   publisher?: string
   publishedDate?: string
@@ -232,7 +233,39 @@ export interface Book {
   
   // Traditional library catalog fields
   notes?: string
+  pln?: string // Physical Location Name (e.g., 'Living Room Bookshelf', 'Office')
   awards?: string[]
+  barcode?: string
+
+  // Reading status
+  readStatus?: string // e.g., 'Read', 'Unread', 'Reading', 'DNF'
+  completedDate?: string // Date finished reading
+  dateStarted?: string // Date started reading
+  readCount?: number // Number of times read
+
+  // Ownership & Acquisition
+  acquiredDate?: string // When the book was acquired
+  acquisitionSource?: string // Where acquired from (e.g., 'amazon.com', 'gift')
+  fromWhere?: string // Geographic/store where acquired
+  purchasePrice?: string // What was paid
+  bookValue?: string // Estimated current value
+  condition?: string // Physical condition
+  copies?: number // Number of copies owned
+  privateNotes?: string // Private comments (not shared)
+  collections?: string[] // LibraryThing collections
+
+  // Lending
+  lendingPatron?: string // Who it's lent to
+  lendingStatus?: string // Current lending status
+  lendingStart?: string // When lending started
+  lendingEnd?: string // When lending ended/is due
+
+  // LibraryThing-specific IDs
+  ltBookId?: string // LibraryThing Book ID (for covers)
+  ltWorkId?: string // LibraryThing Work ID
+
+  // Classification extras
+  deweyWording?: string // Human-readable Dewey description
   
   // Community & Enhanced Metadata
   quotes?: string[] // Memorable quotes from the book
@@ -389,12 +422,54 @@ function detectISBN(query: string): string | null {
 }
 
 // Helper: Parse "Title by Author" format
-function parseQuery(query: string): { title?: string; author?: string } {
-  const byMatch = query.match(/^(.+?)\s+by\s+(.+)$/i)
-  if (byMatch) {
-    return { title: byMatch[1].trim(), author: byMatch[2].trim() }
+export interface SearchHints {
+  publisher?: string
+  subject?: string
+  place?: string
+  year?: string
+  language?: string
+}
+
+function parseQuery(query: string): { title?: string; author?: string; publisher?: string; subject?: string; place?: string; year?: string; language?: string } {
+  let remaining = query.trim()
+  let publisher: string | undefined
+  let subject: string | undefined
+  let place: string | undefined
+  let year: string | undefined
+  let language: string | undefined
+
+  // Extract field: prefixes (support quoted multi-word values)
+  const fieldPatterns: Array<{ keys: string[]; field: string }> = [
+    { keys: ['publisher', 'pub'], field: 'publisher' },
+    { keys: ['subject', 'subj', 'category', 'cat'], field: 'subject' },
+    { keys: ['place', 'city'], field: 'place' },
+    { keys: ['year', 'yr'], field: 'year' },
+    { keys: ['language', 'lang'], field: 'language' },
+  ]
+
+  const parsed: Record<string, string> = {}
+  for (const fp of fieldPatterns) {
+    const keyPattern = fp.keys.join('|')
+    const re = new RegExp(`\\s*(?:${keyPattern}):\\s*"([^"]+)"|\\s*(?:${keyPattern}):\\s*(\\S+)`, 'i')
+    const m = remaining.match(re)
+    if (m) {
+      parsed[fp.field] = (m[1] || m[2]).trim()
+      remaining = remaining.replace(m[0], '').trim()
+    }
   }
-  return { title: query.trim() }
+
+  publisher = parsed.publisher
+  subject = parsed.subject
+  place = parsed.place
+  year = parsed.year
+  language = parsed.language
+
+  // Extract "by author" pattern
+  const byMatch = remaining.match(/^(.+?)\s+by\s+(.+)$/i)
+  if (byMatch) {
+    return { title: byMatch[1].trim(), author: byMatch[2].trim(), publisher, subject, place, year, language }
+  }
+  return { title: remaining || undefined, author: undefined, publisher, subject, place, year, language }
 }
 
 // Search Open Library by title/author (fast, no rate limits)
@@ -438,12 +513,70 @@ async function searchOpenLibrary(title: string, author?: string): Promise<{ isbn
   }
 }
 
+/**
+ * Fetch ALL editions of an Open Library work — great for finding older/rare editions.
+ * The search endpoint returns works; this drills into a work's editions list.
+ */
+async function fetchOpenLibraryEditions(workKey: string, limit: number = 30): Promise<Array<{ isbn?: string; data: Partial<Book> }>> {
+  try {
+    // workKey is like "/works/OL123W" or just "OL123W"
+    const key = workKey.startsWith('/works/') ? workKey : `/works/${workKey}`
+    const url = `https://openlibrary.org${key}/editions.json?limit=${limit}`
+    console.log('📚 Fetching Open Library editions for work:', key)
+
+    const response = await fetch(url)
+    if (!response.ok) return []
+
+    const data = await response.json()
+    if (!data.entries || data.entries.length === 0) return []
+
+    return data.entries.map((ed: any) => {
+      const isbn13 = ed.isbn_13?.[0]
+      const isbn10 = ed.isbn_10?.[0]
+      const isbn = isbn13 || isbn10
+
+      return {
+        isbn,
+        data: {
+          title: ed.title,
+          subtitle: ed.subtitle,
+          author: ed.by_statement,
+          publishedDate: ed.publish_date,
+          publisher: ed.publishers?.[0],
+          placeOfPublication: ed.publish_places?.[0],
+          pageCount: ed.number_of_pages,
+          isbn13,
+          isbn10,
+          lccn: ed.lccn?.[0],
+          oclcNumber: ed.oclc_numbers?.[0],
+          olid: ed.key?.replace('/books/', ''),
+          coverImageUrl: ed.covers?.[0] ? `https://covers.openlibrary.org/b/id/${ed.covers[0]}-L.jpg` : undefined,
+          language: ed.languages?.[0]?.key?.replace('/languages/', ''),
+          format: ed.physical_format,
+          binding: ed.physical_format,
+          editionStatement: ed.edition_name,
+          physicalDescription: ed.pagination,
+          dataSources: ['Open Library Editions'],
+        }
+      }
+    })
+  } catch (error) {
+    console.error('Open Library editions fetch error:', error)
+    return []
+  }
+}
+
 // Search Open Library and return multiple results
-async function searchOpenLibraryMultiple(title: string, author?: string, limit: number = 10): Promise<Array<{ isbn?: string; data: Partial<Book> }>> {
+async function searchOpenLibraryMultiple(title: string, author?: string, limit: number = 40, publisher?: string, subject?: string, place?: string, year?: string, language?: string): Promise<Array<{ isbn?: string; key?: string; data: Partial<Book> }>> {
   try {
     const params = new URLSearchParams()
     params.append('title', title)
     if (author) params.append('author', author)
+    if (publisher) params.append('publisher', publisher)
+    if (subject) params.append('subject', subject)
+    if (place) params.append('place', place)
+    if (year) params.append('first_publish_year', year)
+    if (language) params.append('language', language)
     params.append('limit', limit.toString())
 
     const url = `https://openlibrary.org/search.json?${params}`
@@ -455,11 +588,12 @@ async function searchOpenLibraryMultiple(title: string, author?: string, limit: 
     const data = await response.json()
     if (!data.docs || data.docs.length === 0) return []
 
-    // Map all results
+    // Map all results — keep even those without ISBNs (older editions)
     return data.docs.map((book: any) => {
       const isbn = book.isbn?.find((i: string) => i.length === 13) || book.isbn?.[0]
       return {
         isbn,
+        key: book.key, // Open Library work key e.g. /works/OL123W
         data: {
           title: book.title,
           author: book.author_name?.join(', '),
@@ -467,10 +601,11 @@ async function searchOpenLibraryMultiple(title: string, author?: string, limit: 
           publisher: book.publisher?.[0],
           pageCount: book.number_of_pages_median,
           coverImageUrl: book.cover_i ? `https://covers.openlibrary.org/b/id/${book.cover_i}-L.jpg` : undefined,
+          olid: book.key?.replace('/works/', ''),
           dataSources: ['Open Library'],
         }
       }
-    }).filter((result: any) => result.isbn) // Only include results with ISBNs
+    })
   } catch (error) {
     console.error('Open Library multiple search error:', error)
     return []
@@ -478,11 +613,13 @@ async function searchOpenLibraryMultiple(title: string, author?: string, limit: 
 }
 
 // Search Google Books and return multiple results
-async function searchGoogleBooksMultiple(title: string, author?: string, limit: number = 10): Promise<Array<{ isbn?: string; data: Partial<Book> }>> {
+async function searchGoogleBooksMultiple(title: string, author?: string, limit: number = 40, publisher?: string, subject?: string): Promise<Array<{ isbn?: string; data: Partial<Book> }>> {
   try {
     const API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_API_KEY
     let query = title
     if (author) query += ` inauthor:${author}`
+    if (publisher) query += ` inpublisher:${publisher}`
+    if (subject) query += ` subject:${subject}`
     
     const params = new URLSearchParams()
     params.append('q', query)
@@ -498,6 +635,7 @@ async function searchGoogleBooksMultiple(title: string, author?: string, limit: 
     const data = await response.json()
     if (!data.items || data.items.length === 0) return []
 
+    // Keep all results — even those without ISBNs (older editions)
     return data.items.map((item: any) => {
       const volumeInfo = item.volumeInfo
       const isbn13 = volumeInfo.industryIdentifiers?.find((id: any) => id.type === 'ISBN_13')?.identifier
@@ -517,12 +655,13 @@ async function searchGoogleBooksMultiple(title: string, author?: string, limit: 
           categories: volumeInfo.categories,
           isbn13,
           isbn10,
+          googleBooksId: item.id,
           coverImageUrl: volumeInfo.imageLinks?.thumbnail?.replace('http:', 'https:'),
           language: volumeInfo.language,
           dataSources: ['Google Books'],
         }
       }
-    }).filter((result: any) => result.isbn)
+    })
   } catch (error) {
     console.error('Google Books multiple search error:', error)
     return []
@@ -532,9 +671,10 @@ async function searchGoogleBooksMultiple(title: string, author?: string, limit: 
 // NEW: Search for multiple book results
 export async function searchBookMultiple(
   query: string,
-  onProgress?: (current: number, total: number, status: string) => void
+  onProgress?: (current: number, total: number, status: string) => void,
+  hints?: SearchHints
 ): Promise<Array<Partial<Book> & { isbn?: string }>> {
-  console.log('🔎 Smart search (multiple results):', query)
+  console.log('🔎 Smart search (multiple results):', query, hints ? `with hints: ${JSON.stringify(hints)}` : '')
 
   // Stage 1: Detect input type
   const isbn = detectISBN(query)
@@ -548,47 +688,75 @@ export async function searchBookMultiple(
   }
 
   // Stage 2: Text search - get multiple results from both APIs
-  const { title, author } = parseQuery(query)
+  const { title, author, publisher, subject, place, year, language } = parseQuery(query)
 
-  if (onProgress) onProgress(1, 3, 'Searching multiple sources...')
+  // Merge form-field hints with parsed query params (parsed takes precedence)
+  const pub = publisher || hints?.publisher
+  const subj = subject || hints?.subject
+  const plc = place || hints?.place
+  const yr = year || hints?.year
+  const lang = language || hints?.language
+
+  if (onProgress) onProgress(1, 4, 'Searching multiple sources...')
 
   // Search both Google Books and Open Library in parallel
   const [googleResults, openLibResults] = await Promise.all([
-    searchGoogleBooksMultiple(title!, author, 10),
-    searchOpenLibraryMultiple(title!, author, 10)
+    searchGoogleBooksMultiple(title!, author, 40, pub, subj),
+    searchOpenLibraryMultiple(title!, author, 40, pub, subj, plc, yr, lang)
   ])
 
-  if (onProgress) onProgress(2, 3, 'Found results, enriching data...')
+  if (onProgress) onProgress(2, 4, 'Found results, enriching data...')
 
-  // Combine and deduplicate by ISBN
+  // Combine and deduplicate by ISBN (or by title+author for ISBN-less results)
   const resultsMap = new Map<string, Partial<Book> & { isbn?: string }>()
+  let noIsbnCounter = 0
 
   // Add Google Books results first (usually better quality)
   for (const result of googleResults) {
-    if (result.isbn) {
-      resultsMap.set(result.isbn, { ...result.data, isbn: result.isbn })
-    }
+    const key = result.isbn || `g-${result.data.googleBooksId || `no-isbn-${noIsbnCounter++}`}`
+    resultsMap.set(key, { ...result.data, isbn: result.isbn })
   }
 
   // Merge Open Library results
   for (const result of openLibResults) {
+    const key = result.isbn || `ol-${(result as any).key || `no-isbn-${noIsbnCounter++}`}`
     if (result.isbn) {
       const existing = resultsMap.get(result.isbn)
       if (existing) {
         // Merge data from both sources
         resultsMap.set(result.isbn, mergeBookData(existing, result.data, 'Combined'))
       } else {
-        resultsMap.set(result.isbn, { ...result.data, isbn: result.isbn })
+        resultsMap.set(key, { ...result.data, isbn: result.isbn })
       }
+    } else {
+      resultsMap.set(key, { ...result.data, isbn: undefined })
+    }
+  }
+
+  // Stage 3: Fetch editions for the top Open Library work match
+  // This finds older/rare editions that don't show up in basic search
+  if (onProgress) onProgress(3, 4, 'Fetching older editions...')
+  const topOLWork = openLibResults.find(r => (r as any).key)
+  if (topOLWork && (topOLWork as any).key) {
+    try {
+      const editions = await fetchOpenLibraryEditions((topOLWork as any).key, 30)
+      for (const ed of editions) {
+        const key = ed.isbn || `ol-ed-${noIsbnCounter++}`
+        if (ed.isbn && resultsMap.has(ed.isbn)) continue // skip duplicates
+        resultsMap.set(key, { ...ed.data, isbn: ed.isbn })
+      }
+      console.log(`📚 Added ${editions.length} edition variants from Open Library`)
+    } catch (e) {
+      console.warn('Edition fetch failed, continuing with existing results')
     }
   }
 
   const results = Array.from(resultsMap.values())
 
-  if (onProgress) onProgress(3, 3, `Found ${results.length} results`)
+  if (onProgress) onProgress(4, 4, `Found ${results.length} results`)
 
   console.log(`✅ Found ${results.length} unique books`)
-  return results.slice(0, 20) // Return max 20 results
+  return results.slice(0, 50) // Return max 50 results
 }
 
 // Lookup book info by ISBN using multiple APIs with progress callback

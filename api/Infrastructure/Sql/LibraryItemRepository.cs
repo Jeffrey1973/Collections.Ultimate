@@ -32,6 +32,10 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
                 Condition,
                 AcquiredOn,
                 Price,
+                ReadStatus,
+                CompletedDate,
+                DateStarted,
+                UserRating,
                 MetadataJson,
                 CreatedUtc
             )
@@ -51,6 +55,10 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
                 @Condition,
                 @AcquiredOn,
                 @Price,
+                @ReadStatus,
+                @CompletedDate,
+                @DateStarted,
+                @UserRating,
                 @MetadataJson,
                 @CreatedUtc
             );
@@ -73,6 +81,10 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
             item.Condition,
             AcquiredOn = item.AcquiredOn is null ? (DateTime?)null : item.AcquiredOn.Value.ToDateTime(TimeOnly.MinValue),
             item.Price,
+            item.ReadStatus,
+            item.CompletedDate,
+            item.DateStarted,
+            item.UserRating,
             item.MetadataJson,
             item.CreatedUtc
         }, cancellationToken: ct));
@@ -96,6 +108,10 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
                 Condition,
                 AcquiredOn,
                 Price,
+                ReadStatus,
+                CompletedDate,
+                DateStarted,
+                UserRating,
                 MetadataJson,
                 CreatedUtc
             from dbo.LibraryItem
@@ -105,6 +121,18 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
         using var conn = _connectionFactory.Create();
         var row = await conn.QuerySingleOrDefaultAsync<ItemRow>(new CommandDefinition(sql, new { Id = id.Value }, cancellationToken: ct));
         return row is null ? null : Map(row);
+    }
+
+    public async Task<bool> DeleteAsync(ItemId id, CancellationToken ct)
+    {
+        const string sql = """
+            delete from dbo.LibraryItem
+            where Id = @Id;
+            """;
+
+        using var conn = _connectionFactory.Create();
+        var affected = await conn.ExecuteAsync(new CommandDefinition(sql, new { Id = id.Value }, cancellationToken: ct));
+        return affected > 0;
     }
 
     public async Task<ItemFullResponse?> GetFullByIdAsync(ItemId id, CancellationToken ct)
@@ -123,6 +151,10 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
                 i.Condition,
                 i.AcquiredOn,
                 i.Price,
+                i.ReadStatus,
+                i.CompletedDate,
+                i.DateStarted,
+                i.UserRating,
                 i.MetadataJson as ItemMetadataJson,
                 i.CreatedUtc as ItemCreatedUtc,
                 w.Id as WorkId,
@@ -302,6 +334,10 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
             Condition = mainRow.Condition,
             AcquiredOn = mainRow.AcquiredOn is null ? null : DateOnly.FromDateTime(mainRow.AcquiredOn.Value),
             Price = mainRow.Price,
+            ReadStatus = mainRow.ReadStatus,
+            CompletedDate = mainRow.CompletedDate,
+            DateStarted = mainRow.DateStarted,
+            UserRating = mainRow.UserRating,
             MetadataJson = mainRow.ItemMetadataJson,
             CreatedUtc = mainRow.ItemCreatedUtc,
             Work = new WorkResponse
@@ -358,6 +394,10 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
         Condition = r.Condition,
         AcquiredOn = r.AcquiredOn is null ? null : DateOnly.FromDateTime(r.AcquiredOn.Value),
         Price = r.Price,
+        ReadStatus = r.ReadStatus,
+        CompletedDate = r.CompletedDate,
+        DateStarted = r.DateStarted,
+        UserRating = r.UserRating,
         MetadataJson = r.MetadataJson,
         CreatedUtc = r.CreatedUtc
     };
@@ -377,6 +417,10 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
         string? Condition,
         DateTime? AcquiredOn,
         decimal? Price,
+        string? ReadStatus,
+        string? CompletedDate,
+        string? DateStarted,
+        decimal? UserRating,
         string? MetadataJson,
         DateTimeOffset CreatedUtc);
 
@@ -393,6 +437,10 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
         string? Condition,
         DateTime? AcquiredOn,
         decimal? Price,
+        string? ReadStatus,
+        string? CompletedDate,
+        string? DateStarted,
+        decimal? UserRating,
         string? ItemMetadataJson,
         DateTimeOffset ItemCreatedUtc,
         Guid WorkId,

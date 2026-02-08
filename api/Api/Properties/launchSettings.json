@@ -18,7 +18,6 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "DOTNET_ENVIRONMENT": "Development",
-        "ASPNETCORE_URLS": "http://localhost:5259",
         "ConnectionStrings__Collections": "Server=(localdb)\\MSSQLLocalDB;Database=CollectionsUltimate;Trusted_Connection=True;TrustServerCertificate=True"
       }
     },

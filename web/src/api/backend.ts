@@ -1,6 +1,6 @@
 // Backend API client for Collections Ultimate
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5258'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5259'
 
 // TODO: Replace with actual householdId from authentication
 const DEV_HOUSEHOLD_ID = '00000000-0000-0000-0000-000000000000' // Replace with real ID
@@ -19,6 +19,8 @@ export interface CreateBookIngestRequest {
     subtitle?: string
     sortTitle?: string
     description?: string
+    originalTitle?: string
+    language?: string
     metadata?: Record<string, any> // JSONB for extended work fields
   }
   edition: {
@@ -28,6 +30,11 @@ export interface CreateBookIngestRequest {
     publishedYear?: number
     pageCount?: number
     description?: string
+    format?: string
+    binding?: string
+    editionStatement?: string
+    placeOfPublication?: string
+    language?: string
     identifiers: Array<{
       identifierTypeId: number
       value: string
@@ -45,6 +52,10 @@ export interface CreateBookIngestRequest {
     condition?: string
     acquiredOn?: string
     price?: number
+    readStatus?: string
+    completedDate?: string
+    dateStarted?: string
+    userRating?: number
     metadata?: Record<string, any> // JSONB for extended item fields
   }
   contributors?: Array<{
@@ -61,6 +72,11 @@ export interface CreateBookIngestRequest {
     schemeId: number
     text: string
   }>
+  series?: {
+    name: string
+    volumeNumber?: string
+    ordinal?: number
+  }
 }
 
 // Response types from OpenAPI spec
@@ -76,6 +92,10 @@ export interface ItemResponse {
   condition?: string
   acquiredOn?: string
   price?: number
+  readStatus?: string
+  completedDate?: string
+  dateStarted?: string
+  userRating?: number
   notes?: string
   title?: string
   subtitle?: string
@@ -84,6 +104,55 @@ export interface ItemResponse {
   tags?: string[]
   subjects?: Array<{ schemeId: number; text: string }>
   metadata?: Record<string, any> // JSONB extended fields
+}
+
+/** Flat search result returned by the list endpoint */
+export interface ItemSearchResponse {
+  itemId: string
+  workId: string
+  editionId?: string
+  kind: number
+  title: string
+  subtitle?: string
+  barcode?: string
+  location?: string
+  status?: string
+  condition?: string
+  acquiredOn?: string
+  price?: number
+  readStatus?: string
+  completedDate?: string
+  dateStarted?: string
+  userRating?: number
+  createdUtc: string
+  workTitle?: string
+  authors?: string
+  tags?: string[]
+  subjects?: string[]
+  // Work fields
+  workDescription?: string
+  originalTitle?: string
+  workLanguage?: string
+  workMetadataJson?: string
+  // Edition fields
+  publisher?: string
+  publishedYear?: number
+  pageCount?: number
+  coverImageUrl?: string
+  format?: string
+  binding?: string
+  editionStatement?: string
+  placeOfPublication?: string
+  editionLanguage?: string
+  editionMetadataJson?: string
+  // Item metadata
+  itemMetadataJson?: string
+  notes?: string
+  // Identifiers (pipe-delimited "type:value" pairs)
+  identifiers?: string
+  // Series
+  seriesName?: string
+  volumeNumber?: string
 }
 
 export interface WorkResponse {
@@ -302,6 +371,34 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
   if (book.librariesOwning) itemMetadata.librariesOwning = book.librariesOwning
   if (book.nearbyLibraries) itemMetadata.nearbyLibraries = book.nearbyLibraries
   
+  // Physical location name
+  if (book.pln) itemMetadata.pln = book.pln
+
+  // Reading status — promoted to real columns
+  if (book.readCount) itemMetadata.readCount = book.readCount
+
+  // Ownership & Acquisition — acquiredDate promoted to acquiredOn real column
+  if (book.acquisitionSource) itemMetadata.acquisitionSource = book.acquisitionSource
+  if (book.fromWhere) itemMetadata.fromWhere = book.fromWhere
+  if (book.purchasePrice) itemMetadata.purchasePrice = book.purchasePrice
+  if (book.bookValue) itemMetadata.bookValue = book.bookValue
+  if (book.copies) itemMetadata.copies = book.copies
+  if (book.privateNotes) itemMetadata.privateNotes = book.privateNotes
+  if (book.collections) itemMetadata.collections = book.collections
+
+  // Lending
+  if (book.lendingPatron) itemMetadata.lendingPatron = book.lendingPatron
+  if (book.lendingStatus) itemMetadata.lendingStatus = book.lendingStatus
+  if (book.lendingStart) itemMetadata.lendingStart = book.lendingStart
+  if (book.lendingEnd) itemMetadata.lendingEnd = book.lendingEnd
+
+  // LibraryThing IDs
+  if (book.ltBookId) itemMetadata.ltBookId = book.ltBookId
+  if (book.ltWorkId) itemMetadata.ltWorkId = book.ltWorkId
+
+  // Classification extras
+  if (book.deweyWording) itemMetadata.deweyWording = book.deweyWording
+
   // Custom fields
   if (book.customFields) itemMetadata.customFields = book.customFields
 
@@ -450,6 +547,8 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
       subtitle: book.subtitle,
       sortTitle: book.title,
       description: book.description,
+      originalTitle: book.originalTitle,
+      language: book.language,
       metadata: Object.keys(workMetadata).length > 0 ? workMetadata : undefined
     },
     edition: {
@@ -459,6 +558,11 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
       publishedYear: extractYear(book.publishedDate),
       pageCount: book.pageCount,
       description: book.description,
+      format: book.format,
+      binding: book.binding,
+      editionStatement: book.editionStatement,
+      placeOfPublication: book.placeOfPublication,
+      language: book.language,
       identifiers,
       metadata: Object.keys(editionMetadata).length > 0 ? editionMetadata : undefined
     },
@@ -470,13 +574,22 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
       location: book.location,
       status: book.status,
       condition: book.condition,
-      acquiredOn: book.dateAdded,
+      acquiredOn: book.acquiredDate || book.dateAdded,
       price: book.price,
+      readStatus: book.readStatus,
+      completedDate: book.completedDate,
+      dateStarted: book.dateStarted,
+      userRating: book.userRating,
       metadata: Object.keys(itemMetadata).length > 0 ? itemMetadata : undefined
     },
     contributors: contributors.length > 0 ? contributors : undefined,
     tags: book.categories || [],
-    subjects: subjects.length > 0 ? subjects : undefined
+    subjects: subjects.length > 0 ? subjects : undefined,
+    series: book.series ? {
+      name: book.series,
+      volumeNumber: book.volumeNumber,
+      ordinal: undefined
+    } : undefined
   }
 }
 
@@ -580,7 +693,7 @@ export async function getItems(
     take?: number
     skip?: number
   }
-): Promise<ItemResponse[]> {
+): Promise<ItemSearchResponse[]> {
   const queryParams = new URLSearchParams()
   if (params?.q) queryParams.append('q', params.q)
   if (params?.tag) queryParams.append('tag', params.tag)
@@ -670,6 +783,10 @@ export async function updateItem(
     price?: number
     notes?: string
     tags?: string[]
+    readStatus?: string
+    completedDate?: string
+    dateStarted?: string
+    userRating?: number
   }
 ): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/items/${itemId}`, {
@@ -683,6 +800,382 @@ export async function updateItem(
   if (!response.ok) {
     throw new Error('Failed to update item')
   }
+}
+
+/**
+ * Move an item from one household to another.
+ * Since the backend PATCH doesn't support changing householdId,
+ * we re-create the book in the target household, then delete the original.
+ *
+ * Builds the CreateBookIngestRequest DIRECTLY from the raw ItemResponse
+ * (avoids the lossy round-trip through mapItemResponseToBook → mapBookToIngestRequest).
+ */
+export async function moveItemToHousehold(
+  itemId: string,
+  targetHouseholdId: string
+): Promise<void> {
+  // 1. Fetch the full item data (raw response)
+  const resp = await fetch(`${API_BASE_URL}/api/items/${itemId}`)
+  if (!resp.ok) throw new Error('Failed to fetch item for move')
+  const raw: any = await resp.json()
+
+  console.log('📦 Moving item', raw.title, 'to household', targetHouseholdId)
+
+  // 2. Build ingest request directly from the raw JSON
+  //    The API response has contributors, identifiers, subjects, series at the TOP level,
+  //    NOT nested inside work/edition as the TS types suggest.
+  const ingestRequest: CreateBookIngestRequest = {
+    work: {
+      title: raw.work?.title || raw.title || 'Untitled',
+      subtitle: raw.work?.subtitle || raw.subtitle,
+      sortTitle: raw.work?.sortTitle,
+      description: raw.work?.description,
+      originalTitle: raw.work?.originalTitle,
+      language: raw.work?.language,
+      metadata: raw.work?.metadataJson ? JSON.parse(raw.work.metadataJson) : raw.work?.metadata,
+    },
+    edition: {
+      editionTitle: raw.edition?.editionTitle,
+      editionSubtitle: raw.edition?.editionSubtitle,
+      publisher: raw.edition?.publisher,
+      publishedYear: raw.edition?.publishedYear,
+      pageCount: raw.edition?.pageCount,
+      description: raw.edition?.description,
+      format: raw.edition?.format,
+      binding: raw.edition?.binding,
+      editionStatement: raw.edition?.editionStatement,
+      placeOfPublication: raw.edition?.placeOfPublication,
+      language: raw.edition?.language,
+      // Identifiers: top-level in response, or nested inside edition
+      identifiers: (raw.identifiers || raw.edition?.identifiers || []).map((id: any) => ({
+        identifierTypeId: id.identifierTypeId,
+        value: id.value,
+        isPrimary: id.isPrimary,
+      })),
+      metadata: raw.edition?.metadataJson ? JSON.parse(raw.edition.metadataJson) : raw.edition?.metadata,
+    },
+    item: {
+      title: raw.title,
+      subtitle: raw.subtitle,
+      notes: raw.notes,
+      barcode: raw.barcode,
+      location: raw.location,
+      // Don't copy status — item starts fresh in new household
+      condition: raw.condition,
+      acquiredOn: raw.acquiredOn,
+      price: raw.price,
+      readStatus: raw.readStatus,
+      completedDate: raw.completedDate,
+      dateStarted: raw.dateStarted,
+      userRating: raw.userRating,
+      metadata: raw.metadataJson ? JSON.parse(raw.metadataJson) : raw.metadata,
+    },
+    // Contributors: top-level in response, or nested inside work
+    contributors: (raw.contributors || raw.work?.contributors || []).map((c: any) => ({
+      personId: c.personId,
+      displayName: c.displayName,
+      roleId: c.roleId,
+      ordinal: c.ordinal,
+      sortName: c.sortName,
+      birthYear: c.birthYear,
+      deathYear: c.deathYear,
+    })),
+    // Tags: top-level, may be strings or objects
+    tags: (raw.tags || []).map((t: any) => typeof t === 'string' ? t : (t.name || t.tagName || t.text || String(t))),
+    // Subjects: top-level, need schemeId + text
+    subjects: (raw.subjects || []).map((s: any) => ({
+      schemeId: s.schemeId,
+      text: s.text,
+    })),
+    // Series: top-level
+    series: raw.series ? {
+      name: raw.series.name || raw.series.seriesName,
+      volumeNumber: raw.series.volumeNumber,
+      ordinal: raw.series.ordinal,
+    } : undefined,
+  }
+
+  console.log('📤 Move ingest request:', JSON.stringify(ingestRequest, null, 2))
+
+  // 3. Create the book in the target household
+  await createBook(ingestRequest, targetHouseholdId)
+
+  // 4. Delete the original item permanently
+  await hardDeleteItem(itemId)
+
+  console.log('✅ Move complete — book created in target & original deleted')
+}
+
+/** Soft-delete: set item status to 'Previously Owned' */
+export async function softDeleteItem(itemId: string): Promise<void> {
+  return updateItem(itemId, { status: 'Previously Owned' })
+}
+
+/** Restore a soft-deleted item back to active */
+export async function restoreItem(itemId: string): Promise<void> {
+  return updateItem(itemId, { status: '' })
+}
+
+/** Hard delete: permanently remove item (via POST to delete endpoint or PATCH status) */
+export async function hardDeleteItem(itemId: string): Promise<void> {
+  // Try DELETE endpoint first; if not available, mark as 'Deleted'
+  const response = await fetch(`${API_BASE_URL}/api/items/${itemId}`, {
+    method: 'DELETE',
+  })
+  if (response.status === 404 || response.status === 405) {
+    // No DELETE endpoint — use status marker
+    return updateItem(itemId, { status: 'Deleted' })
+  }
+  if (!response.ok) {
+    throw new Error('Failed to delete item')
+  }
+}
+
+/**
+ * Map an ItemSearchResponse (from the list endpoint) to a frontend Book object.
+ * The list endpoint now returns comprehensive data including work/edition fields,
+ * metadata JSON, identifiers, tags, subjects, and series.
+ */
+export function mapSearchResultToBook(item: ItemSearchResponse): any {
+  // Parse metadata JSON blobs
+  const workMetadata = parseJson(item.workMetadataJson)
+  const editionMetadata = parseJson(item.editionMetadataJson)
+  const itemMetadata = parseJson(item.itemMetadataJson)
+
+  // Parse identifiers from "type:value||type:value" format
+  const identifiers = parseIdentifiers(item.identifiers)
+
+  // Cover URL — stored URL > metadata > Google Books > Open Library fallback by ISBN
+  const isbn13 = identifiers[IdentifierType.ISBN13]
+  const isbn10 = identifiers[IdentifierType.ISBN10]
+  const coverIsbn = isbn13 || isbn10 || item.barcode
+
+  // Build ordered list of all possible cover URLs
+  const coverCandidates: string[] = [
+    item.coverImageUrl,
+    editionMetadata.coverImageUrl,
+    editionMetadata.coverImageMedium,
+    editionMetadata.coverImageThumbnail,
+    editionMetadata.coverImageSmallThumbnail,
+    coverIsbn ? `https://books.google.com/books/content?vid=isbn:${coverIsbn}&printsec=frontcover&img=1&zoom=1` : undefined,
+    coverIsbn ? `https://covers.openlibrary.org/b/isbn/${coverIsbn}-M.jpg?default=false` : undefined,
+  ].filter((u): u is string => !!u)
+
+  const coverImageUrl = coverCandidates[0]
+  const coverImageFallbacks = coverCandidates.slice(1)
+
+  return {
+    // Core identification
+    id: item.itemId,
+    workId: item.workId,
+    householdId: undefined, // not in list response
+    title: item.title || item.workTitle || 'Untitled',
+    subtitle: item.subtitle,
+    author: item.authors || 'Unknown Author',
+    dateAdded: item.acquiredOn || item.createdUtc || new Date().toISOString(),
+
+    // Basic Info
+    originalTitle: item.originalTitle || workMetadata.originalTitle,
+    coverImageUrl,
+    coverImageFallbacks,
+    description: item.workDescription,
+    publisher: item.publisher,
+    publishedDate: item.publishedYear ? `${item.publishedYear}` : undefined,
+    pageCount: item.pageCount,
+    language: item.editionLanguage || item.workLanguage || editionMetadata.language,
+
+    // Edition
+    edition: editionMetadata.edition,
+    editionStatement: item.editionStatement || editionMetadata.editionStatement,
+    format: item.format || editionMetadata.format,
+    binding: item.binding || editionMetadata.binding,
+    placeOfPublication: item.placeOfPublication || editionMetadata.placeOfPublication,
+    printType: editionMetadata.printType,
+
+    // Physical
+    dimensions: editionMetadata.dimensions,
+    dimensionsHeight: editionMetadata.dimensionsHeight,
+    dimensionsWidth: editionMetadata.dimensionsWidth,
+    dimensionsThickness: editionMetadata.dimensionsThickness,
+    weight: editionMetadata.weight,
+    shippingWeight: editionMetadata.shippingWeight,
+    pagination: editionMetadata.pagination,
+    physicalDescription: editionMetadata.physicalDescription,
+
+    // Categories & Classification
+    mainCategory: workMetadata.mainCategory,
+    categories: item.tags || [],
+    subjects: item.subjects || [],
+    deweyDecimal: workMetadata.deweyDecimal,
+    deweyEdition: workMetadata.deweyEdition,
+    lcc: workMetadata.lcc,
+    lccEdition: workMetadata.lccEdition,
+    callNumber: workMetadata.callNumber,
+    bisacCodes: workMetadata.bisacCodes,
+    thema: workMetadata.thema,
+    fastSubjects: workMetadata.fastSubjects,
+
+    // Identifiers
+    isbn: identifiers[IdentifierType.ISBN13] || identifiers[IdentifierType.ISBN10] || item.barcode,
+    isbn10: identifiers[IdentifierType.ISBN10],
+    isbn13: identifiers[IdentifierType.ISBN13],
+    issn: identifiers[IdentifierType.ISSN],
+    lccn: identifiers[IdentifierType.LCCN],
+    oclcNumber: identifiers[IdentifierType.OCLC],
+    oclcWorkId: identifiers[IdentifierType.OCLCWorkId],
+    doi: identifiers[IdentifierType.DOI],
+    asin: identifiers[IdentifierType.ASIN],
+    googleBooksId: identifiers[IdentifierType.GoogleBooksId],
+    goodreadsId: identifiers[IdentifierType.GoodreadsId],
+    libraryThingId: identifiers[IdentifierType.LibraryThingId],
+    olid: identifiers[IdentifierType.OpenLibraryId],
+    dnbId: identifiers[IdentifierType.DNB],
+    bnfId: identifiers[IdentifierType.BNF],
+    nlaId: identifiers[IdentifierType.NLA],
+    ndlId: identifiers[IdentifierType.NDL],
+    lacId: identifiers[IdentifierType.LAC],
+    blId: identifiers[IdentifierType.BL],
+
+    // Series
+    series: item.seriesName,
+    seriesInfo: item.seriesName ? `${item.seriesName}${item.volumeNumber ? ` #${item.volumeNumber}` : ''}` : workMetadata.seriesInfo,
+    volumeNumber: item.volumeNumber || workMetadata.volumeNumber,
+    numberOfVolumes: workMetadata.numberOfVolumes,
+
+    // Item fields
+    barcode: item.barcode,
+    location: item.location,
+    pln: itemMetadata.pln,
+    readStatus: item.readStatus || itemMetadata.readStatus,
+    completedDate: item.completedDate || itemMetadata.completedDate,
+    dateStarted: item.dateStarted || itemMetadata.dateStarted,
+    readCount: itemMetadata.readCount,
+    userRating: item.userRating,
+    status: item.status,
+    condition: item.condition || itemMetadata.condition,
+    price: item.price,
+    notes: item.notes,
+
+    // Ownership & Acquisition
+    acquiredDate: item.acquiredOn || itemMetadata.acquiredDate,
+    acquisitionSource: itemMetadata.acquisitionSource,
+    fromWhere: itemMetadata.fromWhere,
+    purchasePrice: itemMetadata.purchasePrice,
+    bookValue: itemMetadata.bookValue,
+    copies: itemMetadata.copies,
+    privateNotes: itemMetadata.privateNotes,
+    collections: itemMetadata.collections,
+
+    // Lending
+    lendingPatron: itemMetadata.lendingPatron,
+    lendingStatus: itemMetadata.lendingStatus,
+    lendingStart: itemMetadata.lendingStart,
+    lendingEnd: itemMetadata.lendingEnd,
+
+    // LibraryThing IDs
+    ltBookId: itemMetadata.ltBookId,
+    ltWorkId: itemMetadata.ltWorkId,
+
+    // Classification extras
+    deweyWording: itemMetadata.deweyWording,
+
+    // Content
+    tableOfContents: workMetadata.tableOfContents,
+    firstSentence: workMetadata.firstSentence,
+    excerpt: workMetadata.excerpt,
+
+    // Ratings & Reading level
+    readingAge: workMetadata.readingAge,
+    lexileScore: workMetadata.lexileScore,
+    arLevel: workMetadata.arLevel,
+    averageRating: workMetadata.averageRating,
+    ratingsCount: workMetadata.ratingsCount,
+    communityRating: workMetadata.communityRating,
+
+    // Historical & Theological
+    churchHistoryPeriod: workMetadata.churchHistoryPeriod,
+    dateWritten: workMetadata.dateWritten,
+    religiousTradition: workMetadata.religiousTradition,
+
+    // Publication dates
+    originalPublicationDate: editionMetadata.originalPublicationDate,
+    copyright: editionMetadata.copyright,
+    printingHistory: editionMetadata.printingHistory,
+    maturityRating: editionMetadata.maturityRating,
+
+    // Cover images (multiple sizes from metadata)
+    coverImageSmallThumbnail: editionMetadata.coverImageSmallThumbnail,
+    coverImageThumbnail: editionMetadata.coverImageThumbnail,
+    coverImageSmall: editionMetadata.coverImageSmall,
+    coverImageMedium: editionMetadata.coverImageMedium,
+    coverImageLarge: editionMetadata.coverImageLarge,
+    coverImageExtraLarge: editionMetadata.coverImageExtraLarge,
+
+    // Google Books specific
+    etag: editionMetadata.etag,
+    selfLink: editionMetadata.selfLink,
+    contentVersion: editionMetadata.contentVersion,
+    canonicalVolumeLink: editionMetadata.canonicalVolumeLink,
+    textSnippet: editionMetadata.textSnippet,
+
+    // Sale info
+    saleCountry: editionMetadata.saleCountry,
+    saleability: editionMetadata.saleability,
+    onSaleDate: editionMetadata.onSaleDate,
+    isEbook: editionMetadata.isEbook,
+    listPriceAmount: editionMetadata.listPriceAmount,
+    listPriceCurrency: editionMetadata.listPriceCurrency,
+    retailPriceAmount: editionMetadata.retailPriceAmount,
+    retailPriceCurrency: editionMetadata.retailPriceCurrency,
+    buyLink: editionMetadata.buyLink,
+
+    // Access info
+    viewability: editionMetadata.viewability,
+    embeddable: editionMetadata.embeddable,
+    publicDomain: editionMetadata.publicDomain,
+    textToSpeechPermission: editionMetadata.textToSpeechPermission,
+    epubAvailable: editionMetadata.epubAvailable,
+    pdfAvailable: editionMetadata.pdfAvailable,
+    webReaderLink: editionMetadata.webReaderLink,
+    readingModesText: editionMetadata.readingModesText,
+    readingModesImage: editionMetadata.readingModesImage,
+    allowAnonLogging: editionMetadata.allowAnonLogging,
+
+    // Item metadata
+    currentPrice: itemMetadata.currentPrice,
+    discount: itemMetadata.discount,
+    usedPrices: itemMetadata.usedPrices,
+    availability: itemMetadata.availability,
+    bestsellerRank: itemMetadata.bestsellerRank,
+    librariesOwning: itemMetadata.librariesOwning,
+    nearbyLibraries: itemMetadata.nearbyLibraries,
+    customFields: itemMetadata.customFields,
+  }
+}
+
+/** Safely parse a JSON string, returning {} on failure */
+function parseJson(json?: string): Record<string, any> {
+  if (!json) return {}
+  try { return JSON.parse(json) }
+  catch { return {} }
+}
+
+/** Parse pipe-delimited "type:value" identifier string into a lookup map */
+function parseIdentifiers(raw?: string): Record<number, string> {
+  if (!raw) return {}
+  const map: Record<number, string> = {}
+  raw.split('||').forEach(pair => {
+    const colonIndex = pair.indexOf(':')
+    if (colonIndex > 0) {
+      const typeId = parseInt(pair.substring(0, colonIndex))
+      const value = pair.substring(colonIndex + 1)
+      if (!isNaN(typeId) && value) {
+        // Keep first (primary) identifier for each type
+        if (!map[typeId]) map[typeId] = value
+      }
+    }
+  })
+  return map
 }
 
 /**
@@ -785,15 +1278,27 @@ export function mapItemResponseToBook(item: ItemResponse): any {
   const publishedYear = item.edition?.publishedYear
   const pageCount = item.edition?.pageCount
   
-  // Generate cover URL - only if edition has cover (don't create 404s)
-  const coverImageUrl = item.editionId && item.edition?.coverImageUrl !== undefined
-    ? `${API_BASE_URL}/api/editions/${item.editionId}/cover` 
-    : undefined
-
   // Extract work metadata
   const workMetadata = item.work?.metadata || {}
   const editionMetadata = item.edition?.metadata || {}
   const itemMetadata = item.metadata || {}
+
+  // Generate cover URL - stored URL > metadata > Google Books > Open Library fallback by ISBN
+  const coverIsbn = finalIsbn13 || finalIsbn10 || isbnFromBarcode
+
+  // Build ordered list of all possible cover URLs
+  const coverCandidates2: string[] = [
+    item.edition?.coverImageUrl,
+    editionMetadata.coverImageUrl,
+    editionMetadata.coverImageMedium,
+    editionMetadata.coverImageThumbnail,
+    editionMetadata.coverImageSmallThumbnail,
+    coverIsbn ? `https://books.google.com/books/content?vid=isbn:${coverIsbn}&printsec=frontcover&img=1&zoom=1` : undefined,
+    coverIsbn ? `https://covers.openlibrary.org/b/isbn/${coverIsbn}-M.jpg?default=false` : undefined,
+  ].filter((u): u is string => !!u)
+
+  const coverImageUrl = coverCandidates2[0]
+  const coverImageFallbacks = coverCandidates2.slice(1)
 
   // Build comprehensive Book object
   return {
@@ -808,6 +1313,7 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     subtitle,
     originalTitle: workMetadata.originalTitle,
     coverImageUrl,
+    coverImageFallbacks,
     description,
     publisher,
     publishedDate: publishedYear ? `${publishedYear}` : undefined,
@@ -816,13 +1322,20 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     
     // Categories & Classification
     mainCategory: workMetadata.mainCategory,
-    categories: item.tags?.map((tag: any) => {
-      if (typeof tag === 'string') return tag
-      if (tag && typeof tag === 'object') {
-        return tag.name || tag.tagName || tag.text || tag.value || JSON.stringify(tag)
+    categories: (() => {
+      const tags = item.tags?.map((tag: any) => {
+        if (typeof tag === 'string') return tag
+        if (tag && typeof tag === 'object') {
+          return tag.name || tag.tagName || tag.text || tag.value || JSON.stringify(tag)
+        }
+        return String(tag)
+      }) || []
+      // Also pull categories from work metadata if tags are empty
+      if (tags.length === 0 && workMetadata.mainCategory) {
+        return [workMetadata.mainCategory]
       }
-      return String(tag)
-    }) || [],
+      return tags
+    })(),
     subjects: item.subjects?.map((s: any) => s.text) || [],
     deweyDecimal: workMetadata.deweyDecimal,
     deweyEdition: workMetadata.deweyEdition,
@@ -960,10 +1473,39 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     
     // User-Specific
     location: item.location,
+    pln: itemMetadata.pln,
+    readStatus: item.readStatus || itemMetadata.readStatus,
+    completedDate: item.completedDate || itemMetadata.completedDate,
+    dateStarted: item.dateStarted || itemMetadata.dateStarted,
+    readCount: itemMetadata.readCount,
+    userRating: item.userRating,
     status: item.status,
-    condition: item.condition,
+    condition: item.condition || itemMetadata.condition,
     notes: item.notes,
     price: item.price,
+
+    // Ownership & Acquisition
+    acquiredDate: item.acquiredOn || itemMetadata.acquiredDate,
+    acquisitionSource: itemMetadata.acquisitionSource,
+    fromWhere: itemMetadata.fromWhere,
+    purchasePrice: itemMetadata.purchasePrice,
+    bookValue: itemMetadata.bookValue,
+    copies: itemMetadata.copies,
+    privateNotes: itemMetadata.privateNotes,
+    collections: itemMetadata.collections,
+
+    // Lending
+    lendingPatron: itemMetadata.lendingPatron,
+    lendingStatus: itemMetadata.lendingStatus,
+    lendingStart: itemMetadata.lendingStart,
+    lendingEnd: itemMetadata.lendingEnd,
+
+    // LibraryThing IDs
+    ltBookId: itemMetadata.ltBookId,
+    ltWorkId: itemMetadata.ltWorkId,
+
+    // Classification extras
+    deweyWording: itemMetadata.deweyWording,
     
     // Custom Fields
     customFields: itemMetadata.customFields

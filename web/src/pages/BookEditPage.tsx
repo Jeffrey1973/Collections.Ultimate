@@ -61,6 +61,10 @@ function BookEditPage() {
         location: (formData as any).location,
         status: (formData as any).status,
         condition: (formData as any).condition,
+        readStatus: (formData as any).readStatus,
+        completedDate: (formData as any).completedDate,
+        dateStarted: (formData as any).dateStarted,
+        userRating: (formData as any).userRating ? Number((formData as any).userRating) : undefined,
         tags: categories,
       })
 
@@ -322,6 +326,24 @@ function BookEditPage() {
               fontSize: '0.875rem'
             }}
           />
+        ) : fieldConfig.type === 'select' && fieldConfig.options ? (
+          <select
+            value={value as string || ''}
+            onChange={(e) => handleFieldChange(fieldConfig.key, e.target.value || undefined)}
+            style={{
+              width: '100%',
+              padding: '0.5rem',
+              borderRadius: '4px',
+              border: '1px solid #cbd5e1',
+              fontSize: '0.875rem',
+              backgroundColor: 'white'
+            }}
+          >
+            <option value="">— Select —</option>
+            {fieldConfig.options.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
         ) : (
           <input
             type="text"

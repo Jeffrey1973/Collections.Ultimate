@@ -3,20 +3,36 @@ import { useNavigate } from 'react-router-dom'
 import BookCard from '../components/BookCard.tsx'
 import CardCatalogView from '../components/CardCatalogView.tsx'
 import { Book } from '../api/books'
-import { getItems, mapItemResponseToBook } from '../api/backend'
+import { getItems, mapItemResponseToBook, mapSearchResultToBook, updateItem, softDeleteItem, hardDeleteItem } from '../api/backend'
 import { useHousehold } from '../context/HouseholdContext'
+import { FIELD_DEFINITIONS, FIELD_CATEGORIES, type FieldConfig, type CategoryKey } from '../config/field-config'
 
-// Available fields for display configuration
-const DISPLAY_FIELDS = [
-  { key: 'author', label: 'Author' },
-  { key: 'publisher', label: 'Publisher' },
-  { key: 'publishedDate', label: 'Year' },
-  { key: 'pageCount', label: 'Pages' },
-  { key: 'isbn', label: 'ISBN' },
-  { key: 'language', label: 'Language' },
-  { key: 'format', label: 'Format' },
-  { key: 'subjects', label: 'Subjects' },
-]
+// Default fields shown in list/grid/catalog views
+const DEFAULT_DISPLAY_FIELDS = ['author', 'publisher', 'publishedDate', 'isbn']
+
+// Fields that don't make sense to show as columns (images, large text, internal IDs)
+const EXCLUDED_DISPLAY_KEYS = new Set([
+  'id', 'householdId', 'dateAdded', 'title', 'subtitle', // always shown separately
+  'coverImageUrl', 'coverImageSmallThumbnail', 'coverImageThumbnail',
+  'coverImageSmall', 'coverImageMedium', 'coverImageLarge', 'coverImageExtraLarge',
+  'description', 'tableOfContents', 'excerpt', 'firstSentence', 'textSnippet', // too long for columns
+  'etag', 'selfLink', 'contentVersion', // internal
+])
+
+// All choosable fields, grouped by category
+const ALL_DISPLAY_FIELDS: { key: string; label: string; category: CategoryKey }[] = FIELD_DEFINITIONS
+  .filter(f => !EXCLUDED_DISPLAY_KEYS.has(f.key as string))
+  .map(f => ({ key: f.key as string, label: f.label, category: f.category }))
+
+const STORAGE_KEY = 'library_display_fields'
+
+function loadSavedFields(): string[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) return JSON.parse(saved)
+  } catch { /* ignore */ }
+  return DEFAULT_DISPLAY_FIELDS
+}
 
 function LibraryPage() {
   const { selectedHousehold, isLoading: isLoadingHousehold } = useHousehold()
@@ -26,8 +42,18 @@ function LibraryPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'list' | 'grid' | 'catalog'>('list')
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showPreviouslyOwned, setShowPreviouslyOwned] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const [displayFields, setDisplayFields] = useState<string[]>(['author', 'publisher', 'publishedDate', 'isbn'])
+  const [displayFields, setDisplayFields] = useState<string[]>(loadSavedFields)
+  const [fieldSearch, setFieldSearch] = useState('')
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+
+  // Persist display field choices
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(displayFields))
+  }, [displayFields])
 
   useEffect(() => {
     if (selectedHousehold) {
@@ -51,8 +77,8 @@ function LibraryPage() {
       
       console.log('📦 Items response:', result)
       
-      // Use the comprehensive mapping function to extract ALL fields from backend
-      const mappedBooks: Book[] = result.map(mapItemResponseToBook)
+      // Map search results to Book objects — the list endpoint now includes tags/subjects
+      const mappedBooks: Book[] = result.map(mapSearchResultToBook)
       
       setBooks(mappedBooks)
     } catch (err) {
@@ -66,6 +92,39 @@ function LibraryPage() {
   function handleSearch(e: React.FormEvent) {
     e.preventDefault()
     loadBooks()
+  }
+
+  // Filter books based on ownership status
+  const activeBooks = books.filter(b => (b as any).status !== 'Previously Owned' && (b as any).status !== 'Deleted')
+  const previouslyOwned = books.filter(b => (b as any).status === 'Previously Owned')
+  const displayedBooks = showPreviouslyOwned ? previouslyOwned : activeBooks
+
+  async function handleSoftDelete(bookId: string) {
+    try {
+      setIsDeleting(true)
+      await softDeleteItem(bookId)
+      setDeleteTarget(null)
+      loadBooks()
+    } catch (err) {
+      console.error('Soft delete failed:', err)
+      alert('Failed to mark book as previously owned')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  async function handleHardDelete(bookId: string) {
+    try {
+      setIsDeleting(true)
+      await hardDeleteItem(bookId)
+      setDeleteTarget(null)
+      loadBooks()
+    } catch (err) {
+      console.error('Hard delete failed:', err)
+      alert('Failed to delete book')
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   // Show loading state while households are loading
@@ -87,7 +146,20 @@ function LibraryPage() {
       <div className="page-header">
         <h1 className="page-title">My Library</h1>
         <p className="page-subtitle">
-          {books.length} book{books.length !== 1 ? 's' : ''} in your collection
+          {activeBooks.length} book{activeBooks.length !== 1 ? 's' : ''} in your collection
+          {previouslyOwned.length > 0 && (
+            <button
+              onClick={() => setShowPreviouslyOwned(!showPreviouslyOwned)}
+              style={{
+                marginLeft: '1rem', padding: '0.2rem 0.6rem', borderRadius: '12px',
+                border: '1px solid #d1d5db', fontSize: '0.8rem', cursor: 'pointer',
+                backgroundColor: showPreviouslyOwned ? '#fef3c7' : '#f8fafc',
+                color: showPreviouslyOwned ? '#92400e' : '#64748b', fontWeight: 500,
+              }}
+            >
+              📦 {previouslyOwned.length} previously owned {showPreviouslyOwned ? '(showing)' : ''}
+            </button>
+          )}
         </p>
       </div>
 
@@ -129,30 +201,186 @@ function LibraryPage() {
           padding: '1.5rem',
           borderRadius: '8px',
           marginBottom: '1.5rem',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+          maxHeight: '60vh',
+          overflow: 'auto',
         }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
-            Display Fields
-          </h3>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-            {DISPLAY_FIELDS.map(field => (
-              <label key={field.key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={displayFields.includes(field.key)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setDisplayFields([...displayFields, field.key])
-                    } else {
-                      setDisplayFields(displayFields.filter(f => f !== field.key))
-                    }
-                  }}
-                  style={{ cursor: 'pointer' }}
-                />
-                <span style={{ fontSize: '0.875rem' }}>{field.label}</span>
-              </label>
-            ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>
+              Display Fields ({displayFields.length} selected)
+            </h3>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                className="btn btn-secondary"
+                style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
+                onClick={() => setDisplayFields(DEFAULT_DISPLAY_FIELDS)}
+              >
+                Reset to Default
+              </button>
+              <button
+                className="btn btn-secondary"
+                style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
+                onClick={() => setDisplayFields([])}
+              >
+                Clear All
+              </button>
+            </div>
           </div>
+
+          {/* Search filter for fields */}
+          <input
+            type="text"
+            placeholder="Search fields..."
+            value={fieldSearch}
+            onChange={(e) => setFieldSearch(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '0.5rem 0.75rem',
+              border: '1px solid #e2e8f0',
+              borderRadius: '6px',
+              fontSize: '0.875rem',
+              marginBottom: '1rem',
+              outline: 'none',
+            }}
+          />
+
+          {/* Currently selected fields (reorderable summary) */}
+          {displayFields.length > 0 && (
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '0.35rem', fontWeight: 500 }}>
+                Active columns (in order):
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                {displayFields.map((key) => {
+                  const def = ALL_DISPLAY_FIELDS.find(f => f.key === key)
+                  return (
+                    <span
+                      key={key}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.3rem',
+                        background: '#dbeafe',
+                        color: '#1e40af',
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                        padding: '0.2rem 0.5rem',
+                        borderRadius: 9999,
+                      }}
+                    >
+                      {def?.label ?? key}
+                      <button
+                        onClick={() => setDisplayFields(displayFields.filter(f => f !== key))}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: '#1e40af',
+                          fontSize: '0.85rem',
+                          padding: 0,
+                          lineHeight: 1,
+                        }}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Field categories */}
+          {FIELD_CATEGORIES
+            .filter(cat => {
+              const fieldsInCat = ALL_DISPLAY_FIELDS.filter(f => f.category === cat.key)
+              if (fieldsInCat.length === 0) return false
+              if (!fieldSearch.trim()) return true
+              const q = fieldSearch.toLowerCase()
+              return fieldsInCat.some(f => f.label.toLowerCase().includes(q) || f.key.toLowerCase().includes(q))
+            })
+            .map(cat => {
+              const fieldsInCat = ALL_DISPLAY_FIELDS
+                .filter(f => f.category === cat.key)
+                .filter(f => {
+                  if (!fieldSearch.trim()) return true
+                  const q = fieldSearch.toLowerCase()
+                  return f.label.toLowerCase().includes(q) || f.key.toLowerCase().includes(q)
+                })
+              const selectedInCat = fieldsInCat.filter(f => displayFields.includes(f.key)).length
+              const isExpanded = expandedCategories.has(cat.key) || fieldSearch.trim().length > 0
+
+              return (
+                <div key={cat.key} style={{ marginBottom: '0.5rem' }}>
+                  <button
+                    onClick={() => {
+                      const next = new Set(expandedCategories)
+                      if (next.has(cat.key)) next.delete(cat.key)
+                      else next.add(cat.key)
+                      setExpandedCategories(next)
+                    }}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.5rem 0.5rem',
+                      background: selectedInCat > 0 ? '#f0f9ff' : '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '0.875rem',
+                      fontWeight: 500,
+                      color: '#334155',
+                      textAlign: 'left' as const,
+                    }}
+                  >
+                    <span>{isExpanded ? '▼' : '▶'}</span>
+                    <span>{cat.icon} {cat.label}</span>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#64748b' }}>
+                      {selectedInCat}/{fieldsInCat.length}
+                    </span>
+                  </button>
+
+                  {isExpanded && (
+                    <div style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '0.5rem 1rem',
+                      padding: '0.5rem 0.75rem 0.5rem 1.75rem',
+                    }}>
+                      {fieldsInCat.map(field => (
+                        <label
+                          key={field.key}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.4rem',
+                            cursor: 'pointer',
+                            fontSize: '0.8rem',
+                            minWidth: '140px',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={displayFields.includes(field.key)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setDisplayFields([...displayFields, field.key])
+                              } else {
+                                setDisplayFields(displayFields.filter(f => f !== field.key))
+                              }
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          />
+                          {field.label}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
         </div>
       )}
 
@@ -172,24 +400,26 @@ function LibraryPage() {
         </div>
       )}
 
-      {!isLoading && !error && books.length === 0 && (
+      {!isLoading && !error && displayedBooks.length === 0 && (
         <div className="empty-state">
           <div className="empty-state-icon">📚</div>
-          <p>No books in your library yet.</p>
-          <p>Add your first book to get started!</p>
+          {showPreviouslyOwned 
+            ? <p>No previously owned books.</p>
+            : <><p>No books in your library yet.</p><p>Add your first book to get started!</p></>
+          }
         </div>
       )}
 
-      {!isLoading && !error && books.length > 0 && (
+      {!isLoading && !error && displayedBooks.length > 0 && (
         <>
           {viewMode === 'list' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {books.map((book) => (
+              {displayedBooks.map((book) => (
                 <div
                   key={book.id}
                   onClick={() => navigate(`/book/${book.id}`)}
                   style={{
-                    backgroundColor: 'white',
+                    backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white',
                     padding: '1rem 1.5rem',
                     borderRadius: '8px',
                     boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
@@ -213,7 +443,19 @@ function LibraryPage() {
                     <img
                       src={book.coverImageUrl}
                       alt={book.title}
-                      onError={(e) => e.currentTarget.style.display = 'none'}
+                      data-fallbacks={JSON.stringify(book.coverImageFallbacks || [])}
+                      data-fallback-index="0"
+                      onError={(e) => {
+                        const img = e.currentTarget
+                        const fallbacks: string[] = JSON.parse(img.dataset.fallbacks || '[]')
+                        const idx = parseInt(img.dataset.fallbackIndex || '0', 10)
+                        if (idx < fallbacks.length) {
+                          img.dataset.fallbackIndex = String(idx + 1)
+                          img.src = fallbacks[idx]
+                        } else {
+                          img.style.display = 'none'
+                        }
+                      }}
                       style={{
                         width: '50px',
                         height: '75px',
@@ -256,10 +498,20 @@ function LibraryPage() {
                   {/* Configurable fields */}
                   {displayFields.map(fieldKey => {
                     const value = (book as any)[fieldKey]
-                    if (!value || (Array.isArray(value) && value.length === 0)) return null
+                    if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) return null
                     
-                    const fieldLabel = DISPLAY_FIELDS.find(f => f.key === fieldKey)?.label || fieldKey
-                    const displayValue = Array.isArray(value) ? value.join(', ') : value
+                    const fieldDef = ALL_DISPLAY_FIELDS.find(f => f.key === fieldKey)
+                    const fieldLabel = fieldDef?.label || fieldKey
+                    let displayValue: string
+                    if (Array.isArray(value)) {
+                      displayValue = value.map(v => typeof v === 'object' ? (v.text || v.name || JSON.stringify(v)) : v).join(', ')
+                    } else if (typeof value === 'boolean') {
+                      displayValue = value ? 'Yes' : 'No'
+                    } else if (typeof value === 'object') {
+                      displayValue = JSON.stringify(value)
+                    } else {
+                      displayValue = String(value)
+                    }
                     
                     return (
                       <div 
@@ -289,6 +541,22 @@ function LibraryPage() {
                       </div>
                     )
                   })}
+
+                  {/* Trash icon — stop propagation so click doesn't navigate */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: book.id, title: book.title }) }}
+                    title="Remove book"
+                    style={{
+                      flexShrink: 0, width: '32px', height: '32px', borderRadius: '6px',
+                      border: 'none', background: 'transparent', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '0.9rem', opacity: 0.3, transition: 'opacity 0.15s',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                    onMouseLeave={e => (e.currentTarget.style.opacity = '0.3')}
+                  >
+                    🗑️
+                  </button>
                 </div>
               ))}
             </div>
@@ -296,9 +564,9 @@ function LibraryPage() {
 
           {viewMode === 'grid' && (
             <div className="book-grid">
-              {books.map((book) => (
+              {displayedBooks.map((book) => (
                 <div key={book.id} onClick={() => navigate(`/book/${book.id}`)} style={{ cursor: 'pointer' }}>
-                  <BookCard book={book} />
+                  <BookCard book={book} displayFields={displayFields} />
                 </div>
               ))}
             </div>
@@ -311,14 +579,80 @@ function LibraryPage() {
               gap: '2rem',
               alignItems: 'center',
             }}>
-              {books.map((book) => (
+              {displayedBooks.map((book) => (
                 <div key={book.id} onClick={() => navigate(`/book/${book.id}`)} style={{ cursor: 'pointer' }}>
-                  <CardCatalogView book={book} />
+                  <CardCatalogView book={book} displayFields={displayFields} />
                 </div>
               ))}
             </div>
           )}
         </>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        }} onClick={() => setDeleteTarget(null)}>
+          <div style={{
+            backgroundColor: 'white', borderRadius: '12px', padding: '2rem',
+            maxWidth: '480px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+              Remove "{deleteTarget.title}"?
+            </h3>
+            <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+              Choose how you'd like to handle this book:
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <button
+                onClick={() => handleSoftDelete(deleteTarget.id)}
+                disabled={isDeleting}
+                style={{
+                  padding: '1rem', borderRadius: '8px', border: '2px solid #f59e0b',
+                  backgroundColor: '#fffbeb', cursor: 'pointer', textAlign: 'left',
+                  opacity: isDeleting ? 0.6 : 1,
+                }}
+              >
+                <div style={{ fontWeight: 600, color: '#92400e', marginBottom: '0.25rem' }}>
+                  📦 Mark as Previously Owned
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#a16207' }}>
+                  Keep the record but mark it as no longer in your collection.
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleHardDelete(deleteTarget.id)}
+                disabled={isDeleting}
+                style={{
+                  padding: '1rem', borderRadius: '8px', border: '2px solid #ef4444',
+                  backgroundColor: '#fef2f2', cursor: 'pointer', textAlign: 'left',
+                  opacity: isDeleting ? 0.6 : 1,
+                }}
+              >
+                <div style={{ fontWeight: 600, color: '#dc2626', marginBottom: '0.25rem' }}>
+                  🗑️ Permanently Delete
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#b91c1c' }}>
+                  Remove the book completely. This cannot be undone.
+                </div>
+              </button>
+
+              <button
+                onClick={() => setDeleteTarget(null)}
+                style={{
+                  padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0',
+                  backgroundColor: '#f8fafc', cursor: 'pointer', fontWeight: 600, color: '#64748b',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -42,6 +42,12 @@ function Layout({ children }: LayoutProps) {
             <Link to="/add-book" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 500 }}>
               Add Book
             </Link>
+            <Link to="/import" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 500 }}>
+              Import
+            </Link>
+            <Link to="/households" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 500 }}>
+              Households
+            </Link>
             <Link to="/api-test" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 500 }}>
               API Test
             </Link>

@@ -5,7 +5,7 @@
 
 import type { Book } from '../api/books'
 
-export type FieldType = 'text' | 'textarea' | 'number' | 'url' | 'date' | 'boolean' | 'array' | 'json'
+export type FieldType = 'text' | 'textarea' | 'number' | 'url' | 'date' | 'boolean' | 'array' | 'json' | 'select'
 
 export interface FieldConfig {
   key: keyof Book
@@ -16,6 +16,7 @@ export interface FieldConfig {
   placeholder?: string
   required?: boolean
   source?: 'google-books' | 'open-library' | 'user' | 'multiple'
+  options?: string[]
 }
 
 export type CategoryKey = 
@@ -1079,6 +1080,39 @@ export const FIELD_DEFINITIONS: FieldConfig[] = [
     type: 'textarea',
     category: 'user',
     source: 'google-books',
+  },
+  {
+    key: 'pln',
+    label: 'Physical Location',
+    type: 'text',
+    category: 'user',
+    description: 'Where this book is physically stored (e.g., Living Room Bookshelf, Office)',
+    source: 'user',
+  },
+  {
+    key: 'readStatus',
+    label: 'Read Status',
+    type: 'select',
+    category: 'user',
+    description: 'Your reading status for this book',
+    source: 'user',
+    options: ['Unread', 'Currently Reading', 'Read', 'Did Not Finish'],
+  },
+  {
+    key: 'completedDate',
+    label: 'Date Completed',
+    type: 'text',
+    category: 'user',
+    description: 'Date you finished reading this book',
+    source: 'user',
+  },
+  {
+    key: 'readCount',
+    label: 'Read Count',
+    type: 'number',
+    category: 'user',
+    description: 'Number of times you have read this book',
+    source: 'user',
   },
   {
     key: 'notes',

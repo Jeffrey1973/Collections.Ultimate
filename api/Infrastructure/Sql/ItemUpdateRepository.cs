@@ -25,7 +25,11 @@ public sealed class ItemUpdateRepository : IItemUpdateRepository
                 Condition = case when @Condition_IsSpecified = 1 then @Condition else Condition end,
                 AcquiredOn = case when @AcquiredOn_IsSpecified = 1 then @AcquiredOn else AcquiredOn end,
                 Price = case when @Price_IsSpecified = 1 then @Price else Price end,
-                Notes = case when @Notes_IsSpecified = 1 then @Notes else Notes end
+                Notes = case when @Notes_IsSpecified = 1 then @Notes else Notes end,
+                ReadStatus = case when @ReadStatus_IsSpecified = 1 then @ReadStatus else ReadStatus end,
+                CompletedDate = case when @CompletedDate_IsSpecified = 1 then @CompletedDate else CompletedDate end,
+                DateStarted = case when @DateStarted_IsSpecified = 1 then @DateStarted else DateStarted end,
+                UserRating = case when @UserRating_IsSpecified = 1 then @UserRating else UserRating end
             where Id = @Id;
             """;
 
@@ -55,7 +59,19 @@ public sealed class ItemUpdateRepository : IItemUpdateRepository
                 Price = patch.Price.Value,
 
                 Notes_IsSpecified = patch.Notes.IsSpecified ? 1 : 0,
-                Notes = NormalizeNullable(patch.Notes.Value)
+                Notes = NormalizeNullable(patch.Notes.Value),
+
+                ReadStatus_IsSpecified = patch.ReadStatus.IsSpecified ? 1 : 0,
+                ReadStatus = NormalizeNullable(patch.ReadStatus.Value),
+
+                CompletedDate_IsSpecified = patch.CompletedDate.IsSpecified ? 1 : 0,
+                CompletedDate = NormalizeNullable(patch.CompletedDate.Value),
+
+                DateStarted_IsSpecified = patch.DateStarted.IsSpecified ? 1 : 0,
+                DateStarted = NormalizeNullable(patch.DateStarted.Value),
+
+                UserRating_IsSpecified = patch.UserRating.IsSpecified ? 1 : 0,
+                UserRating = patch.UserRating.Value
             }, cancellationToken: ct));
 
             return affected > 0;

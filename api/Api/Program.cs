@@ -294,6 +294,10 @@ app.MapPost("/api/households/{householdId:guid}/items", async (
         Condition = request.Condition,
         AcquiredOn = request.AcquiredOn,
         Price = request.Price,
+        ReadStatus = request.ReadStatus,
+        CompletedDate = request.CompletedDate,
+        DateStarted = request.DateStarted,
+        UserRating = request.UserRating,
         MetadataJson = request.MetadataJson
     };
 
@@ -370,6 +374,10 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
         Condition = request.Item.Condition,
         AcquiredOn = request.Item.AcquiredOn,
         Price = request.Item.Price,
+        ReadStatus = request.Item.ReadStatus,
+        CompletedDate = request.Item.CompletedDate,
+        DateStarted = request.Item.DateStarted,
+        UserRating = request.Item.UserRating,
         MetadataJson = request.Item.MetadataJson
     };
 
@@ -446,6 +454,12 @@ app.MapPost("/api/editions/{editionId:guid}/identifiers", async (Guid editionId,
     return Results.Ok();
 });
 
+app.MapDelete("/api/items/{itemId:guid}", async (Guid itemId, ILibraryItemRepository repo, CancellationToken ct) =>
+{
+    var deleted = await repo.DeleteAsync(new ItemId(itemId), ct);
+    return deleted ? Results.NoContent() : Results.NotFound();
+});
+
 app.MapPatch("/api/items/{itemId:guid}", async (
     Guid itemId,
     PatchItemRequest request,
@@ -466,7 +480,11 @@ app.MapPatch("/api/items/{itemId:guid}", async (
         Condition: ToPatchString(request.Condition),
         AcquiredOn: ToPatchDateOnly(request.AcquiredOn),
         Price: ToPatchDecimal(request.Price),
-        Notes: ToPatchString(request.Notes));
+        Notes: ToPatchString(request.Notes),
+        ReadStatus: ToPatchString(request.ReadStatus),
+        CompletedDate: ToPatchString(request.CompletedDate),
+        DateStarted: ToPatchString(request.DateStarted),
+        UserRating: ToPatchDecimal(request.UserRating));
 
     try
     {
@@ -478,9 +496,9 @@ app.MapPatch("/api/items/{itemId:guid}", async (
     }
 
     // Handle tags if provided
-    if (request.TagNames is not null && request.TagNames.Value.ValueKind != JsonValueKind.Undefined)
+    if (request.Tags is not null && request.Tags.Value.ValueKind != JsonValueKind.Undefined)
     {
-        var tagNames = ParseTagNames(request.TagNames.Value);
+        var tagNames = ParseTagNames(request.Tags.Value);
 
         if (tagNames is not null)
         {
@@ -721,6 +739,10 @@ string? Status,
 string? Condition,
 DateOnly? AcquiredOn,
 decimal? Price,
+string? ReadStatus,
+string? CompletedDate,
+string? DateStarted,
+decimal? UserRating,
 string? MetadataJson);
 
 public sealed record AddContributorRequest(
@@ -771,6 +793,10 @@ string? Status,
 string? Condition,
 DateOnly? AcquiredOn,
 decimal? Price,
+string? ReadStatus,
+string? CompletedDate,
+string? DateStarted,
+decimal? UserRating,
 string? MetadataJson);
 
 public sealed record CreateBookIngestEdition(
@@ -811,5 +837,9 @@ JsonElement? Condition,
 JsonElement? AcquiredOn,
 JsonElement? Price,
 JsonElement? Notes,
-JsonElement? TagNames);
+JsonElement? Tags,
+JsonElement? ReadStatus,
+JsonElement? CompletedDate,
+JsonElement? DateStarted,
+JsonElement? UserRating);
 

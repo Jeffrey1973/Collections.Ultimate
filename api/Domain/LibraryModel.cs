@@ -117,6 +117,12 @@ public sealed class LibraryItem
     public DateOnly? AcquiredOn { get; init; }
     public decimal? Price { get; init; }
 
+    // Promoted reading/user fields (formerly in MetadataJson)
+    public string? ReadStatus { get; init; }
+    public string? CompletedDate { get; init; }
+    public string? DateStarted { get; init; }
+    public decimal? UserRating { get; init; }
+
     /// <summary>
     /// Flexible JSON storage for type-specific metadata (e.g., ISBN, authors for books).
     /// </summary>
@@ -192,6 +198,10 @@ public sealed class ItemFullResponse
     public string? Condition { get; init; }
     public DateOnly? AcquiredOn { get; init; }
     public decimal? Price { get; init; }
+    public string? ReadStatus { get; init; }
+    public string? CompletedDate { get; init; }
+    public string? DateStarted { get; init; }
+    public decimal? UserRating { get; init; }
     public string? MetadataJson { get; init; }
     public DateTimeOffset CreatedUtc { get; init; }
 

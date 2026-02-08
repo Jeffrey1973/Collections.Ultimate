@@ -7,4 +7,8 @@ public sealed record ItemInventoryPatch(
     PatchField<string> Condition,
     PatchField<DateOnly?> AcquiredOn,
     PatchField<decimal?> Price,
-    PatchField<string> Notes);
+    PatchField<string> Notes,
+    PatchField<string> ReadStatus,
+    PatchField<string> CompletedDate,
+    PatchField<string> DateStarted,
+    PatchField<decimal?> UserRating);
