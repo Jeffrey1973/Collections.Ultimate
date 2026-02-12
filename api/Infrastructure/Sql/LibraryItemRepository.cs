@@ -36,6 +36,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
                 CompletedDate,
                 DateStarted,
                 UserRating,
+                LibraryOrder,
                 MetadataJson,
                 CreatedUtc
             )
@@ -59,6 +60,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
                 @CompletedDate,
                 @DateStarted,
                 @UserRating,
+                @LibraryOrder,
                 @MetadataJson,
                 @CreatedUtc
             );
@@ -85,6 +87,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
             item.CompletedDate,
             item.DateStarted,
             item.UserRating,
+            item.LibraryOrder,
             item.MetadataJson,
             item.CreatedUtc
         }, cancellationToken: ct));
@@ -112,6 +115,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
                 CompletedDate,
                 DateStarted,
                 UserRating,
+                LibraryOrder,
                 MetadataJson,
                 CreatedUtc
             from dbo.LibraryItem
@@ -155,6 +159,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
                 i.CompletedDate,
                 i.DateStarted,
                 i.UserRating,
+                i.LibraryOrder,
                 i.MetadataJson as ItemMetadataJson,
                 i.CreatedUtc as ItemCreatedUtc,
                 w.Id as WorkId,
@@ -338,6 +343,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
             CompletedDate = mainRow.CompletedDate,
             DateStarted = mainRow.DateStarted,
             UserRating = mainRow.UserRating,
+            LibraryOrder = mainRow.LibraryOrder,
             MetadataJson = mainRow.ItemMetadataJson,
             CreatedUtc = mainRow.ItemCreatedUtc,
             Work = new WorkResponse
@@ -398,6 +404,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
         CompletedDate = r.CompletedDate,
         DateStarted = r.DateStarted,
         UserRating = r.UserRating,
+        LibraryOrder = r.LibraryOrder,
         MetadataJson = r.MetadataJson,
         CreatedUtc = r.CreatedUtc
     };
@@ -421,6 +428,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
         string? CompletedDate,
         string? DateStarted,
         decimal? UserRating,
+        int? LibraryOrder,
         string? MetadataJson,
         DateTimeOffset CreatedUtc);
 
@@ -441,6 +449,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
         string? CompletedDate,
         string? DateStarted,
         decimal? UserRating,
+        int? LibraryOrder,
         string? ItemMetadataJson,
         DateTimeOffset ItemCreatedUtc,
         Guid WorkId,

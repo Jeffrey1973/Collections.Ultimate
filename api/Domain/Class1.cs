@@ -9,10 +9,11 @@ public sealed class Account
     public AccountId Id { get; init; } = new(Guid.NewGuid());
     public required string DisplayName { get; init; }
     public string? Email { get; init; }
+    public string? Auth0Sub { get; init; }
     public DateTimeOffset CreatedUtc { get; init; } = DateTimeOffset.UtcNow;
 }
 
-public sealed record AccountHousehold(AccountId AccountId, HouseholdId HouseholdId, DateTimeOffset CreatedUtc);
+public sealed record AccountHousehold(AccountId AccountId, HouseholdId HouseholdId, string Role, DateTimeOffset CreatedUtc);
 
 public sealed class Household
 {

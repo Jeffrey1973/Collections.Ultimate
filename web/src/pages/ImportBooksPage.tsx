@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { useHousehold } from '../context/HouseholdContext'
-import { createBook, mapBookToIngestRequest } from '../api/backend'
+import { createBook, mapBookToIngestRequest, getDedupIndex, normalizeTitle } from '../api/backend'
+import type { DedupIndex } from '../api/backend'
 import { lookupBookByISBN, searchBookMultiple } from '../api/books'
 import type { Book } from '../api/books'
 
@@ -16,8 +17,9 @@ interface ImportRow {
   rowIndex: number
   raw: ParsedRow
   mapped: Record<string, any>
-  status: 'pending' | 'enriching' | 'enriched' | 'saving' | 'saved' | 'error' | 'skipped'
+  status: 'pending' | 'enriching' | 'enriched' | 'saving' | 'saved' | 'error' | 'skipped' | 'duplicate'
   error?: string
+  dupReason?: string
   enrichedBook?: Record<string, any>
   apiSources?: string[]
 }
@@ -53,6 +55,11 @@ const CUSTOM_CSV_COLUMN_MAP: Record<string, { field: string; label: string }> = 
   'volume': { field: 'volumeNumber', label: 'Volume Number' },
   'barcode': { field: 'barcode', label: 'Barcode' },
   'condition': { field: 'condition', label: 'Condition' },
+  'library order': { field: 'libraryOrder', label: 'Library Order' },
+  'libraryorder': { field: 'libraryOrder', label: 'Library Order' },
+  'library #': { field: 'libraryOrder', label: 'Library Order' },
+  'entry order': { field: 'libraryOrder', label: 'Library Order' },
+  'order': { field: 'libraryOrder', label: 'Library Order' },
 }
 
 const LIBRARYTHING_COLUMN_MAP: Record<string, { field: string; label: string }> = {
@@ -242,6 +249,7 @@ const COMMON_TARGET_FIELDS = [
   { value: 'averageRating', label: 'Average Rating' },
   { value: 'userReviewText', label: 'Review' },
   { value: 'condition', label: 'Condition' },
+  { value: 'libraryOrder', label: 'Library Order' },
   { value: 'dateAdded', label: 'Date Added / Entry Date' },
   { value: 'deweyDecimal', label: 'Dewey Decimal' },
   { value: 'deweyWording', label: 'Dewey Wording' },
@@ -302,6 +310,7 @@ function mapRow(raw: ParsedRow, columnMapping: Record<string, string>, source: I
     switch (targetField) {
       case 'pageCount':
       case 'copies':
+      case 'libraryOrder':
         mapped[targetField] = parseInt(val, 10) || undefined
         break
       case 'tags':
@@ -311,7 +320,7 @@ function mapRow(raw: ParsedRow, columnMapping: Record<string, string>, source: I
         mapped.categories = val.split(/[,;]/).map((t: string) => t.trim()).filter(Boolean)
         break
       case 'subjects':
-        mapped.subjects = val.split(/[,;]/).map((t: string) => t.trim()).filter(Boolean)
+        mapped.subjects = val.split(/[,;|]/).map((t: string) => t.trim()).filter(Boolean)
         break
       case 'collections':
         mapped.collections = val.split(/[,;]/).map((t: string) => t.trim()).filter(Boolean)
@@ -322,8 +331,10 @@ function mapRow(raw: ParsedRow, columnMapping: Record<string, string>, source: I
         break
       }
       case 'userRating':
-      case 'averageRating':
-        mapped[targetField] = parseFloat(val) || undefined
+      case 'averageRating': {
+        const rating = parseFloat(val)
+        mapped[targetField] = (!isNaN(rating) && rating >= 0) ? Math.round(Math.min(rating, 999) * 100) / 100 : undefined
+      }
         break
       case 'isbn13':
       case 'isbn10': {
@@ -416,7 +427,7 @@ export default function ImportBooksPage() {
   const [importRows, setImportRows] = useState<ImportRow[]>([])
   const [_isImporting, setIsImporting] = useState(false)
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, phase: '' })
-  const [importResults, setImportResults] = useState({ saved: 0, errors: 0, skipped: 0 })
+  const [importResults, setImportResults] = useState({ saved: 0, errors: 0, skipped: 0, duplicates: 0 })
   const abortRef = useRef(false)
 
   // ─── File handling ──────────────────────────────────────────────────────
@@ -483,12 +494,34 @@ export default function ImportBooksPage() {
     let saved = 0
     let errors = 0
     let skipped = 0
+    let duplicates = 0
+
+    // Fetch dedup index from backend (existing barcodes, titles, identifiers)
+    let dedupIndex: DedupIndex = { barcodes: [], normalizedTitles: [], identifiers: [] }
+    try {
+      setImportProgress({ current: 0, total, phase: 'Loading existing library for dedup check\u2026' })
+      dedupIndex = await getDedupIndex(selectedHousehold.id)
+    } catch (err) {
+      console.warn('Could not fetch dedup index, proceeding without dedup:', err)
+    }
+
+    // Build fast lookup sets
+    const existingBarcodes = new Set(dedupIndex.barcodes.map(b => b.toUpperCase()))
+    const existingTitles = new Set(dedupIndex.normalizedTitles.map(t => t.toUpperCase()))
+    const existingIdents = new Set(dedupIndex.identifiers.map(i => i.toUpperCase()))
 
     for (let i = 0; i < importRows.length; i++) {
       if (abortRef.current) break
 
       const row = importRows[i]
       const { mapped } = row
+
+      // Skip rows that were already saved successfully (safe re-run)
+      if (row.status === 'saved') {
+        saved++
+        setImportProgress({ current: i + 1, total, phase: `Already saved: "${mapped.title}"` })
+        continue
+      }
 
       // Skip rows with no title
       if (!mapped.title) {
@@ -499,6 +532,47 @@ export default function ImportBooksPage() {
         })
         skipped++
         setImportProgress({ current: i + 1, total, phase: `Skipped row ${i + 1} (no title)` })
+        continue
+      }
+
+      // ── Dedup check ─────────────────────────────────────────────────
+      const isbn = mapped.isbn13 || mapped.isbn10
+      let dupReason: string | undefined
+
+      // 1. Check by ISBN as barcode
+      if (!dupReason && isbn) {
+        const normIsbn = isbn.toString().replace(/[^0-9Xx]/g, '').toUpperCase()
+        if (existingBarcodes.has(normIsbn)) {
+          dupReason = `ISBN ${isbn} already in library (barcode match)`
+        }
+      }
+
+      // 2. Check by ISBN as edition identifier
+      if (!dupReason && isbn) {
+        const normIsbn = isbn.toString().replace(/[^0-9Xx]/g, '').toUpperCase()
+        const isbn13Key = `2:${normIsbn}` // IdentifierTypeId 2 = ISBN-13
+        const isbn10Key = `1:${normIsbn}` // IdentifierTypeId 1 = ISBN-10
+        if (existingIdents.has(isbn13Key.toUpperCase()) || existingIdents.has(isbn10Key.toUpperCase())) {
+          dupReason = `ISBN ${isbn} already in library (identifier match)`
+        }
+      }
+
+      // 3. Check by normalized title
+      if (!dupReason && mapped.title) {
+        const normTitle = normalizeTitle(mapped.title)
+        if (existingTitles.has(normTitle)) {
+          dupReason = `Title "${mapped.title}" already in library`
+        }
+      }
+
+      if (dupReason) {
+        setImportRows(prev => {
+          const next = [...prev]
+          next[i] = { ...next[i], status: 'duplicate', dupReason }
+          return next
+        })
+        duplicates++
+        setImportProgress({ current: i + 1, total, phase: `Duplicate: "${mapped.title}"` })
         continue
       }
 
@@ -623,6 +697,7 @@ export default function ImportBooksPage() {
         }
 
         if (location) bookForSave.location = location
+        if ((mapped as any).libraryOrder) bookForSave.libraryOrder = (mapped as any).libraryOrder
         if (Object.keys(metadata).length > 0) {
           bookForSave.metadata = metadata
         }
@@ -646,6 +721,10 @@ export default function ImportBooksPage() {
 
         await createBook(ingestRequest, selectedHousehold.id)
 
+        // Add to local dedup sets so later rows in this batch are caught
+        if (isbn) existingBarcodes.add(isbn.toString().replace(/[^0-9Xx]/g, '').toUpperCase())
+        if (mapped.title) existingTitles.add(normalizeTitle(mapped.title))
+
         setImportRows(prev => {
           const next = [...prev]
           next[i] = { ...next[i], status: 'saved', enrichedBook, apiSources }
@@ -668,7 +747,7 @@ export default function ImportBooksPage() {
       }
     }
 
-    setImportResults({ saved, errors, skipped })
+    setImportResults({ saved, errors, skipped, duplicates })
     setIsImporting(false)
     setStep('done')
   }, [importRows, selectedHousehold, source])
@@ -682,7 +761,7 @@ export default function ImportBooksPage() {
     setRawRows([])
     setColumnMapping({})
     setImportRows([])
-    setImportResults({ saved: 0, errors: 0, skipped: 0 })
+    setImportResults({ saved: 0, errors: 0, skipped: 0, duplicates: 0 })
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -1077,6 +1156,12 @@ export default function ImportBooksPage() {
                   <div style={{ color: '#64748b' }}>Skipped</div>
                 </div>
               )}
+              {importResults.duplicates > 0 && (
+                <div>
+                  <span style={{ fontWeight: 700, color: '#f59e0b', fontSize: '1.5rem' }}>{importResults.duplicates}</span>
+                  <div style={{ color: '#64748b' }}>Duplicates</div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1098,7 +1183,55 @@ export default function ImportBooksPage() {
                     backgroundColor: '#fff5f5',
                   }}>
                     <strong>{row.mapped.title}</strong>
-                    <span style={{ color: '#ef4444', marginLeft: '0.5rem', fontSize: '0.85rem' }}>
+                    {row.mapped.author && <span style={{ color: '#64748b', marginLeft: '0.5rem', fontSize: '0.85rem' }}>by {row.mapped.author}</span>}
+                    <div style={{ color: '#ef4444', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                      {row.error}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Duplicate details */}
+          {importResults.duplicates > 0 && (
+            <div style={{ marginTop: '1.5rem' }}>
+              <h3 style={{ fontWeight: 600, marginBottom: '0.5rem' }}>Duplicates Skipped</h3>
+              <div style={{ border: '1px solid #fde68a', borderRadius: '8px', overflow: 'hidden', maxHeight: '400px', overflowY: 'auto' }}>
+                {importRows.filter(r => r.status === 'duplicate').map((row, idx) => (
+                  <div key={idx} style={{
+                    padding: '0.75rem 1rem', borderTop: idx > 0 ? '1px solid #fde68a' : undefined,
+                    backgroundColor: '#fffbeb',
+                  }}>
+                    <strong>{row.mapped.title}</strong>
+                    {row.mapped.author && <span style={{ color: '#64748b', marginLeft: '0.5rem', fontSize: '0.85rem' }}>by {row.mapped.author}</span>}
+                    {(row.mapped.isbn13 || row.mapped.isbn10) && (
+                      <span style={{ color: '#94a3b8', marginLeft: '0.5rem', fontSize: '0.8rem' }}>
+                        ISBN: {row.mapped.isbn13 || row.mapped.isbn10}
+                      </span>
+                    )}
+                    <div style={{ color: '#b45309', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                      {row.dupReason}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Skipped details */}
+          {importResults.skipped > 0 && (
+            <div style={{ marginTop: '1.5rem' }}>
+              <h3 style={{ fontWeight: 600, marginBottom: '0.5rem' }}>Skipped</h3>
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
+                {importRows.filter(r => r.status === 'skipped').map((row, idx) => (
+                  <div key={idx} style={{
+                    padding: '0.75rem 1rem', borderTop: idx > 0 ? '1px solid #e2e8f0' : undefined,
+                    backgroundColor: '#f8fafc',
+                  }}>
+                    <strong>Row {row.rowIndex + 1}</strong>
+                    {row.mapped.title && <span style={{ marginLeft: '0.5rem' }}>{row.mapped.title}</span>}
+                    <span style={{ color: '#94a3b8', marginLeft: '0.5rem', fontSize: '0.85rem' }}>
                       {row.error}
                     </span>
                   </div>

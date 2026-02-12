@@ -4,18 +4,18 @@
 
 When running the API in `Development`, Swagger UI is available at:
 
-- `http://localhost:5258/swagger`
+- `http://localhost:5259/swagger`
 
 The OpenAPI document is also available at:
 
-- `http://localhost:5258/openapi/v1.json`
+- `http://localhost:5259/openapi/v1.json`
 
 ## Postman
 
 1. Open Postman
 2. Import `postman/CollectionsUltimate.postman_collection.json`
 3. Set collection variables:
-   - `baseUrl` (default `http://localhost:5258`)
+   - `baseUrl` (default `http://localhost:5259`)
    - `householdId` (paste an existing household GUID)
 
 Suggested flow:

@@ -124,6 +124,11 @@ public sealed class LibraryItem
     public decimal? UserRating { get; init; }
 
     /// <summary>
+    /// The order in which this book was entered into the library (1 = first).
+    /// </summary>
+    public int? LibraryOrder { get; init; }
+
+    /// <summary>
     /// Flexible JSON storage for type-specific metadata (e.g., ISBN, authors for books).
     /// </summary>
     public string? MetadataJson { get; init; }
@@ -202,6 +207,7 @@ public sealed class ItemFullResponse
     public string? CompletedDate { get; init; }
     public string? DateStarted { get; init; }
     public decimal? UserRating { get; init; }
+    public int? LibraryOrder { get; init; }
     public string? MetadataJson { get; init; }
     public DateTimeOffset CreatedUtc { get; init; }
 

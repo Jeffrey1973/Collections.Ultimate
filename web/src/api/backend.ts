@@ -5,6 +5,29 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5259
 // TODO: Replace with actual householdId from authentication
 const DEV_HOUSEHOLD_ID = '00000000-0000-0000-0000-000000000000' // Replace with real ID
 
+// ─── Dedup index for import ─────────────────────────────────────────────────
+
+export interface DedupIndex {
+  barcodes: string[]
+  normalizedTitles: string[]
+  identifiers: string[]
+}
+
+/**
+ * Fetch the dedup index for a household: existing barcodes, normalized titles, and identifiers.
+ * Used to skip duplicates during import.
+ */
+export async function getDedupIndex(householdId: string): Promise<DedupIndex> {
+  const resp = await fetch(`${API_BASE_URL}/api/households/${householdId}/library/dedup-index`)
+  if (!resp.ok) throw new Error('Failed to fetch dedup index')
+  return resp.json()
+}
+
+/** Normalize a title the same way the backend does (uppercase, collapse whitespace). */
+export function normalizeTitle(title: string): string {
+  return title.trim().replace(/\s+/g, ' ').toUpperCase()
+}
+
 // Types matching the backend API OpenAPI schema
 
 // ItemKind enum from OpenAPI spec
@@ -56,6 +79,7 @@ export interface CreateBookIngestRequest {
     completedDate?: string
     dateStarted?: string
     userRating?: number
+    libraryOrder?: number
     metadata?: Record<string, any> // JSONB for extended item fields
   }
   contributors?: Array<{
@@ -96,6 +120,7 @@ export interface ItemResponse {
   completedDate?: string
   dateStarted?: string
   userRating?: number
+  libraryOrder?: number
   notes?: string
   title?: string
   subtitle?: string
@@ -124,6 +149,7 @@ export interface ItemSearchResponse {
   completedDate?: string
   dateStarted?: string
   userRating?: number
+  libraryOrder?: number
   createdUtc: string
   workTitle?: string
   authors?: string
@@ -267,6 +293,33 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
     if (!dateStr) return undefined
     const match = dateStr.match(/\d{4}/)
     return match ? parseInt(match[0]) : undefined
+  }
+
+  // Helper to normalize a date string to YYYY-MM-DD for DateOnly fields.
+  // Returns undefined if the value can't be parsed into a valid YYYY-MM-DD.
+  const toDateOnly = (dateStr?: string | number | null): string | undefined => {
+    if (dateStr == null || dateStr === '') return undefined
+    const trimmed = String(dateStr).trim()
+    if (!trimmed) return undefined
+    // Already YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed
+    // ISO datetime — strip timezone/time portion
+    if (/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) return trimmed.substring(0, 10)
+    // Bare year like "2020" → January 1
+    const yearMatch = trimmed.match(/^(\d{4})$/)
+    if (yearMatch) return `${yearMatch[1]}-01-01`
+    // Try native Date parsing (handles "January 2020", "01/15/2020", etc.)
+    try {
+      const d = new Date(trimmed)
+      if (!isNaN(d.getTime())) {
+        const y = d.getFullYear()
+        if (y < 1000 || y > 9999) return undefined // must be 4-digit year
+        const m = String(d.getMonth() + 1).padStart(2, '0')
+        const day = String(d.getDate()).padStart(2, '0')
+        return `${y}-${m}-${day}`
+      }
+    } catch { /* swallow parse errors */ }
+    return undefined
   }
 
   // Prepare work metadata (fields that apply to all editions)
@@ -541,6 +594,38 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
     })
   }
 
+  // Helper to normalize language to ISO 639-1 code (max 10 chars for DB column).
+  // Handles full names like "English", "English, Italian", etc.
+  const LANG_MAP: Record<string, string> = {
+    'english': 'en', 'french': 'fr', 'german': 'de', 'spanish': 'es',
+    'italian': 'it', 'portuguese': 'pt', 'dutch': 'nl', 'russian': 'ru',
+    'japanese': 'ja', 'chinese': 'zh', 'korean': 'ko', 'arabic': 'ar',
+    'hebrew': 'he', 'greek': 'el', 'latin': 'la', 'swedish': 'sv',
+    'norwegian': 'no', 'danish': 'da', 'finnish': 'fi', 'polish': 'pl',
+    'czech': 'cs', 'hungarian': 'hu', 'romanian': 'ro', 'turkish': 'tr',
+    'thai': 'th', 'hindi': 'hi', 'bengali': 'bn', 'ukrainian': 'uk',
+    'vietnamese': 'vi', 'indonesian': 'id', 'malay': 'ms', 'persian': 'fa',
+    'catalan': 'ca', 'welsh': 'cy', 'irish': 'ga', 'scots gaelic': 'gd',
+    'icelandic': 'is', 'afrikaans': 'af', 'swahili': 'sw', 'tagalog': 'tl',
+    'esperanto': 'eo', 'basque': 'eu', 'galician': 'gl', 'serbian': 'sr',
+    'croatian': 'hr', 'bulgarian': 'bg', 'slovak': 'sk', 'slovenian': 'sl',
+    'estonian': 'et', 'latvian': 'lv', 'lithuanian': 'lt', 'georgian': 'ka',
+    'armenian': 'hy', 'yiddish': 'yi', 'syriac': 'syr',
+  }
+  const toLangCode = (lang?: string): string | undefined => {
+    if (!lang) return undefined
+    const trimmed = lang.trim()
+    if (!trimmed) return undefined
+    // Already an ISO code (2-3 chars)
+    if (/^[a-z]{2,3}$/i.test(trimmed)) return trimmed.toLowerCase()
+    // May be comma-separated "English, Italian" → "en,it"
+    const parts = trimmed.split(/[,;]/).map(p => p.trim().toLowerCase()).filter(Boolean)
+    const codes = parts.map(p => LANG_MAP[p] || p)
+    const result = codes.join(',')
+    // Truncate to 10 chars to fit DB column
+    return result.length > 10 ? result.substring(0, 10) : result
+  }
+
   return {
     work: {
       title: book.title || 'Untitled',
@@ -548,7 +633,7 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
       sortTitle: book.title,
       description: book.description,
       originalTitle: book.originalTitle,
-      language: book.language,
+      language: toLangCode(book.language),
       metadata: Object.keys(workMetadata).length > 0 ? workMetadata : undefined
     },
     edition: {
@@ -562,7 +647,7 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
       binding: book.binding,
       editionStatement: book.editionStatement,
       placeOfPublication: book.placeOfPublication,
-      language: book.language,
+      language: toLangCode(book.language),
       identifiers,
       metadata: Object.keys(editionMetadata).length > 0 ? editionMetadata : undefined
     },
@@ -574,12 +659,13 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
       location: book.location,
       status: book.status,
       condition: book.condition,
-      acquiredOn: book.acquiredDate || book.dateAdded,
+      acquiredOn: toDateOnly(book.acquiredDate || book.dateAdded),
       price: book.price,
       readStatus: book.readStatus,
       completedDate: book.completedDate,
       dateStarted: book.dateStarted,
       userRating: book.userRating,
+      libraryOrder: book.libraryOrder ? parseInt(book.libraryOrder, 10) || undefined : undefined,
       metadata: Object.keys(itemMetadata).length > 0 ? itemMetadata : undefined
     },
     contributors: contributors.length > 0 ? contributors : undefined,
@@ -868,6 +954,7 @@ export async function moveItemToHousehold(
       completedDate: raw.completedDate,
       dateStarted: raw.dateStarted,
       userRating: raw.userRating,
+      libraryOrder: raw.libraryOrder,
       metadata: raw.metadataJson ? JSON.parse(raw.metadataJson) : raw.metadata,
     },
     // Contributors: top-level in response, or nested inside work

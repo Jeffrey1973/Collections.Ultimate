@@ -1,4 +1,7 @@
     using System.Text.Json;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using CollectionsUltimate.Application.Abstractions;
 using CollectionsUltimate.Domain;
 using CollectionsUltimate.Infrastructure.Sql;
@@ -72,6 +75,29 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Auth0 JWT authentication
+var auth0Domain = builder.Configuration["Auth0:Domain"];
+var auth0Audience = builder.Configuration["Auth0:Audience"];
+
+if (!string.IsNullOrEmpty(auth0Domain) && !string.IsNullOrEmpty(auth0Audience))
+{
+    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
+        {
+            options.Authority = $"https://{auth0Domain}/";
+            options.Audience = auth0Audience;
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuerSigningKey = true,
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.FromMinutes(1)
+            };
+        });
+    builder.Services.AddAuthorization();
+}
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -85,6 +111,9 @@ if (app.Environment.IsDevelopment())
 // Use CORS (must be before endpoints)
 app.UseCors("AllowFrontend");
 
+// Auth middleware (only active when Auth0 is configured)
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.UseStaticFiles();
 
@@ -200,7 +229,7 @@ app.MapPost("/api/accounts/{accountId:guid}/households/{householdId:guid}", asyn
     IAccountHouseholdRepository repo,
     CancellationToken ct) =>
 {
-    await repo.AddAsync(new AccountId(accountId), new HouseholdId(householdId), ct);
+    await repo.AddAsync(new AccountId(accountId), new HouseholdId(householdId), "Owner", ct);
     return Results.NoContent();
 });
 
@@ -210,8 +239,89 @@ app.MapGet("/api/accounts/{accountId:guid}/households", async (
     CancellationToken ct) =>
 {
     var households = await repo.ListHouseholdsAsync(new AccountId(accountId), ct);
-    return Results.Ok(households.Select(h => new { id = h.Value }));
+    return Results.Ok(households.Select(h => new { id = h.HouseholdId.Value, role = h.Role }));
 });
+
+// ─── Auth endpoints ───────────────────────────────────────────────────────────
+
+// POST /api/auth/login — called after Auth0 login; auto-provisions account + default household
+app.MapPost("/api/auth/login", async (
+    HttpContext http,
+    IAccountRepository accountRepo,
+    IHouseholdRepository householdRepo,
+    IAccountHouseholdRepository accountHouseholdRepo,
+    CancellationToken ct) =>
+{
+    var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
+           ?? http.User.FindFirstValue("sub");
+    if (string.IsNullOrEmpty(sub))
+        return Results.Unauthorized();
+
+    var email = http.User.FindFirstValue(ClaimTypes.Email)
+             ?? http.User.FindFirstValue("email");
+    var name = http.User.FindFirstValue("name")
+            ?? http.User.FindFirstValue(ClaimTypes.Name)
+            ?? email
+            ?? "User";
+
+    // Check if account already exists
+    var account = await accountRepo.GetByAuth0SubAsync(sub, ct);
+    if (account is not null)
+    {
+        var existingHouseholds = await accountHouseholdRepo.ListHouseholdsAsync(account.Id, ct);
+        return Results.Ok(new AuthLoginResponse(
+            account.Id.Value,
+            account.DisplayName,
+            account.Email,
+            existingHouseholds.Select(h => new AuthHousehold(h.HouseholdId.Value, h.Role)).ToList(),
+            false));
+    }
+
+    // First login: create account, default household, link them
+    account = new Account
+    {
+        DisplayName = name,
+        Email = email,
+        Auth0Sub = sub
+    };
+    await accountRepo.CreateAsync(account, ct);
+
+    var household = new Household { Name = $"{name}'s Library" };
+    await householdRepo.CreateAsync(household, ct);
+    await accountHouseholdRepo.AddAsync(account.Id, household.Id, "Owner", ct);
+
+    var households = await accountHouseholdRepo.ListHouseholdsAsync(account.Id, ct);
+    return Results.Ok(new AuthLoginResponse(
+        account.Id.Value,
+        account.DisplayName,
+        account.Email,
+        households.Select(h => new AuthHousehold(h.HouseholdId.Value, h.Role)).ToList(),
+        true));
+}).RequireAuthorization();
+
+// GET /api/auth/me — returns current user info + households
+app.MapGet("/api/auth/me", async (
+    HttpContext http,
+    IAccountRepository accountRepo,
+    IAccountHouseholdRepository accountHouseholdRepo,
+    CancellationToken ct) =>
+{
+    var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
+           ?? http.User.FindFirstValue("sub");
+    if (string.IsNullOrEmpty(sub))
+        return Results.Unauthorized();
+
+    var account = await accountRepo.GetByAuth0SubAsync(sub, ct);
+    if (account is null)
+        return Results.NotFound();
+
+    var households = await accountHouseholdRepo.ListHouseholdsAsync(account.Id, ct);
+    return Results.Ok(new AuthMeResponse(
+        account.Id.Value,
+        account.DisplayName,
+        account.Email,
+        households.Select(h => new AuthHousehold(h.HouseholdId.Value, h.Role)).ToList()));
+}).RequireAuthorization();
 
 // Normalized model endpoints
 app.MapGet("/api/works/{workId:guid}", async (Guid workId, IWorkRepository repo, CancellationToken ct) =>
@@ -305,6 +415,21 @@ app.MapPost("/api/households/{householdId:guid}/items", async (
     return Results.Created($"/api/items/{item.Id.Value}", item);
 });
 
+// Dedup index for import: returns existing barcodes, titles, identifiers
+app.MapGet("/api/households/{householdId:guid}/library/dedup-index", async (
+    Guid householdId,
+    ILibraryItemLookupRepository lookupRepo,
+    CancellationToken ct) =>
+{
+    var index = await lookupRepo.GetDedupIndexAsync(new HouseholdId(householdId), ct);
+    return Results.Ok(new
+    {
+        barcodes = index.Barcodes,
+        normalizedTitles = index.NormalizedTitles,
+        identifiers = index.IdentifierValues.Keys
+    });
+});
+
 // One-shot create: work + edition + item + metadata
 app.MapPost("/api/households/{householdId:guid}/library/books", async (
     Guid householdId,
@@ -378,6 +503,7 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
         CompletedDate = request.Item.CompletedDate,
         DateStarted = request.Item.DateStarted,
         UserRating = request.Item.UserRating,
+        LibraryOrder = request.Item.LibraryOrder,
         MetadataJson = request.Item.MetadataJson
     };
 
@@ -484,7 +610,8 @@ app.MapPatch("/api/items/{itemId:guid}", async (
         ReadStatus: ToPatchString(request.ReadStatus),
         CompletedDate: ToPatchString(request.CompletedDate),
         DateStarted: ToPatchString(request.DateStarted),
-        UserRating: ToPatchDecimal(request.UserRating));
+        UserRating: ToPatchDecimal(request.UserRating),
+        LibraryOrder: ToPatchInt(request.LibraryOrder));
 
     try
     {
@@ -598,6 +725,20 @@ static PatchField<decimal?> ToPatchDecimal(JsonElement? el)
         return PatchField<decimal?>.From(ds);
 
     throw new InvalidOperationException("Invalid decimal format for price.");
+}
+
+static PatchField<int?> ToPatchInt(JsonElement? el)
+{
+    if (el is null) return PatchField<int?>.Unspecified;
+    if (el.Value.ValueKind == JsonValueKind.Null) return PatchField<int?>.From(null);
+
+    if (el.Value.ValueKind == JsonValueKind.Number && el.Value.TryGetInt32(out var i))
+        return PatchField<int?>.From(i);
+
+    if (el.Value.ValueKind == JsonValueKind.String && int.TryParse(el.Value.GetString(), out var si))
+        return PatchField<int?>.From(si);
+
+    throw new InvalidOperationException("Invalid integer format for libraryOrder.");
 }
 
 static string NormalizeTitle(string title)
@@ -797,6 +938,7 @@ string? ReadStatus,
 string? CompletedDate,
 string? DateStarted,
 decimal? UserRating,
+int? LibraryOrder,
 string? MetadataJson);
 
 public sealed record CreateBookIngestEdition(
@@ -841,5 +983,10 @@ JsonElement? Tags,
 JsonElement? ReadStatus,
 JsonElement? CompletedDate,
 JsonElement? DateStarted,
-JsonElement? UserRating);
+JsonElement? UserRating,
+JsonElement? LibraryOrder);
 
+// Auth response records
+public sealed record AuthHousehold(Guid Id, string Role);
+public sealed record AuthLoginResponse(Guid AccountId, string DisplayName, string? Email, IReadOnlyList<AuthHousehold> Households, bool IsNewAccount);
+public sealed record AuthMeResponse(Guid AccountId, string DisplayName, string? Email, IReadOnlyList<AuthHousehold> Households);

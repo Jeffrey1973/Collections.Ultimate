@@ -17,6 +17,7 @@ public sealed record ItemSearchResult(
     string? CompletedDate,
     string? DateStarted,
     decimal? UserRating,
+    int? LibraryOrder,
     DateTimeOffset CreatedUtc,
     string? WorkTitle,
     string? Authors,

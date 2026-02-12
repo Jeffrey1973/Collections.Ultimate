@@ -668,6 +668,21 @@ async function searchGoogleBooksMultiple(title: string, author?: string, limit: 
   }
 }
 
+// Fast ISBN lookup using only Google Books + Open Library (CORS-friendly, quick)
+async function fastISBNLookup(isbn: string): Promise<Partial<Book> | null> {
+  const [google, openLib] = await Promise.all([
+    lookupFromGoogleBooks(isbn).catch(() => null),
+    lookupFromOpenLibrary(isbn).catch(() => null),
+  ])
+  if (!google && !openLib) return null
+  // Merge: Google first, Open Library fills gaps
+  const merged: Partial<Book> = { ...openLib, ...google }
+  if (openLib?.description && !google?.description) merged.description = openLib.description
+  if (openLib?.subjects && !google?.subjects) merged.subjects = openLib.subjects
+  if (openLib?.pageCount && !google?.pageCount) merged.pageCount = openLib.pageCount
+  return merged
+}
+
 // NEW: Search for multiple book results
 export async function searchBookMultiple(
   query: string,
