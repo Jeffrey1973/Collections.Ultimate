@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getItem } from '../api/backend'
+import { getItem, uploadItemCover, deleteItemCover } from '../api/backend'
 import { mapItemResponseToBook, softDeleteItem, hardDeleteItem, restoreItem, moveItemToHousehold } from '../api/backend'
 import { Book } from '../api/books'
 import { FIELD_CATEGORIES, FIELD_DEFINITIONS } from '../config/field-config'
@@ -20,6 +20,8 @@ function BookDetailPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [showMoveDropdown, setShowMoveDropdown] = useState(false)
   const [isMoving, setIsMoving] = useState(false)
+  const [isUploadingCover, setIsUploadingCover] = useState(false)
+  const coverFileRef = useRef<HTMLInputElement>(null)
   const moveDropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -79,6 +81,39 @@ function BookDetailPage() {
     } catch (err) {
       console.error('Failed to restore:', err)
       alert('Failed to restore book')
+    }
+  }
+
+  async function handleCoverUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !id) return
+    setIsUploadingCover(true)
+    try {
+      const result = await uploadItemCover(id, file)
+      // Update book with new custom cover URL
+      setBook(prev => prev ? { ...prev, coverImageUrl: result.customCoverUrl, customCoverUrl: result.customCoverUrl } : prev)
+    } catch (err: any) {
+      alert(err.message || 'Failed to upload cover')
+      console.error('Cover upload failed:', err)
+    } finally {
+      setIsUploadingCover(false)
+      if (coverFileRef.current) coverFileRef.current.value = ''
+    }
+  }
+
+  async function handleCoverDelete() {
+    if (!id) return
+    if (!confirm('Remove your custom cover photo? The original cover image (if any) will be shown instead.')) return
+    setIsUploadingCover(true)
+    try {
+      await deleteItemCover(id)
+      // Re-load to get the edition cover back
+      loadBook(id)
+    } catch (err) {
+      alert('Failed to remove custom cover')
+      console.error(err)
+    } finally {
+      setIsUploadingCover(false)
     }
   }
 
@@ -275,9 +310,16 @@ function BookDetailPage() {
         borderRadius: '8px',
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
       }}>
-        {/* Cover Image */}
-        {book.coverImageUrl && (
-          <div style={{ flexShrink: 0 }}>
+        {/* Cover Image with Upload */}
+        <div style={{ flexShrink: 0, position: 'relative', width: '200px' }}>
+          <input
+            ref={coverFileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif,image/heic"
+            style={{ display: 'none' }}
+            onChange={handleCoverUpload}
+          />
+          {book.coverImageUrl ? (
             <img
               src={book.coverImageUrl}
               alt={book.title}
@@ -302,8 +344,47 @@ function BookDetailPage() {
                 boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
               }}
             />
+          ) : (
+            <div style={{
+              width: '200px', height: '300px', borderRadius: '8px',
+              backgroundColor: '#f1f5f9', border: '2px dashed #cbd5e1',
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', gap: '0.5rem', color: '#94a3b8',
+            }}>
+              <span style={{ fontSize: '2rem' }}>📷</span>
+              <span style={{ fontSize: '0.85rem', textAlign: 'center', padding: '0 0.5rem' }}>No cover image</span>
+            </div>
+          )}
+          {/* Cover action buttons */}
+          <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.5rem', justifyContent: 'center' }}>
+            <button
+              onClick={() => coverFileRef.current?.click()}
+              disabled={isUploadingCover}
+              title="Upload cover photo"
+              style={{
+                padding: '0.3rem 0.6rem', borderRadius: '6px', border: '1px solid #d1d5db',
+                background: '#fff', color: '#374151', fontSize: '0.75rem',
+                cursor: isUploadingCover ? 'wait' : 'pointer', fontWeight: 500,
+              }}
+            >
+              {isUploadingCover ? '⏳ Uploading…' : '📷 Upload Cover'}
+            </button>
+            {book.customCoverUrl && (
+              <button
+                onClick={handleCoverDelete}
+                disabled={isUploadingCover}
+                title="Remove custom cover photo"
+                style={{
+                  padding: '0.3rem 0.6rem', borderRadius: '6px', border: '1px solid #fca5a5',
+                  background: '#fef2f2', color: '#dc2626', fontSize: '0.75rem',
+                  cursor: isUploadingCover ? 'wait' : 'pointer', fontWeight: 500,
+                }}
+              >
+                ✕ Remove
+              </button>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Main Info */}
         <div style={{ flex: 1 }}>

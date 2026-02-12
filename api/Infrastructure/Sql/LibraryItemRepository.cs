@@ -116,6 +116,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
                 DateStarted,
                 UserRating,
                 LibraryOrder,
+                CustomCoverUrl,
                 MetadataJson,
                 CreatedUtc
             from dbo.LibraryItem
@@ -136,6 +137,19 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
 
         using var conn = _connectionFactory.Create();
         var affected = await conn.ExecuteAsync(new CommandDefinition(sql, new { Id = id.Value }, cancellationToken: ct));
+        return affected > 0;
+    }
+
+    public async Task<bool> UpdateCustomCoverUrlAsync(ItemId id, string? url, CancellationToken ct)
+    {
+        const string sql = """
+            update dbo.LibraryItem
+            set CustomCoverUrl = @Url
+            where Id = @Id;
+            """;
+
+        using var conn = _connectionFactory.Create();
+        var affected = await conn.ExecuteAsync(new CommandDefinition(sql, new { Id = id.Value, Url = url }, cancellationToken: ct));
         return affected > 0;
     }
 
@@ -160,6 +174,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
                 i.DateStarted,
                 i.UserRating,
                 i.LibraryOrder,
+                i.CustomCoverUrl,
                 i.MetadataJson as ItemMetadataJson,
                 i.CreatedUtc as ItemCreatedUtc,
                 w.Id as WorkId,
@@ -344,6 +359,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
             DateStarted = mainRow.DateStarted,
             UserRating = mainRow.UserRating,
             LibraryOrder = mainRow.LibraryOrder,
+            CustomCoverUrl = mainRow.CustomCoverUrl,
             MetadataJson = mainRow.ItemMetadataJson,
             CreatedUtc = mainRow.ItemCreatedUtc,
             Work = new WorkResponse
@@ -405,6 +421,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
         DateStarted = r.DateStarted,
         UserRating = r.UserRating,
         LibraryOrder = r.LibraryOrder,
+        CustomCoverUrl = r.CustomCoverUrl,
         MetadataJson = r.MetadataJson,
         CreatedUtc = r.CreatedUtc
     };
@@ -429,6 +446,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
         string? DateStarted,
         decimal? UserRating,
         int? LibraryOrder,
+        string? CustomCoverUrl,
         string? MetadataJson,
         DateTimeOffset CreatedUtc);
 
@@ -450,6 +468,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
         string? DateStarted,
         decimal? UserRating,
         int? LibraryOrder,
+        string? CustomCoverUrl,
         string? ItemMetadataJson,
         DateTimeOffset ItemCreatedUtc,
         Guid WorkId,

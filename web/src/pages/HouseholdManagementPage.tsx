@@ -36,7 +36,7 @@ interface HouseholdDetail {
 
 // ─── Stub API calls (replace with real endpoints later) ──────────────────────
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5258'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5259'
 
 async function getHouseholdDetail(householdId: string): Promise<HouseholdDetail> {
   // TODO: Replace with real API call: GET /api/households/{id}/details

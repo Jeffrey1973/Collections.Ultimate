@@ -13,7 +13,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         _connectionFactory = connectionFactory;
     }
 
-    public async Task<IReadOnlyList<ItemSearchResult>> SearchAsync(
+    public async Task<SearchPagedResult> SearchAsync(
         HouseholdId householdId,
         string? query,
         string? tag,
@@ -34,13 +34,14 @@ public sealed class ItemSearchRepository : IItemSearchRepository
             (
                 select
                     wc.WorkId,
-                    string_agg(p.DisplayName, N', ') within group (order by wc.Ordinal) as Authors
+                    string_agg(cast(p.DisplayName as nvarchar(max)), N', ') within group (order by wc.Ordinal) as Authors
                 from dbo.WorkContributor wc
                 inner join dbo.Person p on p.Id = wc.PersonId
                 where wc.RoleId = 1
                 group by wc.WorkId
             )
             select
+                count(*) over() as TotalCount,
                 i.Id as ItemId,
                 i.WorkId,
                 i.EditionId,
@@ -71,15 +72,16 @@ public sealed class ItemSearchRepository : IItemSearchRepository
                 e.PublishedYear,
                 e.PageCount,
                 e.CoverImageUrl,
+                i.CustomCoverUrl,
                 e.Format,
                 e.Binding,
                 e.EditionStatement,
                 e.PlaceOfPublication,
                 e.Language as EditionLanguage,
                 e.MetadataJson as EditionMetadataJson,
-                (select string_agg(t.Name, N'||') from dbo.WorkTag wt2 inner join dbo.Tag t on t.Id = wt2.TagId where wt2.WorkId = i.WorkId) as Tags,
-                (select string_agg(sh.Text, N'||') from dbo.WorkSubject ws2 inner join dbo.SubjectHeading sh on sh.Id = ws2.SubjectHeadingId where ws2.WorkId = i.WorkId) as Subjects,
-                (select string_agg(cast(ei.IdentifierTypeId as varchar) + N':' + ei.Value, N'||') from dbo.EditionIdentifier ei where ei.EditionId = i.EditionId) as Identifiers,
+                (select string_agg(cast(t.Name as nvarchar(max)), N'||') from dbo.WorkTag wt2 inner join dbo.Tag t on t.Id = wt2.TagId where wt2.WorkId = i.WorkId) as Tags,
+                (select string_agg(cast(sh.Text as nvarchar(max)), N'||') from dbo.WorkSubject ws2 inner join dbo.SubjectHeading sh on sh.Id = ws2.SubjectHeadingId where ws2.WorkId = i.WorkId) as Subjects,
+                (select string_agg(cast(cast(ei.IdentifierTypeId as varchar) + N':' + ei.Value as nvarchar(max)), N'||') from dbo.EditionIdentifier ei where ei.EditionId = i.EditionId) as Identifiers,
                 s.Name as SeriesName,
                 ws3.VolumeNumber
             from dbo.LibraryItem i
@@ -138,7 +140,9 @@ public sealed class ItemSearchRepository : IItemSearchRepository
             Skip = skip
         }, cancellationToken: ct));
 
-        return rows.Select(Map).ToList();
+        var list = rows.ToList();
+        var totalCount = list.FirstOrDefault()?.TotalCount ?? 0;
+        return new SearchPagedResult(totalCount, list.Select(Map).ToList());
     }
 
     private static string NormalizeKey(string value)
@@ -175,6 +179,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         r.PublishedYear,
         r.PageCount,
         r.CoverImageUrl,
+        r.CustomCoverUrl,
         r.Format,
         r.Binding,
         r.EditionStatement,
@@ -188,6 +193,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         r.VolumeNumber);
 
     private sealed record ItemRow(
+        int TotalCount,
         Guid ItemId,
         Guid WorkId,
         Guid? EditionId,
@@ -218,6 +224,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         int? PublishedYear,
         int? PageCount,
         string? CoverImageUrl,
+        string? CustomCoverUrl,
         string? Format,
         string? Binding,
         string? EditionStatement,
@@ -229,4 +236,136 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         string? Identifiers,
         string? SeriesName,
         string? VolumeNumber);
+
+    public async Task<IReadOnlyList<DuplicateGroup>> FindDuplicatesAsync(
+        HouseholdId householdId,
+        CancellationToken ct)
+    {
+        const string sql = """
+            ;with ItemAuthor as (
+                -- Get a single primary author per item (the first alphabetically if multiple RoleId=1)
+                select
+                    i.Id as ItemId,
+                    i.Title,
+                    (select top 1 p.DisplayName
+                       from dbo.WorkContributor wc
+                       inner join dbo.Person p on p.Id = wc.PersonId
+                       where wc.WorkId = i.WorkId and wc.RoleId = 1
+                       order by p.DisplayName) as Author
+                from dbo.LibraryItem i
+                where i.HouseholdId = @HouseholdId
+                  and (i.Status is null or i.Status <> 'Deleted')
+            ),
+            DupKeys as (
+                select 
+                    ia.Title,
+                    ia.Author,
+                    count(*) as Cnt
+                from ItemAuthor ia
+                group by ia.Title, ia.Author
+                having count(*) > 1
+            )
+            select
+                i.Id               as ItemId,
+                i.WorkId,
+                i.EditionId,
+                i.Title,
+                i.Subtitle,
+                i.Barcode,
+                i.Location,
+                i.Status,
+                i.Condition,
+                i.Notes,
+                i.UserRating,
+                i.ReadStatus,
+                i.CreatedUtc,
+                dk.Author,
+                e.Publisher,
+                e.PublishedYear,
+                e.PageCount,
+                e.CoverImageUrl,
+                e.Format,
+                (select string_agg(cast(t2.Name as nvarchar(max)), N'||')
+                   from dbo.WorkTag wt2
+                   inner join dbo.Tag t2 on t2.Id = wt2.TagId
+                   where wt2.WorkId = i.WorkId) as Tags,
+                (select string_agg(cast(sh2.Text as nvarchar(max)), N'||')
+                   from dbo.WorkSubject ws2
+                   inner join dbo.SubjectHeading sh2 on sh2.Id = ws2.SubjectHeadingId
+                   where ws2.WorkId = i.WorkId) as Subjects,
+                (select string_agg(cast(cast(ei.IdentifierTypeId as varchar) + N':' + ei.Value as nvarchar(max)), N'||')
+                   from dbo.EditionIdentifier ei
+                   where ei.EditionId = i.EditionId) as Identifiers
+            from DupKeys dk
+            inner join ItemAuthor ia on ia.Title = dk.Title
+                and ((dk.Author is null and ia.Author is null) or dk.Author = ia.Author)
+            inner join dbo.LibraryItem i on i.Id = ia.ItemId
+            left join dbo.Edition e on e.Id = i.EditionId
+            order by dk.Title, dk.Author, i.CreatedUtc;
+            """;
+
+        using var conn = _connectionFactory.Create();
+        var rows = await conn.QueryAsync<DupRow>(new CommandDefinition(sql, new
+        {
+            HouseholdId = householdId.Value
+        }, cancellationToken: ct));
+
+        // Group rows into DuplicateGroup objects
+        var groups = new List<DuplicateGroup>();
+        var currentKey = (string?)null;
+        var currentItems = new List<DuplicateItem>();
+        string? currentTitle = null;
+        string? currentAuthor = null;
+
+        foreach (var row in rows)
+        {
+            var key = $"{row.Title}|{row.Author}";
+            if (key != currentKey)
+            {
+                if (currentKey is not null && currentItems.Count > 1)
+                    groups.Add(new DuplicateGroup(currentKey, currentTitle!, currentAuthor, currentItems.ToList()));
+                currentKey = key;
+                currentTitle = row.Title;
+                currentAuthor = row.Author;
+                currentItems.Clear();
+            }
+            // Skip duplicate ItemIds (can happen when a Work has multiple contributors)
+            if (currentItems.Any(x => x.ItemId == row.ItemId))
+                continue;
+            currentItems.Add(new DuplicateItem(
+                row.ItemId, row.WorkId, row.EditionId,
+                row.Title, row.Subtitle, row.Barcode, row.Location, row.Status, row.Condition, row.Notes,
+                row.Author, row.Publisher, row.PublishedYear, row.PageCount, row.CoverImageUrl, row.Format,
+                row.UserRating, row.ReadStatus, row.CreatedUtc,
+                row.Identifiers, row.Tags, row.Subjects));
+        }
+        if (currentKey is not null && currentItems.Count > 1)
+            groups.Add(new DuplicateGroup(currentKey, currentTitle!, currentAuthor, currentItems.ToList()));
+
+        return groups;
+    }
+
+    private sealed record DupRow(
+        Guid ItemId,
+        Guid WorkId,
+        Guid? EditionId,
+        string Title,
+        string? Subtitle,
+        string? Barcode,
+        string? Location,
+        string? Status,
+        string? Condition,
+        string? Notes,
+        decimal? UserRating,
+        string? ReadStatus,
+        DateTimeOffset CreatedUtc,
+        string? Author,
+        string? Publisher,
+        int? PublishedYear,
+        int? PageCount,
+        string? CoverImageUrl,
+        string? Format,
+        string? Tags,
+        string? Subjects,
+        string? Identifiers);
 }

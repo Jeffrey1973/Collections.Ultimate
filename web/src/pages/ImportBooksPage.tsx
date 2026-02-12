@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useHousehold } from '../context/HouseholdContext'
 import { createBook, mapBookToIngestRequest, getDedupIndex, normalizeTitle } from '../api/backend'
 import type { DedupIndex } from '../api/backend'
@@ -427,8 +427,14 @@ export default function ImportBooksPage() {
   const [importRows, setImportRows] = useState<ImportRow[]>([])
   const [_isImporting, setIsImporting] = useState(false)
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, phase: '' })
+  const activeRowRef = useRef<HTMLTableRowElement | null>(null)
   const [importResults, setImportResults] = useState({ saved: 0, errors: 0, skipped: 0, duplicates: 0 })
   const abortRef = useRef(false)
+
+  // Auto-scroll the active row into view during import
+  useEffect(() => {
+    activeRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [importProgress.current])
 
   // ─── File handling ──────────────────────────────────────────────────────
 
@@ -1108,10 +1114,14 @@ export default function ImportBooksPage() {
               </thead>
               <tbody>
                 {importRows.map((row, idx) => (
-                  <tr key={idx} style={{
-                    borderTop: '1px solid #e2e8f0',
-                    backgroundColor: row.status === 'enriching' || row.status === 'saving' ? '#fffbeb' : undefined,
-                  }}>
+                  <tr
+                    key={idx}
+                    ref={row.status === 'enriching' || row.status === 'saving' ? activeRowRef : undefined}
+                    style={{
+                      borderTop: '1px solid #e2e8f0',
+                      backgroundColor: row.status === 'enriching' || row.status === 'saving' ? '#fffbeb' : undefined,
+                    }}
+                  >
                     <td style={{ ...tdStyle, color: '#94a3b8' }}>{idx + 1}</td>
                     <td style={{ ...tdStyle, fontWeight: 500 }}>{row.mapped.title}</td>
                     <td style={tdStyle}>{row.enrichedBook?.author || row.mapped.author || '—'}</td>

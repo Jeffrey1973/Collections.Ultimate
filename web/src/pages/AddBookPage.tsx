@@ -208,7 +208,7 @@ function AddBookPage() {
       
       navigate('/library')
     } catch (err) {
-      setError('Failed to add book. Is the backend API running on port 5258?')
+      setError('Failed to add book. Is the backend API running on port 5259?')
       console.error('Failed to add book:', err)
     } finally {
       setIsLoading(false)

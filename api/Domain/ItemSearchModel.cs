@@ -1,5 +1,9 @@
 namespace CollectionsUltimate.Domain;
 
+public sealed record SearchPagedResult(
+    int TotalCount,
+    IReadOnlyList<ItemSearchResult> Items);
+
 public sealed record ItemSearchResult(
     Guid ItemId,
     Guid WorkId,
@@ -33,6 +37,7 @@ public sealed record ItemSearchResult(
     int? PublishedYear,
     int? PageCount,
     string? CoverImageUrl,
+    string? CustomCoverUrl,
     string? Format,
     string? Binding,
     string? EditionStatement,

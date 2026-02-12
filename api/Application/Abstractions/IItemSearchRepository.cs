@@ -4,7 +4,7 @@ namespace CollectionsUltimate.Application.Abstractions;
 
 public interface IItemSearchRepository
 {
-    Task<IReadOnlyList<ItemSearchResult>> SearchAsync(
+    Task<SearchPagedResult> SearchAsync(
         HouseholdId householdId,
         string? query,
         string? tag,
@@ -15,4 +15,38 @@ public interface IItemSearchRepository
         int take,
         int skip,
         CancellationToken ct);
+
+    Task<IReadOnlyList<DuplicateGroup>> FindDuplicatesAsync(
+        HouseholdId householdId,
+        CancellationToken ct);
 }
+
+public sealed record DuplicateGroup(
+    string GroupKey,
+    string Title,
+    string? Author,
+    IReadOnlyList<DuplicateItem> Items);
+
+public sealed record DuplicateItem(
+    Guid ItemId,
+    Guid WorkId,
+    Guid? EditionId,
+    string Title,
+    string? Subtitle,
+    string? Barcode,
+    string? Location,
+    string? Status,
+    string? Condition,
+    string? Notes,
+    string? Authors,
+    string? Publisher,
+    int? PublishedYear,
+    int? PageCount,
+    string? CoverImageUrl,
+    string? Format,
+    decimal? UserRating,
+    string? ReadStatus,
+    DateTimeOffset CreatedUtc,
+    string? Identifiers,
+    string? Tags,
+    string? Subjects);

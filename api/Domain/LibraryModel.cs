@@ -129,6 +129,12 @@ public sealed class LibraryItem
     public int? LibraryOrder { get; init; }
 
     /// <summary>
+    /// URL to a user-uploaded photo/scan of the actual book cover.
+    /// Takes priority over the edition's CoverImageUrl when present.
+    /// </summary>
+    public string? CustomCoverUrl { get; init; }
+
+    /// <summary>
     /// Flexible JSON storage for type-specific metadata (e.g., ISBN, authors for books).
     /// </summary>
     public string? MetadataJson { get; init; }
@@ -208,6 +214,7 @@ public sealed class ItemFullResponse
     public string? DateStarted { get; init; }
     public decimal? UserRating { get; init; }
     public int? LibraryOrder { get; init; }
+    public string? CustomCoverUrl { get; init; }
     public string? MetadataJson { get; init; }
     public DateTimeOffset CreatedUtc { get; init; }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import BookCard from '../components/BookCard.tsx'
 import CardCatalogView from '../components/CardCatalogView.tsx'
@@ -38,8 +38,11 @@ function LibraryPage() {
   const { selectedHousehold, isLoading: isLoadingHousehold } = useHousehold()
   const navigate = useNavigate()
   const [books, setBooks] = useState<Book[]>([])
+  const [totalCount, setTotalCount] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(true)
+  const [isSearching, setIsSearching] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'list' | 'grid' | 'catalog'>('list')
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
@@ -61,6 +64,19 @@ function LibraryPage() {
     }
   }, [selectedHousehold])
 
+  // Debounced search: fires 300ms after the user stops typing
+  useEffect(() => {
+    if (!selectedHousehold) return
+    // Skip debounce on initial load (searchQuery is '')
+    // Allow empty query to reset to full list
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    setIsSearching(true)
+    debounceRef.current = setTimeout(() => {
+      loadBooks()
+    }, 300)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [searchQuery])
+
   async function loadBooks() {
     if (!selectedHousehold) return
     
@@ -72,25 +88,29 @@ function LibraryPage() {
       // Use items endpoint instead of books - it returns all types
       const result = await getItems(selectedHousehold.id, { 
         q: searchQuery || undefined,
-        take: 100 
+        take: searchQuery ? 10000 : 500,
       })
       
       console.log('📦 Items response:', result)
       
+      setTotalCount(result.totalCount)
       // Map search results to Book objects — the list endpoint now includes tags/subjects
-      const mappedBooks: Book[] = result.map(mapSearchResultToBook)
+      const mappedBooks: Book[] = result.items.map(mapSearchResultToBook)
       
       setBooks(mappedBooks)
     } catch (err) {
-      setError('Failed to load books. Is the backend API running on port 5258?')
+      setError('Failed to load books. Is the backend API running on port 5259?')
       console.error('Failed to load books:', err)
     } finally {
       setIsLoading(false)
+      setIsSearching(false)
     }
   }
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault()
+    // Immediate search on Enter key
+    if (debounceRef.current) clearTimeout(debounceRef.current)
     loadBooks()
   }
 
@@ -146,7 +166,11 @@ function LibraryPage() {
       <div className="page-header">
         <h1 className="page-title">My Library</h1>
         <p className="page-subtitle">
-          {activeBooks.length} book{activeBooks.length !== 1 ? 's' : ''} in your collection
+          {searchQuery
+            ? `${activeBooks.length} book${activeBooks.length !== 1 ? 's' : ''} found`
+            : totalCount > activeBooks.length
+              ? `Showing ${activeBooks.length} of ${totalCount.toLocaleString()} book${totalCount !== 1 ? 's' : ''} in your collection`
+              : `${totalCount.toLocaleString()} book${totalCount !== 1 ? 's' : ''} in your collection`}
           {previouslyOwned.length > 0 && (
             <button
               onClick={() => setShowPreviouslyOwned(!showPreviouslyOwned)}
@@ -164,16 +188,34 @@ function LibraryPage() {
       </div>
 
       <form onSubmit={handleSearch} className="search-bar">
-        <input
-          type="text"
-          className="search-input"
-          placeholder="Search by title, author, ISBN..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-        <button type="submit" className="btn btn-primary">
-          Search
-        </button>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <input
+            type="text"
+            className="search-input"
+            placeholder="Search by title, author, ISBN..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ width: '100%', paddingRight: '2.5rem' }}
+          />
+          {isSearching && (
+            <span style={{
+              position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)',
+              fontSize: '0.85rem', color: '#94a3b8', animation: 'spin 1s linear infinite',
+            }}>⟳</span>
+          )}
+          {!isSearching && searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              style={{
+                position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)',
+                background: 'none', border: 'none', cursor: 'pointer',
+                fontSize: '1rem', color: '#94a3b8', padding: 0, lineHeight: 1,
+              }}
+              title="Clear search"
+            >✕</button>
+          )}
+        </div>
         <button 
           type="button" 
           className="btn btn-secondary"
@@ -191,6 +233,14 @@ function LibraryPage() {
           onClick={() => setShowSettings(!showSettings)}
         >
           ⚙️ Display
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => navigate('/duplicates')}
+          title="Review and merge duplicate items"
+        >
+          🔄 Duplicates
         </button>
       </form>
 
@@ -405,7 +455,9 @@ function LibraryPage() {
           <div className="empty-state-icon">📚</div>
           {showPreviouslyOwned 
             ? <p>No previously owned books.</p>
-            : <><p>No books in your library yet.</p><p>Add your first book to get started!</p></>
+            : searchQuery
+              ? <><p>No books matching your search.</p><p>Try a different search term.</p></>
+              : <><p>No books in your library yet.</p><p>Add your first book to get started!</p></>
           }
         </div>
       )}
@@ -439,7 +491,7 @@ function LibraryPage() {
                   }}
                 >
                   {/* Cover thumbnail */}
-                  {book.coverImageUrl && (
+                  {book.coverImageUrl ? (
                     <img
                       src={book.coverImageUrl}
                       alt={book.title}
@@ -453,7 +505,14 @@ function LibraryPage() {
                           img.dataset.fallbackIndex = String(idx + 1)
                           img.src = fallbacks[idx]
                         } else {
-                          img.style.display = 'none'
+                          // Replace with placeholder on final failure
+                          const parent = img.parentElement
+                          if (parent) {
+                            const placeholder = document.createElement('div')
+                            placeholder.style.cssText = 'width:50px;height:75px;border-radius:4px;flex-shrink:0;background:#f1f5f9;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.6rem;text-align:center;line-height:1.2'
+                            placeholder.textContent = 'No Cover'
+                            parent.replaceChild(placeholder, img)
+                          }
                         }
                       }}
                       style={{
@@ -464,6 +523,24 @@ function LibraryPage() {
                         flexShrink: 0
                       }}
                     />
+                  ) : (
+                    <div style={{
+                      width: '50px',
+                      height: '75px',
+                      borderRadius: '4px',
+                      flexShrink: 0,
+                      backgroundColor: '#f1f5f9',
+                      border: '1px solid #e2e8f0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#94a3b8',
+                      fontSize: '0.6rem',
+                      textAlign: 'center',
+                      lineHeight: 1.2,
+                    }}>
+                      No Cover
+                    </div>
                   )}
                   
                   {/* Title - always shown */}

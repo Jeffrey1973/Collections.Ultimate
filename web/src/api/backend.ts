@@ -124,6 +124,7 @@ export interface ItemResponse {
   notes?: string
   title?: string
   subtitle?: string
+  customCoverUrl?: string
   work?: WorkResponse
   edition?: EditionResponse
   tags?: string[]
@@ -165,6 +166,7 @@ export interface ItemSearchResponse {
   publishedYear?: number
   pageCount?: number
   coverImageUrl?: string
+  customCoverUrl?: string
   format?: string
   binding?: string
   editionStatement?: string
@@ -729,7 +731,7 @@ export async function createBook(
   } catch (error: any) {
     console.error('❌ Network error:', error)
     if (error.message.includes('Failed to fetch')) {
-      throw new Error('Cannot connect to backend API. Is it running on http://localhost:5258? Check for CORS issues.')
+      throw new Error('Cannot connect to backend API. Is it running on http://localhost:5259? Check for CORS issues.')
     }
     throw error
   }
@@ -767,6 +769,11 @@ export async function getBooks(
 /**
  * Get all items for a household (more comprehensive than books)
  */
+export interface ItemSearchPagedResult {
+  totalCount: number
+  items: ItemSearchResponse[]
+}
+
 export async function getItems(
   householdId: string = DEV_HOUSEHOLD_ID,
   params?: {
@@ -779,7 +786,7 @@ export async function getItems(
     take?: number
     skip?: number
   }
-): Promise<ItemSearchResponse[]> {
+): Promise<ItemSearchPagedResult> {
   const queryParams = new URLSearchParams()
   if (params?.q) queryParams.append('q', params.q)
   if (params?.tag) queryParams.append('tag', params.tag)
@@ -787,7 +794,7 @@ export async function getItems(
   if (params?.barcode) queryParams.append('barcode', params.barcode)
   if (params?.status) queryParams.append('status', params.status)
   if (params?.location) queryParams.append('location', params.location)
-  if (params?.take) queryParams.append('take', params.take.toString())
+  if (params?.take !== undefined) queryParams.append('take', params.take.toString())
   if (params?.skip) queryParams.append('skip', params.skip.toString())
 
   const url = `${API_BASE_URL}/api/households/${householdId}/items${
@@ -805,8 +812,12 @@ export async function getItems(
   }
 
   const data = await response.json()
-  console.log('✅ Items loaded:', data)
-  return data
+  console.log('✅ Items loaded:', data.items?.length ?? data.length, 'of', data.totalCount ?? '?')
+  // Support both old array response and new { items, totalCount } shape
+  if (Array.isArray(data)) {
+    return { totalCount: data.length, items: data }
+  }
+  return { totalCount: data.totalCount, items: data.items }
 }
 
 /**
@@ -853,6 +864,35 @@ export async function getEdition(editionId: string): Promise<EditionResponse> {
  */
 export function getEditionCoverUrl(editionId: string): string {
   return `${API_BASE_URL}/api/editions/${editionId}/cover`
+}
+
+/**
+ * Upload a custom cover photo for a library item
+ */
+export async function uploadItemCover(itemId: string, file: File): Promise<{ customCoverUrl: string }> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const response = await fetch(`${API_BASE_URL}/api/items/${itemId}/cover`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ message: 'Upload failed' }))
+    throw new Error(err.message || 'Upload failed')
+  }
+  return response.json()
+}
+
+/**
+ * Delete the custom cover photo for a library item
+ */
+export async function deleteItemCover(itemId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/items/${itemId}/cover`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    throw new Error('Failed to delete custom cover')
+  }
 }
 
 /**
@@ -1018,6 +1058,80 @@ export async function hardDeleteItem(itemId: string): Promise<void> {
   }
 }
 
+// ─── Duplicate Detection & Merge ───────────────────────────────────────────────
+
+export interface DuplicateItem {
+  itemId: string
+  workId: string
+  editionId: string | null
+  title: string
+  subtitle: string | null
+  barcode: string | null
+  location: string | null
+  status: string | null
+  condition: string | null
+  notes: string | null
+  authors: string | null
+  publisher: string | null
+  publishedYear: number | null
+  pageCount: number | null
+  coverImageUrl: string | null
+  format: string | null
+  userRating: number | null
+  readStatus: string | null
+  createdUtc: string
+  identifiers: string | null
+  tags: string | null
+  subjects: string | null
+}
+
+export interface DuplicateGroup {
+  groupKey: string
+  title: string
+  author: string | null
+  items: DuplicateItem[]
+}
+
+/** Get all duplicate groups for a household */
+export async function getDuplicates(householdId: string): Promise<DuplicateGroup[]> {
+  const response = await fetch(`${API_BASE_URL}/api/households/${householdId}/items/duplicates`)
+  if (!response.ok) {
+    throw new Error('Failed to fetch duplicates')
+  }
+  return response.json()
+}
+
+/** Merge duplicates — keep one item, delete the rest */
+export async function mergeDuplicates(
+  householdId: string,
+  keepItemId: string,
+  deleteItemIds: string[]
+): Promise<{ kept: string; deleted: number }> {
+  const response = await fetch(`${API_BASE_URL}/api/households/${householdId}/items/merge-duplicates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keepItemId, deleteItemIds }),
+  })
+  if (!response.ok) {
+    throw new Error('Failed to merge duplicates')
+  }
+  return response.json()
+}
+
+/** Bulk merge all duplicates — keeps oldest item per group, deletes the rest */
+export async function mergeAllDuplicates(
+  householdId: string
+): Promise<{ groupsMerged: number; totalDeleted: number }> {
+  const response = await fetch(`${API_BASE_URL}/api/households/${householdId}/items/merge-all-duplicates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  })
+  if (!response.ok) {
+    throw new Error('Failed to merge all duplicates')
+  }
+  return response.json()
+}
+
 /**
  * Map an ItemSearchResponse (from the list endpoint) to a frontend Book object.
  * The list endpoint now returns comprehensive data including work/edition fields,
@@ -1032,13 +1146,14 @@ export function mapSearchResultToBook(item: ItemSearchResponse): any {
   // Parse identifiers from "type:value||type:value" format
   const identifiers = parseIdentifiers(item.identifiers)
 
-  // Cover URL — stored URL > metadata > Google Books > Open Library fallback by ISBN
+  // Cover URL — custom cover > stored URL > metadata > Google Books > Open Library fallback by ISBN
   const isbn13 = identifiers[IdentifierType.ISBN13]
   const isbn10 = identifiers[IdentifierType.ISBN10]
   const coverIsbn = isbn13 || isbn10 || item.barcode
 
-  // Build ordered list of all possible cover URLs
+  // Build ordered list of all possible cover URLs (custom cover takes top priority)
   const coverCandidates: string[] = [
+    item.customCoverUrl,
     item.coverImageUrl,
     editionMetadata.coverImageUrl,
     editionMetadata.coverImageMedium,
@@ -1065,6 +1180,7 @@ export function mapSearchResultToBook(item: ItemSearchResponse): any {
     originalTitle: item.originalTitle || workMetadata.originalTitle,
     coverImageUrl,
     coverImageFallbacks,
+    customCoverUrl: item.customCoverUrl || undefined,
     description: item.workDescription,
     publisher: item.publisher,
     publishedDate: item.publishedYear ? `${item.publishedYear}` : undefined,
@@ -1370,11 +1486,12 @@ export function mapItemResponseToBook(item: ItemResponse): any {
   const editionMetadata = item.edition?.metadata || {}
   const itemMetadata = item.metadata || {}
 
-  // Generate cover URL - stored URL > metadata > Google Books > Open Library fallback by ISBN
+  // Generate cover URL - custom cover > stored URL > metadata > Google Books > Open Library fallback by ISBN
   const coverIsbn = finalIsbn13 || finalIsbn10 || isbnFromBarcode
 
-  // Build ordered list of all possible cover URLs
+  // Build ordered list of all possible cover URLs (custom cover takes top priority)
   const coverCandidates2: string[] = [
+    item.customCoverUrl,
     item.edition?.coverImageUrl,
     editionMetadata.coverImageUrl,
     editionMetadata.coverImageMedium,
@@ -1401,6 +1518,7 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     originalTitle: workMetadata.originalTitle,
     coverImageUrl,
     coverImageFallbacks,
+    customCoverUrl: item.customCoverUrl || undefined,
     description,
     publisher,
     publishedDate: publishedYear ? `${publishedYear}` : undefined,
@@ -1637,7 +1755,7 @@ export async function getAllHouseholds(): Promise<any[]> {
   } catch (error: any) {
     console.error('❌ Network error fetching households:', error)
     if (error.message.includes('Failed to fetch')) {
-      throw new Error('Cannot connect to backend API. Is it running on http://localhost:5258? Check for CORS issues.')
+      throw new Error('Cannot connect to backend API. Is it running on http://localhost:5259? Check for CORS issues.')
     }
     throw error
   }

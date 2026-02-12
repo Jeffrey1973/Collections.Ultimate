@@ -78,25 +78,26 @@ builder.Services.AddCors(options =>
 // Auth0 JWT authentication
 var auth0Domain = builder.Configuration["Auth0:Domain"];
 var auth0Audience = builder.Configuration["Auth0:Audience"];
+var auth0Configured = !string.IsNullOrEmpty(auth0Domain) && !string.IsNullOrEmpty(auth0Audience);
 
-if (!string.IsNullOrEmpty(auth0Domain) && !string.IsNullOrEmpty(auth0Audience))
+var authBuilder = builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme);
+if (auth0Configured)
 {
-    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(options =>
+    authBuilder.AddJwtBearer(options =>
+    {
+        options.Authority = $"https://{auth0Domain}/";
+        options.Audience = auth0Audience;
+        options.TokenValidationParameters = new TokenValidationParameters
         {
-            options.Authority = $"https://{auth0Domain}/";
-            options.Audience = auth0Audience;
-            options.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuerSigningKey = true,
-                ValidateIssuer = true,
-                ValidateAudience = true,
-                ValidateLifetime = true,
-                ClockSkew = TimeSpan.FromMinutes(1)
-            };
-        });
-    builder.Services.AddAuthorization();
+            ValidateIssuerSigningKey = true,
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromMinutes(1)
+        };
+    });
 }
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
@@ -156,7 +157,7 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
     IItemSearchRepository repo,
     CancellationToken ct) =>
 {
-    var results = await repo.SearchAsync(
+    var paged = await repo.SearchAsync(
         new HouseholdId(householdId),
         q,
         tag,
@@ -164,11 +165,63 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
         barcode,
         status,
         location,
-        Math.Clamp(take ?? 50, 1, 200),
+        Math.Clamp(take ?? 500, 1, 10000),
         Math.Max(skip ?? 0, 0),
         ct);
 
-    return Results.Ok(results);
+    return Results.Ok(new { paged.TotalCount, Items = paged.Items });
+});
+
+// Duplicate detection
+app.MapGet("/api/households/{householdId:guid}/items/duplicates", async (
+    Guid householdId,
+    IItemSearchRepository repo,
+    CancellationToken ct) =>
+{
+    var groups = await repo.FindDuplicatesAsync(new HouseholdId(householdId), ct);
+    return Results.Ok(groups);
+});
+
+// Merge duplicates — keep one item, delete the rest
+app.MapPost("/api/households/{householdId:guid}/items/merge-duplicates", async (
+    Guid householdId,
+    MergeDuplicatesRequest request,
+    ILibraryItemRepository repo,
+    CancellationToken ct) =>
+{
+    var deleted = 0;
+    foreach (var id in request.DeleteItemIds)
+    {
+        if (await repo.DeleteAsync(new ItemId(id), ct))
+            deleted++;
+    }
+    return Results.Ok(new { kept = request.KeepItemId, deleted });
+});
+
+// Bulk merge all duplicates — keeps oldest item per title+author group, deletes the rest
+app.MapPost("/api/households/{householdId:guid}/items/merge-all-duplicates", async (
+    Guid householdId,
+    IItemSearchRepository searchRepo,
+    ILibraryItemRepository itemRepo,
+    CancellationToken ct) =>
+{
+    var groups = await searchRepo.FindDuplicatesAsync(new HouseholdId(householdId), ct);
+    var totalDeleted = 0;
+    var groupsMerged = 0;
+
+    foreach (var group in groups)
+    {
+        // Keep the oldest item (first by CreatedUtc), delete the rest
+        var keep = group.Items.OrderBy(i => i.CreatedUtc).First();
+        foreach (var item in group.Items.Where(i => i.ItemId != keep.ItemId))
+        {
+            if (await itemRepo.DeleteAsync(new ItemId(item.ItemId), ct))
+                totalDeleted++;
+        }
+        groupsMerged++;
+    }
+
+    return Results.Ok(new { groupsMerged, totalDeleted });
 });
 
 // Import monitoring
@@ -825,10 +878,92 @@ app.MapDelete("/api/editions/{editionId:guid}/cover", async (
     return Results.NoContent();
 });
 
+// ─── Item custom cover (user-uploaded photo of actual book) ─────────────
+
+app.MapPost("/api/items/{itemId:guid}/cover", async (
+    Guid itemId,
+    IFormFile file,
+    IBlobStorageService blobService,
+    ILibraryItemRepository itemRepo,
+    CancellationToken ct) =>
+{
+    if (file.Length == 0)
+        return Results.BadRequest(new { message = "File is empty." });
+
+    if (file.Length > 10 * 1024 * 1024) // 10MB for photos
+        return Results.BadRequest(new { message = "File size exceeds 10MB limit." });
+
+    var allowedTypes = new[] { "image/jpeg", "image/png", "image/webp", "image/gif", "image/heic" };
+    if (!allowedTypes.Contains(file.ContentType.ToLowerInvariant()))
+        return Results.BadRequest(new { message = "Invalid file type. Allowed: jpeg, png, webp, gif, heic." });
+
+    var item = await itemRepo.GetByIdAsync(new ItemId(itemId), ct);
+    if (item is null)
+        return Results.NotFound();
+
+    var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+    if (string.IsNullOrEmpty(extension))
+        extension = file.ContentType switch
+        {
+            "image/jpeg" => ".jpg",
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            "image/gif" => ".gif",
+            "image/heic" => ".heic",
+            _ => ".jpg"
+        };
+
+    // Delete old custom cover if one exists
+    if (!string.IsNullOrEmpty(item.CustomCoverUrl))
+    {
+        try
+        {
+            var oldPath = item.CustomCoverUrl.TrimStart('/');
+            await blobService.DeleteAsync(oldPath, ct);
+        }
+        catch { /* ignore cleanup failures */ }
+    }
+
+    var fileName = $"item-covers/{itemId}/{Guid.NewGuid()}{extension}";
+
+    await using var stream = file.OpenReadStream();
+    var url = await blobService.UploadAsync(fileName, stream, file.ContentType, ct);
+
+    await itemRepo.UpdateCustomCoverUrlAsync(new ItemId(itemId), url, ct);
+
+    return Results.Ok(new { customCoverUrl = url });
+})
+.DisableAntiforgery();
+
+app.MapDelete("/api/items/{itemId:guid}/cover", async (
+    Guid itemId,
+    IBlobStorageService blobService,
+    ILibraryItemRepository itemRepo,
+    CancellationToken ct) =>
+{
+    var item = await itemRepo.GetByIdAsync(new ItemId(itemId), ct);
+    if (item is null)
+        return Results.NotFound();
+
+    if (!string.IsNullOrEmpty(item.CustomCoverUrl))
+    {
+        try
+        {
+            var oldPath = item.CustomCoverUrl.TrimStart('/');
+            await blobService.DeleteAsync(oldPath, ct);
+        }
+        catch { /* ignore cleanup failures */ }
+    }
+
+    await itemRepo.UpdateCustomCoverUrlAsync(new ItemId(itemId), null, ct);
+    return Results.NoContent();
+});
+
 app.Run();
 
 public sealed record CreateHouseholdRequest(string Name);
 public sealed record CreateAccountRequest(string DisplayName, string? Email);
+public sealed record MergeDuplicatesRequest(Guid KeepItemId, Guid[] DeleteItemIds);
 
 /// <summary>
 /// Deprecated: Use CreateBookIngestRequest with POST /api/households/{id}/library/books instead.

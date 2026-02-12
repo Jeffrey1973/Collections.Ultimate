@@ -37,6 +37,7 @@ export interface Book {
   originalTitle?: string
   coverImageUrl?: string
   coverImageFallbacks?: string[] // Ordered list of fallback cover URLs to try
+  customCoverUrl?: string // User-uploaded cover photo
   description?: string
   publisher?: string
   publishedDate?: string
