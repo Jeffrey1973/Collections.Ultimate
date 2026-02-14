@@ -14,7 +14,6 @@ function HomePage() {
 
       <div className="book-grid">
 
-
         <Link to="/library" className="card" style={{ textDecoration: 'none' }}>
           <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>📖</div>
           <h2 style={{ marginBottom: '0.5rem', color: '#1e293b' }}>Browse Library</h2>
@@ -31,25 +30,71 @@ function HomePage() {
           </p>
         </Link>
 
-        <div className="card">
+        <Link to="/households" className="card" style={{ textDecoration: 'none' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🏠</div>
+          <h2 style={{ marginBottom: '0.5rem', color: '#1e293b' }}>Households</h2>
+          <p style={{ color: '#64748b' }}>
+            Manage household members and shared libraries
+          </p>
+        </Link>
+
+      </div>
+
+      <div style={{ margin: '2rem 0 1rem', padding: '0 0.25rem' }}>
+        <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Coming Soon
+        </h3>
+      </div>
+
+      <div className="book-grid">
+
+        <div className="card" style={{ opacity: 0.6 }}>
           <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>📊</div>
           <h2 style={{ marginBottom: '0.5rem', color: '#1e293b' }}>Reading Log</h2>
           <p style={{ color: '#64748b' }}>
             Track your reading progress and history
           </p>
-          <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Coming soon</span>
         </div>
 
-        <div className="card">
+        <div className="card" style={{ opacity: 0.6 }}>
           <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>👥</div>
           <h2 style={{ marginBottom: '0.5rem', color: '#1e293b' }}>Authors</h2>
           <p style={{ color: '#64748b' }}>
             Explore author information and their works
           </p>
-          <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Coming soon</span>
         </div>
 
+        <div className="card" style={{ opacity: 0.6 }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🏢</div>
+          <h2 style={{ marginBottom: '0.5rem', color: '#1e293b' }}>Publishers</h2>
+          <p style={{ color: '#64748b' }}>
+            Browse publishers and their catalogs
+          </p>
+        </div>
 
+        <div className="card" style={{ opacity: 0.6 }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🗺️</div>
+          <h2 style={{ marginBottom: '0.5rem', color: '#1e293b' }}>Maps</h2>
+          <p style={{ color: '#64748b' }}>
+            Visualize your collection by geography and origin
+          </p>
+        </div>
+
+        <div className="card" style={{ opacity: 0.6 }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>✏️</div>
+          <h2 style={{ marginBottom: '0.5rem', color: '#1e293b' }}>Notes &amp; Quotes</h2>
+          <p style={{ color: '#64748b' }}>
+            Save highlights, annotations, and favorite passages
+          </p>
+        </div>
+
+        <div className="card" style={{ opacity: 0.6 }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>📕</div>
+          <h2 style={{ marginBottom: '0.5rem', color: '#1e293b' }}>Full Text Reader</h2>
+          <p style={{ color: '#64748b' }}>
+            Read digital books directly in your browser
+          </p>
+        </div>
 
       </div>
     </div>

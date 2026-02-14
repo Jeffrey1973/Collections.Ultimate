@@ -48,10 +48,32 @@ function LibraryPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showPreviouslyOwned, setShowPreviouslyOwned] = useState(false)
+  const [enrichmentFilter, setEnrichmentFilter] = useState<'all' | 'enriched' | 'unenriched'>('all')
   const [showSettings, setShowSettings] = useState(false)
   const [displayFields, setDisplayFields] = useState<string[]>(loadSavedFields)
   const [fieldSearch, setFieldSearch] = useState('')
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+
+  // Batch enrichment selection
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set())
+
+  // Tools dropdown
+  const [showToolsMenu, setShowToolsMenu] = useState(false)
+  const toolsMenuRef = useRef<HTMLDivElement>(null)
+
+  // Close tools menu on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (toolsMenuRef.current && !toolsMenuRef.current.contains(e.target as Node)) {
+        setShowToolsMenu(false)
+      }
+    }
+    if (showToolsMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showToolsMenu])
 
   // Persist display field choices
   useEffect(() => {
@@ -117,7 +139,12 @@ function LibraryPage() {
   // Filter books based on ownership status
   const activeBooks = books.filter(b => (b as any).status !== 'Previously Owned' && (b as any).status !== 'Deleted')
   const previouslyOwned = books.filter(b => (b as any).status === 'Previously Owned')
-  const displayedBooks = showPreviouslyOwned ? previouslyOwned : activeBooks
+  const displayedBooks = (() => {
+    let base = showPreviouslyOwned ? previouslyOwned : activeBooks
+    if (enrichmentFilter === 'enriched') base = base.filter(b => !!(b as any).enrichedAt)
+    if (enrichmentFilter === 'unenriched') base = base.filter(b => !(b as any).enrichedAt)
+    return base
+  })()
 
   async function handleSoftDelete(bookId: string) {
     try {
@@ -184,6 +211,21 @@ function LibraryPage() {
               📦 {previouslyOwned.length} previously owned {showPreviouslyOwned ? '(showing)' : ''}
             </button>
           )}
+          {enrichmentFilter !== 'all' && (
+            <button
+              onClick={() => setEnrichmentFilter('all')}
+              style={{
+                marginLeft: '0.5rem', padding: '0.2rem 0.6rem', borderRadius: '12px',
+                border: '1px solid #d1d5db', fontSize: '0.8rem', cursor: 'pointer',
+                backgroundColor: enrichmentFilter === 'enriched' ? '#dcfce7' : '#fef2f2',
+                color: enrichmentFilter === 'enriched' ? '#16a34a' : '#dc2626',
+                fontWeight: 500,
+              }}
+              title="Click to clear filter"
+            >
+              ✦ {enrichmentFilter === 'enriched' ? 'Enriched' : 'Unenriched'} ✕
+            </button>
+          )}
         </p>
       </div>
 
@@ -234,15 +276,150 @@ function LibraryPage() {
         >
           ⚙️ Display
         </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={() => navigate('/duplicates')}
-          title="Review and merge duplicate items"
-        >
-          🔄 Duplicates
-        </button>
+        {selectionMode ? (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              setSelectionMode(false)
+              setSelectedBookIds(new Set())
+            }}
+            style={{ backgroundColor: '#ecfdf5', borderColor: '#10b981', color: '#059669' }}
+          >
+            ✕ Cancel
+          </button>
+        ) : (
+          <div ref={toolsMenuRef} style={{ position: 'relative' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowToolsMenu(!showToolsMenu)}
+            >
+              🛠 Tools ▾
+            </button>
+            {showToolsMenu && (
+              <div style={{
+                position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 50,
+                backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                border: '1px solid #e2e8f0', minWidth: '220px', overflow: 'hidden',
+              }}>
+                <div style={{ padding: '0.35rem 0.75rem', fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Maintenance
+                </div>
+                <button
+                  onClick={() => { setShowToolsMenu(false); setSelectionMode(true) }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                    padding: '0.6rem 0.75rem', border: 'none', background: 'none',
+                    cursor: 'pointer', fontSize: '0.9rem', textAlign: 'left', color: '#334155',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                >
+                  <span>✦</span> Enrich Books
+                </button>
+                <button
+                  onClick={() => { setShowToolsMenu(false); navigate('/duplicates') }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                    padding: '0.6rem 0.75rem', border: 'none', background: 'none',
+                    cursor: 'pointer', fontSize: '0.9rem', textAlign: 'left', color: '#334155',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                >
+                  <span>🔄</span> Review Duplicates
+                </button>
+                <div style={{ borderTop: '1px solid #e2e8f0', margin: '0.25rem 0' }} />
+                <div style={{ padding: '0.35rem 0.75rem', fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Filter by Enrichment
+                </div>
+                {(['all', 'unenriched', 'enriched'] as const).map((val) => (
+                  <button
+                    key={val}
+                    onClick={() => { setEnrichmentFilter(val); setShowToolsMenu(false) }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                      padding: '0.5rem 0.75rem', border: 'none', background: enrichmentFilter === val ? '#f0fdf4' : 'none',
+                      cursor: 'pointer', fontSize: '0.85rem', textAlign: 'left',
+                      color: enrichmentFilter === val ? '#16a34a' : '#334155',
+                      fontWeight: enrichmentFilter === val ? 600 : 400,
+                    }}
+                    onMouseEnter={(e) => { if (enrichmentFilter !== val) e.currentTarget.style.backgroundColor = '#f1f5f9' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = enrichmentFilter === val ? '#f0fdf4' : 'transparent' }}
+                  >
+                    {enrichmentFilter === val ? '●' : '○'} {val === 'all' ? 'All Books' : val === 'enriched' ? 'Enriched Only' : 'Unenriched Only'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </form>
+
+      {/* Batch selection toolbar */}
+      {selectionMode && (
+        <div style={{
+          backgroundColor: '#eff6ff', padding: '0.75rem 1rem', borderRadius: '8px',
+          marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem',
+          border: '1px solid #bfdbfe',
+        }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+            <input
+              type="checkbox"
+              checked={displayedBooks.length > 0 && selectedBookIds.size === displayedBooks.length}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setSelectedBookIds(new Set(displayedBooks.map(b => b.id)))
+                } else {
+                  setSelectedBookIds(new Set())
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            />
+            <span style={{ fontWeight: 500, color: '#1e40af' }}>Select All</span>
+          </label>
+          <span style={{ fontSize: '0.8rem', color: '#3b82f6' }}>
+            {selectedBookIds.size} of {displayedBooks.length} selected
+          </span>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={() => {
+                if (selectedBookIds.size === 0) {
+                  alert('Select at least one book to enrich.')
+                  return
+                }
+                const ids = Array.from(selectedBookIds).join(',')
+                navigate(`/enrich?ids=${ids}`)
+              }}
+              disabled={selectedBookIds.size === 0}
+              style={{
+                padding: '0.4rem 1rem', borderRadius: '6px', border: 'none',
+                backgroundColor: selectedBookIds.size === 0 ? '#cbd5e1' : '#10b981',
+                color: 'white', fontSize: '0.85rem', fontWeight: 600,
+                cursor: selectedBookIds.size === 0 ? 'not-allowed' : 'pointer',
+              }}
+            >
+              🔍 Enrich Selected ({selectedBookIds.size})
+            </button>
+            <button
+              onClick={() => {
+                // Select all and navigate
+                const allIds = displayedBooks.map(b => b.id).join(',')
+                navigate(`/enrich?ids=${allIds}`)
+              }}
+              disabled={displayedBooks.length === 0}
+              style={{
+                padding: '0.4rem 1rem', borderRadius: '6px', border: '1px solid #10b981',
+                backgroundColor: 'white', color: '#059669', fontSize: '0.85rem', fontWeight: 600,
+                cursor: displayedBooks.length === 0 ? 'not-allowed' : 'pointer',
+              }}
+            >
+              🔍 Enrich All ({displayedBooks.length})
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Display Settings */}
       {showSettings && (
@@ -469,9 +646,18 @@ function LibraryPage() {
               {displayedBooks.map((book) => (
                 <div
                   key={book.id}
-                  onClick={() => navigate(`/book/${book.id}`)}
+                  onClick={() => {
+                    if (selectionMode) {
+                      const next = new Set(selectedBookIds)
+                      if (next.has(book.id)) next.delete(book.id)
+                      else next.add(book.id)
+                      setSelectedBookIds(next)
+                    } else {
+                      navigate(`/book/${book.id}`)
+                    }
+                  }}
                   style={{
-                    backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white',
+                    backgroundColor: selectionMode && selectedBookIds.has(book.id) ? '#eff6ff' : showPreviouslyOwned ? '#fffbeb' : 'white',
                     padding: '1rem 1.5rem',
                     borderRadius: '8px',
                     boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
@@ -479,7 +665,8 @@ function LibraryPage() {
                     transition: 'all 0.2s',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '1rem'
+                    gap: '1rem',
+                    border: selectionMode && selectedBookIds.has(book.id) ? '2px solid #3b82f6' : '2px solid transparent',
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'
@@ -490,6 +677,16 @@ function LibraryPage() {
                     e.currentTarget.style.transform = 'translateY(0)'
                   }}
                 >
+                  {/* Selection checkbox */}
+                  {selectionMode && (
+                    <input
+                      type="checkbox"
+                      checked={selectedBookIds.has(book.id)}
+                      onChange={() => {}} // handled by row click
+                      onClick={e => e.stopPropagation()}
+                      style={{ cursor: 'pointer', flexShrink: 0, width: '18px', height: '18px' }}
+                    />
+                  )}
                   {/* Cover thumbnail */}
                   {book.coverImageUrl ? (
                     <img
@@ -555,9 +752,33 @@ function LibraryPage() {
                       marginBottom: '0.25rem',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
-                      textOverflow: 'ellipsis'
+                      textOverflow: 'ellipsis',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem'
                     }}>
-                      {book.title}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{book.title}</span>
+                      {book.enrichedAt && (
+                        <span
+                          title={`Enriched ${new Date(book.enrichedAt).toLocaleDateString()}${book.enrichmentSources?.length ? ' via ' + book.enrichmentSources.join(', ') : ''}`}
+                          style={{
+                            flexShrink: 0,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.6rem',
+                            fontWeight: 700,
+                            lineHeight: 1,
+                            padding: '2px 5px',
+                            borderRadius: '9999px',
+                            backgroundColor: '#dcfce7',
+                            color: '#16a34a',
+                            letterSpacing: '0.02em',
+                          }}
+                        >
+                          ✦ enriched
+                        </span>
+                      )}
                     </div>
                     {book.subtitle && (
                       <div style={{

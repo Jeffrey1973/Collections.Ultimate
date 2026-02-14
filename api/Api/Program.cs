@@ -6,6 +6,8 @@ using CollectionsUltimate.Application.Abstractions;
 using CollectionsUltimate.Domain;
 using CollectionsUltimate.Infrastructure.Sql;
 using CollectionsUltimate.Infrastructure.Storage;
+using CollectionsUltimate.Infrastructure.Search;
+using Meilisearch;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,6 +42,14 @@ builder.Services.AddScoped<IItemSearchRepository, ItemSearchRepository>();
 builder.Services.AddScoped<IItemUpdateRepository, ItemUpdateRepository>();
 builder.Services.AddScoped<ITagRepository, TagRepository>();
 
+// Register Meilisearch
+var meiliUrl = builder.Configuration["Meilisearch:Url"] ?? "http://localhost:7700";
+var meiliKey = builder.Configuration["Meilisearch:MasterKey"] ?? "collectionsUltimateDevKey";
+builder.Services.AddSingleton(new MeilisearchClient(meiliUrl, meiliKey));
+builder.Services.AddSingleton<MeilisearchService>();
+builder.Services.AddSingleton<IMeilisearchService>(sp => sp.GetRequiredService<MeilisearchService>());
+builder.Services.AddHostedService<MeilisearchSyncHostedService>();
+
 // Register blob storage service
 var storageProvider = builder.Configuration["Storage:Provider"] ?? "Local";
 if (storageProvider.Equals("Azure", StringComparison.OrdinalIgnoreCase))
@@ -58,17 +68,14 @@ else
 
 // Add CORS policy
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-    ?? ["http://localhost:5173", "http://localhost:3000"];
+    ?? ["http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "http://localhost:3000"];
 
 // Before var app = builder.Build();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins(
-                "http://localhost:5174",  // Current Vite port
-                "http://localhost:5173"   // Original Vite port
-            )
+        policy.WithOrigins(allowedOrigins)
             .AllowAnyMethod()
             .AllowAnyHeader()
             .AllowCredentials();
@@ -92,8 +99,36 @@ if (auth0Configured)
             ValidateIssuerSigningKey = true,
             ValidateIssuer = true,
             ValidateAudience = true,
+            ValidAudiences = new[]
+            {
+                auth0Audience,
+                $"https://{auth0Domain}/api/v2/",
+                $"https://{auth0Domain}/userinfo"
+            },
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromMinutes(1)
+        };
+        // Diagnostic logging for JWT failures
+        options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+        {
+            OnAuthenticationFailed = context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("JwtBearer");
+                logger.LogError(context.Exception, "JWT authentication failed. Authority={Authority}, Audience={Audience}", $"https://{auth0Domain}/", auth0Audience);
+                return Task.CompletedTask;
+            },
+            OnTokenValidated = context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("JwtBearer");
+                logger.LogInformation("JWT validated. Sub={Sub}", context.Principal?.FindFirst("sub")?.Value);
+                return Task.CompletedTask;
+            },
+            OnChallenge = context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("JwtBearer");
+                logger.LogWarning("JWT challenge. Error={Error}, ErrorDesc={Desc}", context.Error, context.ErrorDescription);
+                return Task.CompletedTask;
+            }
         };
     });
 }
@@ -118,18 +153,103 @@ app.UseAuthorization();
 
 app.UseStaticFiles();
 
+// ─── Health endpoint (unauthenticated, for load-balancer probes) ────────────
+
+app.MapGet("/health", async (IMeilisearchService meili, CancellationToken ct) =>
+{
+    var meiliHealthy = false;
+    try { meiliHealthy = await meili.IsHealthyAsync(ct); } catch { }
+
+    return Results.Ok(new
+    {
+        status = "healthy",
+        timestamp = DateTime.UtcNow,
+        services = new
+        {
+            meilisearch = meiliHealthy ? "ok" : "unavailable"
+        }
+    });
+});
+
+// ─── CORS proxy for external book APIs ──────────────────────────────────────
+// Replaces the standalone Node.js proxy server in production.
+// Allows the SPA to call Google Books, ISBNdb, Open Library, etc. without
+// running into browser CORS restrictions.
+
+app.MapGet("/proxy", async (HttpContext ctx, CancellationToken ct) =>
+{
+    var targetUrl = ctx.Request.Query["url"].FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(targetUrl))
+        return Results.BadRequest(new { error = "Missing url parameter" });
+
+    // Allowlist: only proxy known book API domains
+    var allowed = new[] {
+        "googleapis.com", "openlibrary.org", "isbndb.com",
+        "librarything.com", "worldcat.org", "loc.gov",
+        "trove.nla.gov.au", "europeana.eu", "dp.la",
+        "inventaire.io", "archive.org"
+    };
+    if (!Uri.TryCreate(targetUrl, UriKind.Absolute, out var uri)
+        || !allowed.Any(d => uri.Host.EndsWith(d, StringComparison.OrdinalIgnoreCase)))
+        return Results.BadRequest(new { error = "URL not in allowlist" });
+
+    using var httpClient = new HttpClient();
+    httpClient.Timeout = TimeSpan.FromSeconds(15);
+
+    var apiKey = ctx.Request.Query["apiKey"].FirstOrDefault();
+    if (!string.IsNullOrEmpty(apiKey))
+        httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", apiKey);
+
+    var response = await httpClient.GetAsync(targetUrl, ct);
+    var content = await response.Content.ReadAsStringAsync(ct);
+    var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/json";
+
+    return Results.Content(content, contentType, System.Text.Encoding.UTF8, (int)response.StatusCode);
+});
+
+app.MapPost("/proxy", async (HttpContext ctx, CancellationToken ct) =>
+{
+    var targetUrl = ctx.Request.Query["url"].FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(targetUrl))
+        return Results.BadRequest(new { error = "Missing url parameter" });
+
+    var allowed = new[] {
+        "googleapis.com", "openlibrary.org", "isbndb.com",
+        "librarything.com", "worldcat.org", "loc.gov",
+        "trove.nla.gov.au", "europeana.eu", "dp.la",
+        "inventaire.io", "archive.org"
+    };
+    if (!Uri.TryCreate(targetUrl, UriKind.Absolute, out var uri)
+        || !allowed.Any(d => uri.Host.EndsWith(d, StringComparison.OrdinalIgnoreCase)))
+        return Results.BadRequest(new { error = "URL not in allowlist" });
+
+    using var httpClient = new HttpClient();
+    httpClient.Timeout = TimeSpan.FromSeconds(15);
+
+    using var reader = new StreamReader(ctx.Request.Body);
+    var body = await reader.ReadToEndAsync(ct);
+    var reqContent = new StringContent(body, System.Text.Encoding.UTF8,
+        ctx.Request.ContentType ?? "application/json");
+
+    var response = await httpClient.PostAsync(targetUrl, reqContent, ct);
+    var content = await response.Content.ReadAsStringAsync(ct);
+    var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/json";
+
+    return Results.Content(content, contentType, System.Text.Encoding.UTF8, (int)response.StatusCode);
+});
+
 app.MapGet("/api/households", async (IHouseholdRepository repo, CancellationToken ct) =>
 {
     var households = await repo.ListAsync(ct);
     return Results.Ok(households);
-});
+}).RequireAuthorization();
 
 app.MapPost("/api/households", async (CreateHouseholdRequest request, IHouseholdRepository repo, CancellationToken ct) =>
 {
     var household = new Household { Name = request.Name };
     await repo.CreateAsync(household, ct);
     return Results.Created($"/api/households/{household.Id.Value}", household);
-});
+}).RequireAuthorization();
 
 app.MapDelete("/api/households/{householdId:guid}", async (
     Guid householdId,
@@ -141,7 +261,7 @@ app.MapDelete("/api/households/{householdId:guid}", async (
     await accountHouseholdRepo.DeleteByHouseholdIdAsync(id, ct);
     var deleted = await repo.DeleteAsync(id, ct);
     return deleted ? Results.NoContent() : Results.NotFound();
-});
+}).RequireAuthorization();
 
 // Normalized items search (household)
 app.MapGet("/api/households/{householdId:guid}/items", async (
@@ -155,9 +275,33 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
     int? take,
     int? skip,
     IItemSearchRepository repo,
+    IMeilisearchService meili,
     CancellationToken ct) =>
 {
-    var paged = await repo.SearchAsync(
+    var actualTake = Math.Clamp(take ?? 500, 1, 10000);
+    var actualSkip = Math.Max(skip ?? 0, 0);
+    var hasFilters = tag is not null || subject is not null || barcode is not null
+                  || status is not null || location is not null;
+
+    // Use Meilisearch for free-text queries (it has typo tolerance),
+    // fall back to SQL when Meilisearch is unreachable or when using structured filters.
+    if (!string.IsNullOrWhiteSpace(q) && !hasFilters && await meili.IsHealthyAsync(ct))
+    {
+        var meiliResult = await meili.SearchAsync(householdId, q, actualTake, actualSkip, ct);
+        if (meiliResult.ItemIds.Count > 0 || actualSkip > 0)
+        {
+            // Fetch full item data from SQL for the matched IDs
+            var paged = await repo.GetByIdsAsync(
+                new HouseholdId(householdId), meiliResult.ItemIds, ct);
+            return Results.Ok(new { TotalCount = meiliResult.EstimatedTotalHits, Items = paged });
+        }
+        // If Meilisearch returned 0 hits at offset 0, return empty
+        if (meiliResult.ItemIds.Count == 0 && actualSkip == 0)
+            return Results.Ok(new { TotalCount = 0, Items = Array.Empty<ItemSearchResult>() });
+    }
+
+    // Fallback: SQL multi-word AND search
+    var sqlPaged = await repo.SearchAsync(
         new HouseholdId(householdId),
         q,
         tag,
@@ -165,12 +309,12 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
         barcode,
         status,
         location,
-        Math.Clamp(take ?? 500, 1, 10000),
-        Math.Max(skip ?? 0, 0),
+        actualTake,
+        actualSkip,
         ct);
 
-    return Results.Ok(new { paged.TotalCount, Items = paged.Items });
-});
+    return Results.Ok(new { sqlPaged.TotalCount, Items = sqlPaged.Items });
+}).RequireAuthorization();
 
 // Duplicate detection
 app.MapGet("/api/households/{householdId:guid}/items/duplicates", async (
@@ -180,7 +324,7 @@ app.MapGet("/api/households/{householdId:guid}/items/duplicates", async (
 {
     var groups = await repo.FindDuplicatesAsync(new HouseholdId(householdId), ct);
     return Results.Ok(groups);
-});
+}).RequireAuthorization();
 
 // Merge duplicates — keep one item, delete the rest
 app.MapPost("/api/households/{householdId:guid}/items/merge-duplicates", async (
@@ -196,7 +340,7 @@ app.MapPost("/api/households/{householdId:guid}/items/merge-duplicates", async (
             deleted++;
     }
     return Results.Ok(new { kept = request.KeepItemId, deleted });
-});
+}).RequireAuthorization();
 
 // Bulk merge all duplicates — keeps oldest item per title+author group, deletes the rest
 app.MapPost("/api/households/{householdId:guid}/items/merge-all-duplicates", async (
@@ -222,7 +366,7 @@ app.MapPost("/api/households/{householdId:guid}/items/merge-all-duplicates", asy
     }
 
     return Results.Ok(new { groupsMerged, totalDeleted });
-});
+}).RequireAuthorization();
 
 // Import monitoring
 app.MapGet("/api/households/{householdId:guid}/imports", async (
@@ -234,7 +378,7 @@ app.MapGet("/api/households/{householdId:guid}/imports", async (
 {
     var batches = await repo.ListBatchesAsync(new HouseholdId(householdId), Math.Clamp(take ?? 50, 1, 200), Math.Max(skip ?? 0, 0), ct);
     return Results.Ok(batches);
-});
+}).RequireAuthorization();
 
 app.MapGet("/api/imports/batches/{batchId:guid}", async (Guid batchId, IImportRepository repo, CancellationToken ct) =>
 {
@@ -244,7 +388,7 @@ app.MapGet("/api/imports/batches/{batchId:guid}", async (Guid batchId, IImportRe
 
     var counts = await repo.GetBatchStatusCountsAsync(new ImportBatchId(batchId), ct);
     return Results.Ok(new { batch, counts });
-});
+}).RequireAuthorization();
 
 app.MapGet("/api/imports/batches/{batchId:guid}/errors", async (
     Guid batchId,
@@ -255,7 +399,7 @@ app.MapGet("/api/imports/batches/{batchId:guid}/errors", async (
 {
     var failures = await repo.ListFailuresAsync(new ImportBatchId(batchId), Math.Clamp(take ?? 50, 1, 200), Math.Max(skip ?? 0, 0), ct);
     return Results.Ok(failures);
-});
+}).RequireAuthorization();
 
 // Accounts
 app.MapPost("/api/accounts", async (CreateAccountRequest request, IAccountRepository repo, CancellationToken ct) =>
@@ -268,13 +412,13 @@ app.MapPost("/api/accounts", async (CreateAccountRequest request, IAccountReposi
 
     await repo.CreateAsync(account, ct);
     return Results.Created($"/api/accounts/{account.Id.Value}", account);
-});
+}).RequireAuthorization();
 
 app.MapGet("/api/accounts/{accountId:guid}", async (Guid accountId, IAccountRepository repo, CancellationToken ct) =>
 {
     var account = await repo.GetByIdAsync(new AccountId(accountId), ct);
     return account is null ? Results.NotFound() : Results.Ok(account);
-});
+}).RequireAuthorization();
 
 app.MapPost("/api/accounts/{accountId:guid}/households/{householdId:guid}", async (
     Guid accountId,
@@ -284,7 +428,7 @@ app.MapPost("/api/accounts/{accountId:guid}/households/{householdId:guid}", asyn
 {
     await repo.AddAsync(new AccountId(accountId), new HouseholdId(householdId), "Owner", ct);
     return Results.NoContent();
-});
+}).RequireAuthorization();
 
 app.MapGet("/api/accounts/{accountId:guid}/households", async (
     Guid accountId,
@@ -293,7 +437,59 @@ app.MapGet("/api/accounts/{accountId:guid}/households", async (
 {
     var households = await repo.ListHouseholdsAsync(new AccountId(accountId), ct);
     return Results.Ok(households.Select(h => new { id = h.HouseholdId.Value, role = h.Role }));
-});
+}).RequireAuthorization();
+
+// ─── Household Members ────────────────────────────────────────────────────────
+
+// List all members of a household
+app.MapGet("/api/households/{householdId:guid}/members", async (
+    Guid householdId,
+    IAccountHouseholdRepository repo,
+    CancellationToken ct) =>
+{
+    var members = await repo.ListMembersAsync(new HouseholdId(householdId), ct);
+    return Results.Ok(members);
+}).RequireAuthorization();
+
+// Add a member to a household by email
+app.MapPost("/api/households/{householdId:guid}/members", async (
+    Guid householdId,
+    AddMemberRequest request,
+    IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
+    CancellationToken ct) =>
+{
+    var account = await accountRepo.GetByEmailAsync(request.Email, ct);
+    if (account is null)
+        return Results.NotFound(new { message = $"No account found with email '{request.Email}'" });
+
+    var role = request.Role ?? "Member";
+    await ahRepo.AddAsync(account.Id, new HouseholdId(householdId), role, ct);
+    return Results.Ok(new { accountId = account.Id.Value, displayName = account.DisplayName, email = account.Email, role });
+}).RequireAuthorization();
+
+// Update a member's role
+app.MapPatch("/api/households/{householdId:guid}/members/{accountId:guid}", async (
+    Guid householdId,
+    Guid accountId,
+    UpdateMemberRoleRequest request,
+    IAccountHouseholdRepository repo,
+    CancellationToken ct) =>
+{
+    await repo.UpdateRoleAsync(new AccountId(accountId), new HouseholdId(householdId), request.Role, ct);
+    return Results.NoContent();
+}).RequireAuthorization();
+
+// Remove a member from a household
+app.MapDelete("/api/households/{householdId:guid}/members/{accountId:guid}", async (
+    Guid householdId,
+    Guid accountId,
+    IAccountHouseholdRepository repo,
+    CancellationToken ct) =>
+{
+    await repo.RemoveMemberAsync(new AccountId(accountId), new HouseholdId(householdId), ct);
+    return Results.NoContent();
+}).RequireAuthorization();
 
 // ─── Auth endpoints ───────────────────────────────────────────────────────────
 
@@ -312,34 +508,76 @@ app.MapPost("/api/auth/login", async (
 
     var email = http.User.FindFirstValue(ClaimTypes.Email)
              ?? http.User.FindFirstValue("email");
+    var firstName = http.User.FindFirstValue(ClaimTypes.GivenName)
+                 ?? http.User.FindFirstValue("given_name");
+    var lastName = http.User.FindFirstValue(ClaimTypes.Surname)
+                ?? http.User.FindFirstValue("family_name");
     var name = http.User.FindFirstValue("name")
             ?? http.User.FindFirstValue(ClaimTypes.Name)
-            ?? email
-            ?? "User";
+            ?? $"{firstName} {lastName}".Trim();
+    if (string.IsNullOrWhiteSpace(name)) name = email ?? "User";
 
-    // Check if account already exists
+    // Build display name from first/last if available
+    var displayName = !string.IsNullOrWhiteSpace(firstName)
+        ? !string.IsNullOrWhiteSpace(lastName) ? $"{firstName} {lastName}" : firstName
+        : name;
+
+    // Check if account already exists by Auth0 sub
     var account = await accountRepo.GetByAuth0SubAsync(sub, ct);
     if (account is not null)
     {
+        // Refresh name from Auth0 profile on each login (user may have updated it)
+        if (!string.IsNullOrWhiteSpace(firstName) || !string.IsNullOrWhiteSpace(lastName))
+        {
+            await accountRepo.UpdateNameAsync(account.Id, firstName, lastName, displayName, ct);
+        }
         var existingHouseholds = await accountHouseholdRepo.ListHouseholdsAsync(account.Id, ct);
         return Results.Ok(new AuthLoginResponse(
             account.Id.Value,
-            account.DisplayName,
+            displayName,
+            firstName,
+            lastName,
             account.Email,
             existingHouseholds.Select(h => new AuthHousehold(h.HouseholdId.Value, h.Role)).ToList(),
             false));
     }
 
-    // First login: create account, default household, link them
+    // Check if an account already exists by email (pre-existing user, first Auth0 login)
+    if (!string.IsNullOrEmpty(email))
+    {
+        account = await accountRepo.GetByEmailAsync(email, ct);
+        if (account is not null)
+        {
+            // Link the Auth0 sub to the existing account + update name
+            await accountRepo.UpdateAuth0SubAsync(account.Id, sub, ct);
+            if (!string.IsNullOrWhiteSpace(firstName) || !string.IsNullOrWhiteSpace(lastName))
+            {
+                await accountRepo.UpdateNameAsync(account.Id, firstName, lastName, displayName, ct);
+            }
+            var existingHouseholds = await accountHouseholdRepo.ListHouseholdsAsync(account.Id, ct);
+            return Results.Ok(new AuthLoginResponse(
+                account.Id.Value,
+                displayName,
+                firstName,
+                lastName,
+                account.Email,
+                existingHouseholds.Select(h => new AuthHousehold(h.HouseholdId.Value, h.Role)).ToList(),
+                false));
+        }
+    }
+
+    // Brand-new user: create account, default household, link them
     account = new Account
     {
-        DisplayName = name,
+        DisplayName = displayName,
+        FirstName = firstName,
+        LastName = lastName,
         Email = email,
         Auth0Sub = sub
     };
     await accountRepo.CreateAsync(account, ct);
 
-    var household = new Household { Name = $"{name}'s Library" };
+    var household = new Household { Name = $"{displayName}'s Library" };
     await householdRepo.CreateAsync(household, ct);
     await accountHouseholdRepo.AddAsync(account.Id, household.Id, "Owner", ct);
 
@@ -347,6 +585,8 @@ app.MapPost("/api/auth/login", async (
     return Results.Ok(new AuthLoginResponse(
         account.Id.Value,
         account.DisplayName,
+        account.FirstName,
+        account.LastName,
         account.Email,
         households.Select(h => new AuthHousehold(h.HouseholdId.Value, h.Role)).ToList(),
         true));
@@ -372,6 +612,8 @@ app.MapGet("/api/auth/me", async (
     return Results.Ok(new AuthMeResponse(
         account.Id.Value,
         account.DisplayName,
+        account.FirstName,
+        account.LastName,
         account.Email,
         households.Select(h => new AuthHousehold(h.HouseholdId.Value, h.Role)).ToList()));
 }).RequireAuthorization();
@@ -381,19 +623,19 @@ app.MapGet("/api/works/{workId:guid}", async (Guid workId, IWorkRepository repo,
 {
     var work = await repo.GetByIdAsync(new WorkId(workId), ct);
     return work is null ? Results.NotFound() : Results.Ok(work);
-});
+}).RequireAuthorization();
 
 app.MapGet("/api/editions/{editionId:guid}", async (Guid editionId, IEditionRepository repo, CancellationToken ct) =>
 {
     var edition = await repo.GetByIdAsync(new EditionId(editionId), ct);
     return edition is null ? Results.NotFound() : Results.Ok(edition);
-});
+}).RequireAuthorization();
 
 app.MapGet("/api/items/{itemId:guid}", async (Guid itemId, ILibraryItemRepository repo, CancellationToken ct) =>
 {
     var item = await repo.GetFullByIdAsync(new ItemId(itemId), ct);
     return item is null ? Results.NotFound() : Results.Ok(item);
-});
+}).RequireAuthorization();
 
 app.MapPost("/api/works", async (CreateWorkRequest request, IWorkRepository repo, CancellationToken ct) =>
 {
@@ -411,7 +653,7 @@ app.MapPost("/api/works", async (CreateWorkRequest request, IWorkRepository repo
 
     await repo.CreateAsync(work, ct);
     return Results.Created($"/api/works/{work.Id.Value}", work);
-});
+}).RequireAuthorization();
 
 app.MapPost("/api/works/{workId:guid}/editions", async (Guid workId, CreateEditionRequest request, IEditionRepository repo, CancellationToken ct) =>
 {
@@ -434,7 +676,7 @@ app.MapPost("/api/works/{workId:guid}/editions", async (Guid workId, CreateEditi
 
     await repo.CreateAsync(edition, ct);
     return Results.Created($"/api/editions/{edition.Id.Value}", edition);
-});
+}).RequireAuthorization();
 
 app.MapPost("/api/households/{householdId:guid}/items", async (
     Guid householdId,
@@ -466,7 +708,7 @@ app.MapPost("/api/households/{householdId:guid}/items", async (
 
     await repo.CreateAsync(item, ct);
     return Results.Created($"/api/items/{item.Id.Value}", item);
-});
+}).RequireAuthorization();
 
 // Dedup index for import: returns existing barcodes, titles, identifiers
 app.MapGet("/api/households/{householdId:guid}/library/dedup-index", async (
@@ -481,7 +723,7 @@ app.MapGet("/api/households/{householdId:guid}/library/dedup-index", async (
         normalizedTitles = index.NormalizedTitles,
         identifiers = index.IdentifierValues.Keys
     });
-});
+}).RequireAuthorization();
 
 // One-shot create: work + edition + item + metadata
 app.MapPost("/api/households/{householdId:guid}/library/books", async (
@@ -491,6 +733,8 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
     IEditionRepository editionRepo,
     ILibraryItemRepository itemRepo,
     IWorkMetadataRepository metaRepo,
+    IMeilisearchService meili,
+    IItemSearchRepository searchRepo,
     CancellationToken ct) =>
 {
     var work = new Work
@@ -597,8 +841,24 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
     }
 
     var response = new CreateBookIngestResponse(work.Id.Value, editionId?.Value, item.Id.Value);
+
+    // Sync to Meilisearch (best effort)
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            if (!await meili.IsHealthyAsync(CancellationToken.None)) return;
+            // Re-fetch via SQL to get the full flattened search result with authors/tags/etc
+            var items = await searchRepo.GetByIdsAsync(
+                new HouseholdId(householdId), [item.Id.Value], CancellationToken.None);
+            if (items.Count > 0)
+                await meili.IndexItemAsync(householdId, items[0], CancellationToken.None);
+        }
+        catch { /* Meilisearch sync is best-effort */ }
+    });
+
     return Results.Created($"/api/items/{item.Id.Value}", response);
-});
+}).RequireAuthorization();
 
 app.MapPost("/api/works/{workId:guid}/contributors", async (Guid workId, AddContributorRequest request, IWorkMetadataRepository repo, CancellationToken ct) =>
 {
@@ -613,31 +873,39 @@ app.MapPost("/api/works/{workId:guid}/contributors", async (Guid workId, AddCont
 
     await repo.AddContributorAsync(new WorkId(workId), person, new ContributorRoleId(request.RoleId), request.Ordinal, ct);
     return Results.Ok();
-});
+}).RequireAuthorization();
 
 app.MapPost("/api/households/{householdId:guid}/works/{workId:guid}/tags", async (Guid householdId, Guid workId, AddTagRequest request, IWorkMetadataRepository repo, CancellationToken ct) =>
 {
     await repo.AddTagAsync(new WorkId(workId), new HouseholdId(householdId), request.Name, ct);
     return Results.Ok();
-});
+}).RequireAuthorization();
 
 app.MapPost("/api/works/{workId:guid}/subjects", async (Guid workId, AddSubjectRequest request, IWorkMetadataRepository repo, CancellationToken ct) =>
 {
     await repo.AddSubjectAsync(new WorkId(workId), new SubjectSchemeId(request.SchemeId), request.Text, ct);
     return Results.Ok();
-});
+}).RequireAuthorization();
 
 app.MapPost("/api/editions/{editionId:guid}/identifiers", async (Guid editionId, AddEditionIdentifierRequest request, IWorkMetadataRepository repo, CancellationToken ct) =>
 {
     await repo.AddEditionIdentifierAsync(new EditionId(editionId), new IdentifierTypeId(request.IdentifierTypeId), request.Value, request.IsPrimary, ct);
     return Results.Ok();
-});
+}).RequireAuthorization();
 
-app.MapDelete("/api/items/{itemId:guid}", async (Guid itemId, ILibraryItemRepository repo, CancellationToken ct) =>
+app.MapDelete("/api/items/{itemId:guid}", async (Guid itemId, ILibraryItemRepository repo, IMeilisearchService meili, CancellationToken ct) =>
 {
     var deleted = await repo.DeleteAsync(new ItemId(itemId), ct);
+    if (deleted)
+    {
+        // Remove from Meilisearch (best effort)
+        _ = Task.Run(async () =>
+        {
+            try { await meili.RemoveItemAsync(itemId, CancellationToken.None); } catch { }
+        });
+    }
     return deleted ? Results.NoContent() : Results.NotFound();
-});
+}).RequireAuthorization();
 
 app.MapPatch("/api/items/{itemId:guid}", async (
     Guid itemId,
@@ -645,6 +913,11 @@ app.MapPatch("/api/items/{itemId:guid}", async (
     IItemUpdateRepository updateRepo,
     ILibraryItemRepository itemRepo,
     ITagRepository tagRepo,
+    IWorkRepository workRepo,
+    IEditionRepository editionRepo,
+    IWorkMetadataRepository workMetaRepo,
+    IMeilisearchService meili,
+    IItemSearchRepository searchRepo,
     CancellationToken ct) =>
 {
     // Get item first to have access to WorkId and HouseholdId for tags
@@ -728,10 +1001,133 @@ app.MapPatch("/api/items/{itemId:guid}", async (
         }
     }
 
-    // Return full response with updated tags
+    try
+    {
+    // --- Update Work fields ---
+    if (request.Work is not null)
+    {
+        var w = request.Work;
+        var title = ToPatchString(w.Title);
+        // Only call update if at least the title is resolvable
+        var resolvedTitle = title.IsSpecified ? title.Value : null;
+        // We always send all fields; unspecified means "leave as-is" handled by coalesce
+        await workRepo.UpdateAsync(
+            item.WorkId,
+            resolvedTitle ?? item.Title, // fallback to current title
+            ToPatchString(w.Subtitle) is { IsSpecified: true } sub ? sub.Value : null,
+            ToPatchString(w.SortTitle) is { IsSpecified: true } st ? st.Value : null,
+            ToPatchString(w.Description) is { IsSpecified: true } desc ? desc.Value : null,
+            ToPatchString(w.OriginalTitle) is { IsSpecified: true } ot ? ot.Value : null,
+            ToPatchString(w.Language) is { IsSpecified: true } lng ? lng.Value : null,
+            ToPatchString(w.MetadataJson) is { IsSpecified: true } wmj ? wmj.Value : null,
+            ct);
+    }
+
+    // --- Update Edition fields ---
+    if (request.Edition is not null && item.EditionId is { } editionId)
+    {
+        var e = request.Edition;
+        await editionRepo.UpdateAsync(
+            editionId,
+            ToPatchString(e.Publisher) is { IsSpecified: true } pub ? pub.Value : null,
+            ToPatchInt(e.PublishedYear) is { IsSpecified: true } py ? (int?)py.Value : null,
+            ToPatchInt(e.PageCount) is { IsSpecified: true } pc ? (int?)pc.Value : null,
+            ToPatchString(e.Description) is { IsSpecified: true } edesc ? edesc.Value : null,
+            ToPatchString(e.Format) is { IsSpecified: true } fmt ? fmt.Value : null,
+            ToPatchString(e.Binding) is { IsSpecified: true } bnd ? bnd.Value : null,
+            ToPatchString(e.EditionStatement) is { IsSpecified: true } es ? es.Value : null,
+            ToPatchString(e.PlaceOfPublication) is { IsSpecified: true } pop ? pop.Value : null,
+            ToPatchString(e.Language) is { IsSpecified: true } elng ? elng.Value : null,
+            ToPatchString(e.MetadataJson) is { IsSpecified: true } emj ? emj.Value : null,
+            ct);
+    }
+
+    // --- Update Item MetadataJson ---
+    if (request.ItemMetadataJson is not null)
+    {
+        var metaVal = ToPatchString(request.ItemMetadataJson);
+        if (metaVal.IsSpecified)
+        {
+            await updateRepo.UpdateMetadataJsonAsync(new ItemId(itemId), metaVal.Value, ct);
+        }
+    }
+
+    // --- Replace Contributors ---
+    if (request.Contributors is not null)
+    {
+        var contributors = request.Contributors.Select(c =>
+        {
+            var person = new Person
+            {
+                Id = new PersonId(c.PersonId ?? Guid.NewGuid()),
+                DisplayName = c.DisplayName,
+                SortName = c.SortName,
+                BirthYear = c.BirthYear,
+                DeathYear = c.DeathYear,
+            };
+            return (person, new ContributorRoleId(c.RoleId), c.Ordinal);
+        }).ToList();
+
+        await workMetaRepo.ReplaceContributorsAsync(item.WorkId, contributors, ct);
+    }
+
+    // --- Replace Subjects ---
+    if (request.Subjects is not null)
+    {
+        var subjects = request.Subjects
+            .Select(s => (new SubjectSchemeId(s.SchemeId), s.Text))
+            .ToList();
+        await workMetaRepo.ReplaceSubjectsAsync(item.WorkId, subjects, ct);
+    }
+
+    // --- Replace Identifiers ---
+    if (request.Identifiers is not null && item.EditionId is { } eid)
+    {
+        var identifiers = request.Identifiers
+            .Select(i => (new IdentifierTypeId(i.IdentifierTypeId), i.Value, i.IsPrimary))
+            .ToList();
+        await workMetaRepo.ReplaceIdentifiersAsync(eid, identifiers, ct);
+    }
+
+    // --- Replace Series ---
+    if (request.Series is not null)
+    {
+        await workMetaRepo.ReplaceSeriesAsync(
+            item.WorkId,
+            request.Series.Name,
+            request.Series.VolumeNumber,
+            request.Series.Ordinal,
+            ct);
+    }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[PATCH /api/items/{itemId}] Error: {ex}");
+        return Results.Problem(
+            detail: ex.Message,
+            statusCode: 500,
+            title: "Error updating item");
+    }
+
+    // Return full response with updated data
     var fullItem = await itemRepo.GetFullByIdAsync(new ItemId(itemId), ct);
+
+    // Sync to Meilisearch (best effort)
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            if (!await meili.IsHealthyAsync(CancellationToken.None)) return;
+            var items = await searchRepo.GetByIdsAsync(
+                item.OwnerHouseholdId, [itemId], CancellationToken.None);
+            if (items.Count > 0)
+                await meili.IndexItemAsync(item.OwnerHouseholdId.Value, items[0], CancellationToken.None);
+        }
+        catch { /* Meilisearch sync is best-effort */ }
+    });
+
     return Results.Ok(fullItem);
-});
+}).RequireAuthorization();
 
 static List<string>? ParseTagNames(JsonElement el)
 {
@@ -839,7 +1235,8 @@ app.MapPost("/api/editions/{editionId:guid}/cover", async (
 
     return Results.Ok(new { coverImageUrl = url });
 })
-.DisableAntiforgery();
+.DisableAntiforgery()
+.RequireAuthorization();
 
 // Get cover image URL
 app.MapGet("/api/editions/{editionId:guid}/cover", async (
@@ -853,7 +1250,7 @@ app.MapGet("/api/editions/{editionId:guid}/cover", async (
         return Results.NotFound();
 
     return Results.Ok(new { coverImageUrl = url });
-});
+}).RequireAuthorization();
 
 // Delete cover image
 app.MapDelete("/api/editions/{editionId:guid}/cover", async (
@@ -876,7 +1273,7 @@ app.MapDelete("/api/editions/{editionId:guid}/cover", async (
 
     await editionRepo.UpdateCoverUrlAsync(new EditionId(editionId), null, ct);
     return Results.NoContent();
-});
+}).RequireAuthorization();
 
 // ─── Item custom cover (user-uploaded photo of actual book) ─────────────
 
@@ -933,7 +1330,8 @@ app.MapPost("/api/items/{itemId:guid}/cover", async (
 
     return Results.Ok(new { customCoverUrl = url });
 })
-.DisableAntiforgery();
+.DisableAntiforgery()
+.RequireAuthorization();
 
 app.MapDelete("/api/items/{itemId:guid}/cover", async (
     Guid itemId,
@@ -957,7 +1355,7 @@ app.MapDelete("/api/items/{itemId:guid}/cover", async (
 
     await itemRepo.UpdateCustomCoverUrlAsync(new ItemId(itemId), null, ct);
     return Results.NoContent();
-});
+}).RequireAuthorization();
 
 app.Run();
 
@@ -1106,22 +1504,70 @@ public sealed record CreateBookIngestSubject(int SchemeId, string Text);
 
 public sealed record CreateBookIngestResponse(Guid WorkId, Guid? EditionId, Guid ItemId);
 
+public sealed record PatchWorkFields(
+    JsonElement? Title,
+    JsonElement? Subtitle,
+    JsonElement? SortTitle,
+    JsonElement? Description,
+    JsonElement? OriginalTitle,
+    JsonElement? Language,
+    JsonElement? MetadataJson);
+
+public sealed record PatchEditionFields(
+    JsonElement? Publisher,
+    JsonElement? PublishedYear,
+    JsonElement? PageCount,
+    JsonElement? Description,
+    JsonElement? Format,
+    JsonElement? Binding,
+    JsonElement? EditionStatement,
+    JsonElement? PlaceOfPublication,
+    JsonElement? Language,
+    JsonElement? MetadataJson);
+
+public sealed record PatchContributor(
+    Guid? PersonId,
+    string DisplayName,
+    int RoleId,
+    int Ordinal,
+    string? SortName = null,
+    int? BirthYear = null,
+    int? DeathYear = null);
+
+public sealed record PatchSubject(int SchemeId, string Text);
+public sealed record PatchIdentifier(int IdentifierTypeId, string Value, bool IsPrimary = false);
+public sealed record PatchSeries(string Name, string? VolumeNumber = null, int? Ordinal = null);
+
 public sealed record PatchItemRequest(
-JsonElement? Barcode,
-JsonElement? Location,
-JsonElement? Status,
-JsonElement? Condition,
-JsonElement? AcquiredOn,
-JsonElement? Price,
-JsonElement? Notes,
-JsonElement? Tags,
-JsonElement? ReadStatus,
-JsonElement? CompletedDate,
-JsonElement? DateStarted,
-JsonElement? UserRating,
-JsonElement? LibraryOrder);
+    // Item-level fields
+    JsonElement? Barcode,
+    JsonElement? Location,
+    JsonElement? Status,
+    JsonElement? Condition,
+    JsonElement? AcquiredOn,
+    JsonElement? Price,
+    JsonElement? Notes,
+    JsonElement? Tags,
+    JsonElement? ReadStatus,
+    JsonElement? CompletedDate,
+    JsonElement? DateStarted,
+    JsonElement? UserRating,
+    JsonElement? LibraryOrder,
+    JsonElement? ItemMetadataJson,
+    // Nested work / edition
+    PatchWorkFields? Work,
+    PatchEditionFields? Edition,
+    // Related entities (full replace when present)
+    List<PatchContributor>? Contributors,
+    List<PatchSubject>? Subjects,
+    List<PatchIdentifier>? Identifiers,
+    PatchSeries? Series);
 
 // Auth response records
 public sealed record AuthHousehold(Guid Id, string Role);
-public sealed record AuthLoginResponse(Guid AccountId, string DisplayName, string? Email, IReadOnlyList<AuthHousehold> Households, bool IsNewAccount);
-public sealed record AuthMeResponse(Guid AccountId, string DisplayName, string? Email, IReadOnlyList<AuthHousehold> Households);
+public sealed record AuthLoginResponse(Guid AccountId, string DisplayName, string? FirstName, string? LastName, string? Email, IReadOnlyList<AuthHousehold> Households, bool IsNewAccount);
+public sealed record AuthMeResponse(Guid AccountId, string DisplayName, string? FirstName, string? LastName, string? Email, IReadOnlyList<AuthHousehold> Households);
+
+// Member management
+public sealed record AddMemberRequest(string Email, string? Role);
+public sealed record UpdateMemberRoleRequest(string Role);

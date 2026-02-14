@@ -25,11 +25,81 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         int skip,
         CancellationToken ct)
     {
-        var q = string.IsNullOrWhiteSpace(query) ? null : $"%{query.Trim()}%";
+        // Split query into individual words for AND matching — each word must match at least one field
+        var terms = string.IsNullOrWhiteSpace(query)
+            ? []
+            : query.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+
         var tagNorm = string.IsNullOrWhiteSpace(tag) ? null : NormalizeKey(tag);
         var subjectNorm = string.IsNullOrWhiteSpace(subject) ? null : NormalizeKey(subject);
 
-        const string sql = """
+        // Build per-term AND clauses dynamically
+        var parameters = new DynamicParameters();
+        parameters.Add("HouseholdId", householdId.Value);
+        parameters.Add("TagNorm", tagNorm);
+        parameters.Add("SubjectNorm", subjectNorm);
+        parameters.Add("Barcode", string.IsNullOrWhiteSpace(barcode) ? null : barcode.Trim());
+        parameters.Add("Status", string.IsNullOrWhiteSpace(status) ? null : status.Trim());
+        parameters.Add("Location", string.IsNullOrWhiteSpace(location) ? null : location.Trim());
+        parameters.Add("Take", take);
+        parameters.Add("Skip", skip);
+
+        var termClauses = new System.Text.StringBuilder();
+        for (int idx = 0; idx < terms.Length; idx++)
+        {
+            var paramName = $"@Q{idx}";
+            parameters.Add($"Q{idx}", $"%{terms[idx]}%");
+            termClauses.AppendLine($"""
+              and (
+                    i.Title like {paramName}
+                 or w.Title like {paramName}
+                 or a.Authors like {paramName}
+                 or i.Barcode like {paramName}
+                 or i.Subtitle like {paramName}
+                 or i.Notes like {paramName}
+                 or i.Location like {paramName}
+                 or i.Status like {paramName}
+                 or i.Condition like {paramName}
+                 or i.ReadStatus like {paramName}
+                 or w.Description like {paramName}
+                 or w.OriginalTitle like {paramName}
+                 or w.Language like {paramName}
+                 or w.MetadataJson like {paramName}
+                 or e.Publisher like {paramName}
+                 or cast(e.PublishedYear as varchar) like {paramName}
+                 or e.Format like {paramName}
+                 or e.Binding like {paramName}
+                 or e.EditionStatement like {paramName}
+                 or e.PlaceOfPublication like {paramName}
+                 or e.Language like {paramName}
+                 or e.MetadataJson like {paramName}
+                 or i.MetadataJson like {paramName}
+                 or s.Name like {paramName}
+                 or exists (
+                      select 1
+                      from dbo.WorkTag wt
+                      inner join dbo.Tag t on t.Id = wt.TagId
+                      where wt.WorkId = i.WorkId
+                        and t.Name like {paramName}
+                 )
+                 or exists (
+                      select 1
+                      from dbo.WorkSubject ws
+                      inner join dbo.SubjectHeading sh on sh.Id = ws.SubjectHeadingId
+                      where ws.WorkId = i.WorkId
+                        and sh.Text like {paramName}
+                 )
+                 or exists (
+                      select 1
+                      from dbo.EditionIdentifier ei
+                      where ei.EditionId = i.EditionId
+                        and ei.Value like {paramName}
+                 )
+              )
+            """);
+        }
+
+        var sql = $"""
             with Authors as
             (
                 select
@@ -94,13 +164,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
               and (@Barcode is null or i.Barcode = @Barcode)
               and (@Status is null or i.Status = @Status)
               and (@Location is null or i.Location = @Location)
-              and (
-                    @Q is null
-                 or i.Title like @Q
-                 or w.Title like @Q
-                 or a.Authors like @Q
-                 or i.Barcode like @Q
-              )
+              {termClauses}
               and (
                     @TagNorm is null
                  or exists (
@@ -127,22 +191,96 @@ public sealed class ItemSearchRepository : IItemSearchRepository
             """;
 
         using var conn = _connectionFactory.Create();
-        var rows = await conn.QueryAsync<ItemRow>(new CommandDefinition(sql, new
-        {
-            HouseholdId = householdId.Value,
-            Q = q,
-            TagNorm = tagNorm,
-            SubjectNorm = subjectNorm,
-            Barcode = string.IsNullOrWhiteSpace(barcode) ? null : barcode.Trim(),
-            Status = string.IsNullOrWhiteSpace(status) ? null : status.Trim(),
-            Location = string.IsNullOrWhiteSpace(location) ? null : location.Trim(),
-            Take = take,
-            Skip = skip
-        }, cancellationToken: ct));
+        var rows = await conn.QueryAsync<ItemRow>(new CommandDefinition(sql, parameters, cancellationToken: ct));
 
         var list = rows.ToList();
         var totalCount = list.FirstOrDefault()?.TotalCount ?? 0;
         return new SearchPagedResult(totalCount, list.Select(Map).ToList());
+    }
+
+    public async Task<IReadOnlyList<ItemSearchResult>> GetByIdsAsync(
+        HouseholdId householdId,
+        IReadOnlyList<Guid> itemIds,
+        CancellationToken ct)
+    {
+        if (itemIds.Count == 0)
+            return [];
+
+        const string sql = """
+            with Authors as
+            (
+                select
+                    wc.WorkId,
+                    string_agg(cast(p.DisplayName as nvarchar(max)), N', ') within group (order by wc.Ordinal) as Authors
+                from dbo.WorkContributor wc
+                inner join dbo.Person p on p.Id = wc.PersonId
+                where wc.RoleId = 1
+                group by wc.WorkId
+            )
+            select
+                0 as TotalCount,
+                i.Id as ItemId,
+                i.WorkId,
+                i.EditionId,
+                i.Kind,
+                i.Title,
+                i.Subtitle,
+                i.Barcode,
+                i.Location,
+                i.Status,
+                i.Condition,
+                i.AcquiredOn,
+                i.Price,
+                i.ReadStatus,
+                i.CompletedDate,
+                i.DateStarted,
+                i.UserRating,
+                i.LibraryOrder,
+                i.CreatedUtc,
+                i.Notes,
+                i.MetadataJson as ItemMetadataJson,
+                w.Title as WorkTitle,
+                w.Description as WorkDescription,
+                w.OriginalTitle,
+                w.Language as WorkLanguage,
+                w.MetadataJson as WorkMetadataJson,
+                a.Authors,
+                e.Publisher,
+                e.PublishedYear,
+                e.PageCount,
+                e.CoverImageUrl,
+                i.CustomCoverUrl,
+                e.Format,
+                e.Binding,
+                e.EditionStatement,
+                e.PlaceOfPublication,
+                e.Language as EditionLanguage,
+                e.MetadataJson as EditionMetadataJson,
+                (select string_agg(cast(t.Name as nvarchar(max)), N'||') from dbo.WorkTag wt2 inner join dbo.Tag t on t.Id = wt2.TagId where wt2.WorkId = i.WorkId) as Tags,
+                (select string_agg(cast(sh.Text as nvarchar(max)), N'||') from dbo.WorkSubject ws2 inner join dbo.SubjectHeading sh on sh.Id = ws2.SubjectHeadingId where ws2.WorkId = i.WorkId) as Subjects,
+                (select string_agg(cast(cast(ei.IdentifierTypeId as varchar) + N':' + ei.Value as nvarchar(max)), N'||') from dbo.EditionIdentifier ei where ei.EditionId = i.EditionId) as Identifiers,
+                s.Name as SeriesName,
+                ws3.VolumeNumber
+            from dbo.LibraryItem i
+            inner join dbo.Work w on w.Id = i.WorkId
+            left join Authors a on a.WorkId = i.WorkId
+            left join dbo.Edition e on e.Id = i.EditionId
+            left join dbo.WorkSeries ws3 on ws3.WorkId = i.WorkId
+            left join dbo.Series s on s.Id = ws3.SeriesId
+            where i.HouseholdId = @HouseholdId
+              and i.Id in @ItemIds;
+            """;
+
+        using var conn = _connectionFactory.Create();
+        var rows = await conn.QueryAsync<ItemRow>(new CommandDefinition(sql, new
+        {
+            HouseholdId = householdId.Value,
+            ItemIds = itemIds
+        }, cancellationToken: ct));
+
+        // Preserve the order from Meilisearch ranking
+        var lookup = rows.ToDictionary(r => r.ItemId, r => Map(r));
+        return itemIds.Where(lookup.ContainsKey).Select(id => lookup[id]).ToList();
     }
 
     private static string NormalizeKey(string value)

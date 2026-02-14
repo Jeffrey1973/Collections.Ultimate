@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useHousehold } from '../context/HouseholdContext'
+import { authFetch } from '../api/backend'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,14 @@ interface HouseholdDetail {
   digitalLocations: DigitalLocation[]
 }
 
+interface HouseholdMember {
+  accountId: string
+  displayName: string
+  email: string | null
+  role: string
+  joinedUtc: string
+}
+
 // ─── Stub API calls (replace with real endpoints later) ──────────────────────
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5259'
@@ -62,7 +71,7 @@ function persistHouseholdDetail(detail: HouseholdDetail) {
 async function apiDeleteHousehold(householdId: string): Promise<void> {
   // Try calling the real API first
   try {
-    const response = await fetch(`${API_BASE_URL}/api/households/${householdId}`, {
+    const response = await authFetch(`${API_BASE_URL}/api/households/${householdId}`, {
       method: 'DELETE',
     })
     if (response.ok) return
@@ -76,7 +85,7 @@ async function apiDeleteHousehold(householdId: string): Promise<void> {
 
 async function apiUpdateHousehold(householdId: string, name: string): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/households/${householdId}`, {
+    const response = await authFetch(`${API_BASE_URL}/api/households/${householdId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -85,6 +94,43 @@ async function apiUpdateHousehold(householdId: string, name: string): Promise<vo
   } catch {
     // API not available — changes will only be in context
   }
+}
+
+// ─── Member API calls ────────────────────────────────────────────────────────
+
+async function apiListMembers(householdId: string): Promise<HouseholdMember[]> {
+  const response = await authFetch(`${API_BASE_URL}/api/households/${householdId}/members`)
+  if (!response.ok) throw new Error('Failed to load members')
+  return response.json()
+}
+
+async function apiAddMember(householdId: string, email: string, role: string): Promise<HouseholdMember> {
+  const response = await authFetch(`${API_BASE_URL}/api/households/${householdId}/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, role }),
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}))
+    throw new Error(body.message || 'Failed to add member')
+  }
+  return response.json()
+}
+
+async function apiUpdateMemberRole(householdId: string, accountId: string, role: string): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/api/households/${householdId}/members/${accountId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role }),
+  })
+  if (!response.ok) throw new Error('Failed to update role')
+}
+
+async function apiRemoveMember(householdId: string, accountId: string): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/api/households/${householdId}/members/${accountId}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) throw new Error('Failed to remove member')
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -603,9 +649,88 @@ function DeleteConfirmation({
   )
 }
 
+// ─── Add Member Form ─────────────────────────────────────────────────────────
+
+function AddMemberForm({
+  onSave,
+  onCancel,
+  error,
+}: {
+  onSave: (email: string, role: string) => void
+  onCancel: () => void
+  error: string | null
+}) {
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState('Member')
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleSubmit() {
+    setSubmitting(true)
+    await onSave(email.trim(), role)
+    setSubmitting(false)
+  }
+
+  return (
+    <Modal onClose={onCancel}>
+      <div style={styles.formTitle}>Invite Member</div>
+      <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '1rem' }}>
+        Enter the email address of an existing account to add them to this household.
+      </p>
+
+      {error && (
+        <div style={{
+          background: '#fef2f2',
+          border: '1px solid #fecaca',
+          borderRadius: 8,
+          padding: '0.6rem 0.75rem',
+          marginBottom: '1rem',
+          color: '#dc2626',
+          fontSize: '0.85rem',
+        }}>
+          {error}
+        </div>
+      )}
+
+      <div style={styles.fieldGroup}>
+        <label style={styles.label}>Email Address *</label>
+        <input
+          style={styles.input}
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="user@example.com"
+          autoFocus
+        />
+      </div>
+      <div style={styles.fieldGroup}>
+        <label style={styles.label}>Role</label>
+        <select
+          style={styles.select}
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+        >
+          <option value="Owner">👑 Owner — Full control</option>
+          <option value="Member">👤 Member — Add & edit books</option>
+          <option value="ReadOnly">👁️ ReadOnly — Browse only</option>
+        </select>
+      </div>
+      <div style={styles.formActions}>
+        <button className="btn btn-secondary" onClick={onCancel}>Cancel</button>
+        <button
+          className="btn btn-primary"
+          disabled={!email.trim() || submitting}
+          onClick={handleSubmit}
+        >
+          {submitting ? 'Inviting...' : 'Add Member'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
 // ─── Main Page Component ─────────────────────────────────────────────────────
 
-type ActiveTab = 'households' | 'shelves' | 'digital'
+type ActiveTab = 'households' | 'shelves' | 'digital' | 'members'
 
 export default function HouseholdManagementPage() {
   const {
@@ -628,7 +753,13 @@ export default function HouseholdManagementPage() {
   const [editingShelf, setEditingShelf] = useState<ShelfLocation | null>(null)
   const [showDigitalForm, setShowDigitalForm] = useState(false)
   const [editingDigital, setEditingDigital] = useState<DigitalLocation | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<{ type: 'household' | 'shelf' | 'digital'; id: string; name: string } | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'household' | 'shelf' | 'digital' | 'member'; id: string; name: string } | null>(null)
+
+  // Members state
+  const [members, setMembers] = useState<HouseholdMember[]>([])
+  const [showMemberForm, setShowMemberForm] = useState(false)
+  const [memberError, setMemberError] = useState<string | null>(null)
+  const [membersLoading, setMembersLoading] = useState(false)
 
   // Load location data for the selected household
   const loadLocations = useCallback(async () => {
@@ -648,6 +779,26 @@ export default function HouseholdManagementPage() {
   useEffect(() => {
     loadLocations()
   }, [loadLocations])
+
+  // Load members when household or tab changes
+  const loadMembers = useCallback(async () => {
+    if (!selectedHousehold) return
+    setMembersLoading(true)
+    setMemberError(null)
+    try {
+      const list = await apiListMembers(selectedHousehold.id)
+      setMembers(list)
+    } catch (err) {
+      console.error('Failed to load members:', err)
+      setMemberError('Failed to load members')
+    } finally {
+      setMembersLoading(false)
+    }
+  }, [selectedHousehold])
+
+  useEffect(() => {
+    if (activeTab === 'members') loadMembers()
+  }, [activeTab, loadMembers])
 
   // ── Persist helper ──
   function saveLocations(shelves: ShelfLocation[], digital: DigitalLocation[]) {
@@ -753,6 +904,43 @@ export default function HouseholdManagementPage() {
     setDeleteTarget(null)
   }
 
+  // ── Member CRUD ──
+  async function handleAddMember(email: string, role: string) {
+    if (!selectedHousehold) return
+    setMemberError(null)
+    try {
+      await apiAddMember(selectedHousehold.id, email, role)
+      await loadMembers()
+      setShowMemberForm(false)
+    } catch (err: any) {
+      setMemberError(err.message || 'Failed to add member')
+    }
+  }
+
+  async function handleUpdateRole(accountId: string, role: string) {
+    if (!selectedHousehold) return
+    setMemberError(null)
+    try {
+      await apiUpdateMemberRole(selectedHousehold.id, accountId, role)
+      setMembers((prev) => prev.map((m) => m.accountId === accountId ? { ...m, role } : m))
+    } catch (err: any) {
+      setMemberError(err.message || 'Failed to update role')
+    }
+  }
+
+  async function handleRemoveMember() {
+    if (!selectedHousehold || !deleteTarget || deleteTarget.type !== 'member') return
+    setMemberError(null)
+    try {
+      await apiRemoveMember(selectedHousehold.id, deleteTarget.id)
+      setMembers((prev) => prev.filter((m) => m.accountId !== deleteTarget.id))
+      setDeleteTarget(null)
+    } catch (err: any) {
+      setMemberError(err.message || 'Failed to remove member')
+      setDeleteTarget(null)
+    }
+  }
+
   // ── Build hierarchical shelf list ──
   function getShelfHierarchy(): (ShelfLocation & { depth: number })[] {
     const result: (ShelfLocation & { depth: number })[] = []
@@ -820,6 +1008,9 @@ export default function HouseholdManagementPage() {
         </button>
         <button style={styles.tab(activeTab === 'digital')} onClick={() => setActiveTab('digital')}>
           💻 Digital Locations
+        </button>
+        <button style={styles.tab(activeTab === 'members')} onClick={() => setActiveTab('members')}>
+          👤 Members
         </button>
       </div>
 
@@ -1064,6 +1255,117 @@ export default function HouseholdManagementPage() {
         </div>
       )}
 
+      {/* ─── Members Tab ─────────────────────────────────────────────────── */}
+      {activeTab === 'members' && (
+        <div>
+          {!selectedHousehold ? (
+            <div style={styles.emptyState}>
+              <div style={styles.emptyIcon}>⚠️</div>
+              <p>Select a household first from the Households tab</p>
+            </div>
+          ) : (
+            <>
+              <div style={styles.sectionHeader}>
+                <span style={styles.sectionTitle}>
+                  Members — {selectedHousehold.name}
+                </span>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setMemberError(null)
+                    setShowMemberForm(true)
+                  }}
+                >
+                  + Invite Member
+                </button>
+              </div>
+
+              <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '1rem' }}>
+                Manage who has access to this household's library. Members can be assigned roles:
+                <strong> Owner</strong> (full control), <strong>Member</strong> (add/edit books), or <strong>ReadOnly</strong> (browse only).
+              </p>
+
+              {memberError && (
+                <div style={{
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: 8,
+                  padding: '0.75rem 1rem',
+                  marginBottom: '1rem',
+                  color: '#dc2626',
+                  fontSize: '0.9rem',
+                }}>
+                  {memberError}
+                </div>
+              )}
+
+              {membersLoading ? (
+                <div className="loading">Loading members...</div>
+              ) : members.length === 0 ? (
+                <div style={styles.emptyState}>
+                  <div style={styles.emptyIcon}>👤</div>
+                  <p>No members yet.</p>
+                  <p style={{ fontSize: '0.875rem' }}>
+                    Invite people by their account email to give them access to this household.
+                  </p>
+                </div>
+              ) : (
+                members.map((member) => (
+                  <div key={member.accountId} style={styles.listCard}>
+                    <div style={styles.listCardIcon}>
+                      {member.role === 'Owner' ? '👑' : member.role === 'ReadOnly' ? '👁️' : '👤'}
+                    </div>
+                    <div style={styles.listCardBody}>
+                      <div style={styles.listCardName}>
+                        {member.displayName}
+                        <span style={styles.badge(
+                          member.role === 'Owner' ? '#f59e0b' :
+                          member.role === 'ReadOnly' ? '#94a3b8' :
+                          '#3b82f6'
+                        )}>
+                          {member.role}
+                        </span>
+                      </div>
+                      <div style={styles.listCardMeta}>
+                        {member.email ?? 'No email'}
+                        {member.joinedUtc && ` · Joined ${new Date(member.joinedUtc).toLocaleDateString()}`}
+                      </div>
+                    </div>
+                    <div style={styles.listCardActions}>
+                      <select
+                        style={{
+                          ...styles.select,
+                          width: 'auto',
+                          padding: '0.3rem 0.5rem',
+                          fontSize: '0.8rem',
+                        }}
+                        value={member.role}
+                        onChange={(e) => handleUpdateRole(member.accountId, e.target.value)}
+                      >
+                        <option value="Owner">Owner</option>
+                        <option value="Member">Member</option>
+                        <option value="ReadOnly">ReadOnly</option>
+                      </select>
+                      <button
+                        style={styles.iconBtn('delete')}
+                        title="Remove member"
+                        onClick={() => setDeleteTarget({
+                          type: 'member',
+                          id: member.accountId,
+                          name: member.displayName,
+                        })}
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* ─── Modals ───────────────────────────────────────────────────────── */}
 
       {showHouseholdForm && (
@@ -1111,8 +1413,17 @@ export default function HouseholdManagementPage() {
             if (deleteTarget.type === 'household') handleDeleteHousehold()
             else if (deleteTarget.type === 'shelf') handleDeleteShelf()
             else if (deleteTarget.type === 'digital') handleDeleteDigital()
+            else if (deleteTarget.type === 'member') handleRemoveMember()
           }}
           onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {showMemberForm && (
+        <AddMemberForm
+          onSave={handleAddMember}
+          onCancel={() => setShowMemberForm(false)}
+          error={memberError}
         />
       )}
     </div>

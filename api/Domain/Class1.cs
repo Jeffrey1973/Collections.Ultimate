@@ -8,12 +8,16 @@ public sealed class Account
 {
     public AccountId Id { get; init; } = new(Guid.NewGuid());
     public required string DisplayName { get; init; }
+    public string? FirstName { get; set; }
+    public string? LastName { get; set; }
     public string? Email { get; init; }
     public string? Auth0Sub { get; init; }
     public DateTimeOffset CreatedUtc { get; init; } = DateTimeOffset.UtcNow;
 }
 
 public sealed record AccountHousehold(AccountId AccountId, HouseholdId HouseholdId, string Role, DateTimeOffset CreatedUtc);
+
+public sealed record HouseholdMember(Guid AccountId, string DisplayName, string? Email, string Role, DateTimeOffset JoinedUtc);
 
 public sealed class Household
 {

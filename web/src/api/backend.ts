@@ -5,6 +5,33 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5259
 // TODO: Replace with actual householdId from authentication
 const DEV_HOUSEHOLD_ID = '00000000-0000-0000-0000-000000000000' // Replace with real ID
 
+// ─── Auth token provider ────────────────────────────────────────────────────
+
+type TokenProvider = () => Promise<string | null>;
+let _getToken: TokenProvider = async () => null;
+
+/**
+ * Call once at app startup to wire in the Auth0 token provider.
+ * After this, every backend fetch will automatically include a Bearer token.
+ */
+export function setTokenProvider(provider: TokenProvider) {
+  _getToken = provider;
+}
+
+/**
+ * Fetch wrapper that attaches Authorization header.
+ * Falls back to a normal fetch if no token is available (e.g. during logout).
+ * Exported so other modules (e.g. HouseholdManagementPage) can use it.
+ */
+export async function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const token = await _getToken();
+  const headers = new Headers(init?.headers);
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  return fetch(input, { ...init, headers });
+}
+
 // ─── Dedup index for import ─────────────────────────────────────────────────
 
 export interface DedupIndex {
@@ -18,7 +45,7 @@ export interface DedupIndex {
  * Used to skip duplicates during import.
  */
 export async function getDedupIndex(householdId: string): Promise<DedupIndex> {
-  const resp = await fetch(`${API_BASE_URL}/api/households/${householdId}/library/dedup-index`)
+  const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/library/dedup-index`)
   if (!resp.ok) throw new Error('Failed to fetch dedup index')
   return resp.json()
 }
@@ -44,7 +71,7 @@ export interface CreateBookIngestRequest {
     description?: string
     originalTitle?: string
     language?: string
-    metadata?: Record<string, any> // JSONB for extended work fields
+    metadataJson?: string // Serialized JSON for extended work fields
   }
   edition: {
     editionTitle?: string
@@ -63,7 +90,7 @@ export interface CreateBookIngestRequest {
       value: string
       isPrimary: boolean
     }>
-    metadata?: Record<string, any> // JSONB for extended edition fields
+    metadataJson?: string // Serialized JSON for extended edition fields
   }
   item: {
     title?: string
@@ -80,7 +107,7 @@ export interface CreateBookIngestRequest {
     dateStarted?: string
     userRating?: number
     libraryOrder?: number
-    metadata?: Record<string, any> // JSONB for extended item fields
+    metadataJson?: string // Serialized JSON for extended item fields
   }
   contributors?: Array<{
     personId?: string
@@ -127,9 +154,14 @@ export interface ItemResponse {
   customCoverUrl?: string
   work?: WorkResponse
   edition?: EditionResponse
-  tags?: string[]
-  subjects?: Array<{ schemeId: number; text: string }>
-  metadata?: Record<string, any> // JSONB extended fields
+  tags?: string[] | Array<{ tagId: string; name: string }>
+  subjects?: Array<{ subjectHeadingId: string; schemeId: number; schemeName: string; text: string }>
+  contributors?: ContributorResponse[]
+  identifiers?: IdentifierResponse[]
+  series?: { seriesId: string; name: string; volumeNumber?: string; ordinal?: number }
+  authors?: string
+  metadataJson?: string // JSON string of item-level extended fields
+  metadata?: Record<string, any> // parsed alias (not from API)
 }
 
 /** Flat search result returned by the list endpoint */
@@ -189,21 +221,31 @@ export interface WorkResponse {
   subtitle?: string
   sortTitle?: string
   description?: string
+  originalTitle?: string
+  language?: string
   contributors?: ContributorResponse[]
-  metadata?: Record<string, any> // JSONB extended fields
+  metadataJson?: string // JSON string
+  metadata?: Record<string, any> // parsed alias (not from API)
 }
 
 export interface EditionResponse {
   editionId: string
-  workId: string
+  workId?: string
   editionTitle?: string
   editionSubtitle?: string
   publisher?: string
   publishedYear?: number
   pageCount?: number
   description?: string
+  coverImageUrl?: string
+  format?: string
+  binding?: string
+  editionStatement?: string
+  placeOfPublication?: string
+  language?: string
   identifiers?: IdentifierResponse[]
-  metadata?: Record<string, any> // JSONB extended fields
+  metadataJson?: string // JSON string
+  metadata?: Record<string, any> // parsed alias (not from API)
 }
 
 export interface ContributorResponse {
@@ -279,10 +321,12 @@ export const ContributorRole = {
 
 // Subject Scheme IDs
 export const SubjectScheme = {
-  LCSH: 1, // Library of Congress Subject Headings
-  Dewey: 2,
-  Custom: 99,
-  // Add more as needed
+  LCSH: 1,    // Library of Congress Subject Headings
+  BISAC: 2,   // BISAC (Book Industry Standards)
+  Custom: 3,  // Custom / user-defined
+  LCC: 4,     // Library of Congress Classification
+  Thema: 6,   // Thema (international)
+  FAST: 7,    // FAST (Faceted Application of Subject Terminology)
 } as const
 
 /**
@@ -636,7 +680,7 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
       description: book.description,
       originalTitle: book.originalTitle,
       language: toLangCode(book.language),
-      metadata: Object.keys(workMetadata).length > 0 ? workMetadata : undefined
+      metadataJson: Object.keys(workMetadata).length > 0 ? JSON.stringify(workMetadata) : undefined
     },
     edition: {
       editionTitle: book.title,
@@ -651,7 +695,7 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
       placeOfPublication: book.placeOfPublication,
       language: toLangCode(book.language),
       identifiers,
-      metadata: Object.keys(editionMetadata).length > 0 ? editionMetadata : undefined
+      metadataJson: Object.keys(editionMetadata).length > 0 ? JSON.stringify(editionMetadata) : undefined
     },
     item: {
       title: book.title,
@@ -668,7 +712,7 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
       dateStarted: book.dateStarted,
       userRating: book.userRating,
       libraryOrder: book.libraryOrder ? parseInt(book.libraryOrder, 10) || undefined : undefined,
-      metadata: Object.keys(itemMetadata).length > 0 ? itemMetadata : undefined
+      metadataJson: Object.keys(itemMetadata).length > 0 ? JSON.stringify(itemMetadata) : undefined
     },
     contributors: contributors.length > 0 ? contributors : undefined,
     tags: book.categories || [],
@@ -694,7 +738,7 @@ export async function createBook(
   })
 
   try {
-    const response = await fetch(
+    const response = await authFetch(
       `${API_BASE_URL}/api/households/${householdId}/library/books`,
       {
         method: 'POST',
@@ -757,7 +801,7 @@ export async function getBooks(
     queryParams.toString() ? `?${queryParams}` : ''
   }`
 
-  const response = await fetch(url)
+  const response = await authFetch(url)
 
   if (!response.ok) {
     throw new Error('Failed to fetch books')
@@ -803,7 +847,7 @@ export async function getItems(
 
   console.log('📤 Fetching items:', url)
 
-  const response = await fetch(url)
+  const response = await authFetch(url)
 
   if (!response.ok) {
     const errorText = await response.text()
@@ -824,7 +868,7 @@ export async function getItems(
  * Get a single item by ID
  */
 export async function getItem(itemId: string): Promise<ItemResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/items/${itemId}`)
+  const response = await authFetch(`${API_BASE_URL}/api/items/${itemId}`)
 
   if (!response.ok) {
     throw new Error('Failed to fetch item')
@@ -837,7 +881,7 @@ export async function getItem(itemId: string): Promise<ItemResponse> {
  * Get a work by ID
  */
 export async function getWork(workId: string): Promise<WorkResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/works/${workId}`)
+  const response = await authFetch(`${API_BASE_URL}/api/works/${workId}`)
 
   if (!response.ok) {
     throw new Error('Failed to fetch work')
@@ -850,7 +894,7 @@ export async function getWork(workId: string): Promise<WorkResponse> {
  * Get an edition by ID
  */
 export async function getEdition(editionId: string): Promise<EditionResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/editions/${editionId}`)
+  const response = await authFetch(`${API_BASE_URL}/api/editions/${editionId}`)
 
   if (!response.ok) {
     throw new Error('Failed to fetch edition')
@@ -872,7 +916,7 @@ export function getEditionCoverUrl(editionId: string): string {
 export async function uploadItemCover(itemId: string, file: File): Promise<{ customCoverUrl: string }> {
   const formData = new FormData()
   formData.append('file', file)
-  const response = await fetch(`${API_BASE_URL}/api/items/${itemId}/cover`, {
+  const response = await authFetch(`${API_BASE_URL}/api/items/${itemId}/cover`, {
     method: 'POST',
     body: formData,
   })
@@ -887,7 +931,7 @@ export async function uploadItemCover(itemId: string, file: File): Promise<{ cus
  * Delete the custom cover photo for a library item
  */
 export async function deleteItemCover(itemId: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/items/${itemId}/cover`, {
+  const response = await authFetch(`${API_BASE_URL}/api/items/${itemId}/cover`, {
     method: 'DELETE',
   })
   if (!response.ok) {
@@ -901,6 +945,7 @@ export async function deleteItemCover(itemId: string): Promise<void> {
 export async function updateItem(
   itemId: string,
   data: {
+    // Item-level fields
     barcode?: string
     location?: string
     status?: string
@@ -913,9 +958,46 @@ export async function updateItem(
     completedDate?: string
     dateStarted?: string
     userRating?: number
+    itemMetadataJson?: string
+    // Work-level fields
+    work?: {
+      title?: string
+      subtitle?: string | null
+      sortTitle?: string | null
+      description?: string | null
+      originalTitle?: string | null
+      language?: string | null
+      metadataJson?: string | null
+    }
+    // Edition-level fields
+    edition?: {
+      publisher?: string | null
+      publishedYear?: number | null
+      pageCount?: number | null
+      description?: string | null
+      format?: string | null
+      binding?: string | null
+      editionStatement?: string | null
+      placeOfPublication?: string | null
+      language?: string | null
+      metadataJson?: string | null
+    }
+    // Related entities (full replace when present)
+    contributors?: Array<{
+      personId?: string
+      displayName: string
+      roleId: number
+      ordinal: number
+      sortName?: string
+      birthYear?: number
+      deathYear?: number
+    }>
+    subjects?: Array<{ schemeId: number; text: string }>
+    identifiers?: Array<{ identifierTypeId: number; value: string; isPrimary?: boolean }>
+    series?: { name: string; volumeNumber?: string; ordinal?: number }
   }
 ): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/items/${itemId}`, {
+  const response = await authFetch(`${API_BASE_URL}/api/items/${itemId}`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -924,7 +1006,9 @@ export async function updateItem(
   })
 
   if (!response.ok) {
-    throw new Error('Failed to update item')
+    let detail = ''
+    try { detail = await response.text() } catch { /* ignore */ }
+    throw new Error(`Failed to update item (${response.status}): ${detail}`)
   }
 }
 
@@ -941,7 +1025,7 @@ export async function moveItemToHousehold(
   targetHouseholdId: string
 ): Promise<void> {
   // 1. Fetch the full item data (raw response)
-  const resp = await fetch(`${API_BASE_URL}/api/items/${itemId}`)
+  const resp = await authFetch(`${API_BASE_URL}/api/items/${itemId}`)
   if (!resp.ok) throw new Error('Failed to fetch item for move')
   const raw: any = await resp.json()
 
@@ -958,7 +1042,7 @@ export async function moveItemToHousehold(
       description: raw.work?.description,
       originalTitle: raw.work?.originalTitle,
       language: raw.work?.language,
-      metadata: raw.work?.metadataJson ? JSON.parse(raw.work.metadataJson) : raw.work?.metadata,
+      metadataJson: raw.work?.metadataJson || (raw.work?.metadata ? JSON.stringify(raw.work.metadata) : undefined),
     },
     edition: {
       editionTitle: raw.edition?.editionTitle,
@@ -978,7 +1062,7 @@ export async function moveItemToHousehold(
         value: id.value,
         isPrimary: id.isPrimary,
       })),
-      metadata: raw.edition?.metadataJson ? JSON.parse(raw.edition.metadataJson) : raw.edition?.metadata,
+      metadataJson: raw.edition?.metadataJson || (raw.edition?.metadata ? JSON.stringify(raw.edition.metadata) : undefined),
     },
     item: {
       title: raw.title,
@@ -995,7 +1079,7 @@ export async function moveItemToHousehold(
       dateStarted: raw.dateStarted,
       userRating: raw.userRating,
       libraryOrder: raw.libraryOrder,
-      metadata: raw.metadataJson ? JSON.parse(raw.metadataJson) : raw.metadata,
+      metadataJson: raw.metadataJson || (raw.metadata ? JSON.stringify(raw.metadata) : undefined),
     },
     // Contributors: top-level in response, or nested inside work
     contributors: (raw.contributors || raw.work?.contributors || []).map((c: any) => ({
@@ -1046,7 +1130,7 @@ export async function restoreItem(itemId: string): Promise<void> {
 /** Hard delete: permanently remove item (via POST to delete endpoint or PATCH status) */
 export async function hardDeleteItem(itemId: string): Promise<void> {
   // Try DELETE endpoint first; if not available, mark as 'Deleted'
-  const response = await fetch(`${API_BASE_URL}/api/items/${itemId}`, {
+  const response = await authFetch(`${API_BASE_URL}/api/items/${itemId}`, {
     method: 'DELETE',
   })
   if (response.status === 404 || response.status === 405) {
@@ -1094,7 +1178,7 @@ export interface DuplicateGroup {
 
 /** Get all duplicate groups for a household */
 export async function getDuplicates(householdId: string): Promise<DuplicateGroup[]> {
-  const response = await fetch(`${API_BASE_URL}/api/households/${householdId}/items/duplicates`)
+  const response = await authFetch(`${API_BASE_URL}/api/households/${householdId}/items/duplicates`)
   if (!response.ok) {
     throw new Error('Failed to fetch duplicates')
   }
@@ -1107,7 +1191,7 @@ export async function mergeDuplicates(
   keepItemId: string,
   deleteItemIds: string[]
 ): Promise<{ kept: string; deleted: number }> {
-  const response = await fetch(`${API_BASE_URL}/api/households/${householdId}/items/merge-duplicates`, {
+  const response = await authFetch(`${API_BASE_URL}/api/households/${householdId}/items/merge-duplicates`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ keepItemId, deleteItemIds }),
@@ -1122,7 +1206,7 @@ export async function mergeDuplicates(
 export async function mergeAllDuplicates(
   householdId: string
 ): Promise<{ groupsMerged: number; totalDeleted: number }> {
-  const response = await fetch(`${API_BASE_URL}/api/households/${householdId}/items/merge-all-duplicates`, {
+  const response = await authFetch(`${API_BASE_URL}/api/households/${householdId}/items/merge-all-duplicates`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   })
@@ -1353,6 +1437,10 @@ export function mapSearchResultToBook(item: ItemSearchResponse): any {
     librariesOwning: itemMetadata.librariesOwning,
     nearbyLibraries: itemMetadata.nearbyLibraries,
     customFields: itemMetadata.customFields,
+
+    // Enrichment tracking
+    enrichedAt: itemMetadata.enrichedAt,
+    enrichmentSources: itemMetadata.enrichmentSources,
   }
 }
 
@@ -1386,6 +1474,22 @@ function parseIdentifiers(raw?: string): Record<number, string> {
  * Extracts all fields from structured data and metadata JSONB
  */
 export function mapItemResponseToBook(item: ItemResponse): any {
+
+  // --- Parse MetadataJson strings into objects ---
+  function parseMetadata(source: any): Record<string, any> {
+    if (!source) return {}
+    // Already an object (shouldn't happen from API, but be safe)
+    if (typeof source === 'object') return source
+    // JSON string → parse
+    if (typeof source === 'string') {
+      try { return JSON.parse(source) } catch { return {} }
+    }
+    return {}
+  }
+
+  const workMetadata = parseMetadata((item.work as any)?.metadataJson || (item.work as any)?.metadata)
+  const editionMetadata = parseMetadata((item.edition as any)?.metadataJson || (item.edition as any)?.metadata)
+  const itemMetadata = parseMetadata((item as any).metadataJson || (item as any).metadata)
   
   // Extract work details
   const title = item.title || item.work?.title || 'Untitled'
@@ -1425,8 +1529,8 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     console.warn('⚠️ No author found in any location, using "Unknown Author"')
   }
   
-  // Extract other contributors (only if we have the full structure)
-  const contributors = item.work?.contributors?.sort((a, b) => a.ordinal - b.ordinal) || []
+  // Extract other contributors — check top-level then work-nested
+  const contributors = ((item as any).contributors || item.work?.contributors || []).sort((a: any, b: any) => a.ordinal - b.ordinal)
   
   const translator = contributors
     .filter(c => c.roleId === ContributorRole.Translator)
@@ -1448,8 +1552,8 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     .map(c => c.displayName)
     .join(', ') || undefined
 
-  // Extract identifiers
-  const identifiers = item.edition?.identifiers || []
+  // Extract identifiers — check top-level then edition-nested
+  const identifiers = (item as any).identifiers || item.edition?.identifiers || []
   const isbn13 = identifiers.find(id => id.identifierTypeId === IdentifierType.ISBN13)?.value
   const isbn10 = identifiers.find(id => id.identifierTypeId === IdentifierType.ISBN10)?.value
   
@@ -1480,11 +1584,6 @@ export function mapItemResponseToBook(item: ItemResponse): any {
   const publisher = item.edition?.publisher
   const publishedYear = item.edition?.publishedYear
   const pageCount = item.edition?.pageCount
-  
-  // Extract work metadata
-  const workMetadata = item.work?.metadata || {}
-  const editionMetadata = item.edition?.metadata || {}
-  const itemMetadata = item.metadata || {}
 
   // Generate cover URL - custom cover > stored URL > metadata > Google Books > Open Library fallback by ISBN
   const coverIsbn = finalIsbn13 || finalIsbn10 || isbnFromBarcode
@@ -1515,7 +1614,7 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     
     // Basic Info
     subtitle,
-    originalTitle: workMetadata.originalTitle,
+    originalTitle: item.work?.originalTitle || workMetadata.originalTitle,
     coverImageUrl,
     coverImageFallbacks,
     customCoverUrl: item.customCoverUrl || undefined,
@@ -1523,7 +1622,7 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     publisher,
     publishedDate: publishedYear ? `${publishedYear}` : undefined,
     pageCount,
-    language: editionMetadata.language,
+    language: item.edition?.language || item.work?.language || editionMetadata.language,
     
     // Categories & Classification
     mainCategory: workMetadata.mainCategory,
@@ -1585,11 +1684,11 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     
     // Edition & Publication Details
     edition: editionMetadata.edition,
-    editionStatement: editionMetadata.editionStatement,
+    editionStatement: item.edition?.editionStatement || editionMetadata.editionStatement,
     printType: editionMetadata.printType,
-    format: editionMetadata.format,
-    binding: editionMetadata.binding,
-    placeOfPublication: editionMetadata.placeOfPublication,
+    format: item.edition?.format || editionMetadata.format,
+    binding: item.edition?.binding || editionMetadata.binding,
+    placeOfPublication: item.edition?.placeOfPublication || editionMetadata.placeOfPublication,
     originalPublicationDate: editionMetadata.originalPublicationDate,
     copyright: editionMetadata.copyright,
     printingHistory: editionMetadata.printingHistory,
@@ -1604,10 +1703,14 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     pagination: editionMetadata.pagination,
     physicalDescription: editionMetadata.physicalDescription,
     
-    // Series Information
-    series: workMetadata.series,
-    seriesInfo: workMetadata.seriesInfo,
-    volumeNumber: workMetadata.volumeNumber,
+    // Series Information — prefer structured API response over metadata
+    series: (item as any).series?.name || workMetadata.series,
+    seriesInfo: (item as any).series ? {
+      seriesId: (item as any).series.seriesId,
+      seriesName: (item as any).series.name,
+      volumeNumber: (item as any).series.volumeNumber,
+    } : workMetadata.seriesInfo,
+    volumeNumber: (item as any).series?.volumeNumber || workMetadata.volumeNumber,
     numberOfVolumes: workMetadata.numberOfVolumes,
     
     // Content & Reading Info
@@ -1713,7 +1816,11 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     deweyWording: itemMetadata.deweyWording,
     
     // Custom Fields
-    customFields: itemMetadata.customFields
+    customFields: itemMetadata.customFields,
+
+    // Enrichment tracking
+    enrichedAt: itemMetadata.enrichedAt,
+    enrichmentSources: itemMetadata.enrichmentSources,
   }
 }
 
@@ -1724,7 +1831,7 @@ export async function getAllHouseholds(): Promise<any[]> {
   console.log('📤 Fetching all households from:', `${API_BASE_URL}/api/households`)
   
   try {
-    const response = await fetch(`${API_BASE_URL}/api/households`)
+    const response = await authFetch(`${API_BASE_URL}/api/households`)
 
     console.log('📥 Households response status:', response.status)
 
@@ -1765,7 +1872,7 @@ export async function getAllHouseholds(): Promise<any[]> {
  * Get all households for an account
  */
 export async function getHouseholds(accountId: string): Promise<any[]> {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/api/accounts/${accountId}/households`
   )
 
@@ -1780,7 +1887,7 @@ export async function getHouseholds(accountId: string): Promise<any[]> {
  * Create a new household
  */
 export async function createHousehold(name: string): Promise<any> {
-  const response = await fetch(`${API_BASE_URL}/api/households`, {
+  const response = await authFetch(`${API_BASE_URL}/api/households`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

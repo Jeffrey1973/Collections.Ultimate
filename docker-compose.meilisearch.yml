@@ -1,0 +1,24 @@
+# Meilisearch for Collections Ultimate (production/testing)
+# Run with: docker compose -f docker-compose.meilisearch.yml up -d
+
+services:
+  meilisearch:
+    image: getmeili/meilisearch:v1.12
+    container_name: collections-meilisearch
+    restart: unless-stopped
+    ports:
+      - "7700:7700"
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-CHANGE_ME_STRONG_SECRET_KEY}
+      MEILI_ENV: production
+      MEILI_NO_ANALYTICS: true
+    volumes:
+      - meilisearch_data:/meili_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  meilisearch_data:

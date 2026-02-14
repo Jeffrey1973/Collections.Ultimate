@@ -5,6 +5,8 @@ import { mapItemResponseToBook, softDeleteItem, hardDeleteItem, restoreItem, mov
 import { Book } from '../api/books'
 import { FIELD_CATEGORIES, FIELD_DEFINITIONS } from '../config/field-config'
 import { useHousehold } from '../context/HouseholdContext'
+import { enrichBook, applyEnrichment, type EnrichmentResult, type FieldDiff } from '../api/enrichment'
+import EnrichmentPreview from '../components/EnrichmentPreview'
 
 function BookDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -23,6 +25,12 @@ function BookDetailPage() {
   const [isUploadingCover, setIsUploadingCover] = useState(false)
   const coverFileRef = useRef<HTMLInputElement>(null)
   const moveDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Enrichment state
+  const [isEnriching, setIsEnriching] = useState(false)
+  const [enrichmentResult, setEnrichmentResult] = useState<EnrichmentResult | null>(null)
+  const [enrichProgress, setEnrichProgress] = useState('')
+  const [isApplyingEnrichment, setIsApplyingEnrichment] = useState(false)
 
   useEffect(() => {
     if (id) {
@@ -145,6 +153,46 @@ function BookDetailPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showMoveDropdown])
 
+  async function handleEnrich() {
+    if (!book) return
+    setIsEnriching(true)
+    setEnrichmentResult(null)
+    setEnrichProgress('Starting enrichment...')
+    try {
+      const result = await enrichBook(book, (_cur, _tot, status) => {
+        setEnrichProgress(status)
+      })
+      setEnrichmentResult(result)
+    } catch (err: any) {
+      setEnrichmentResult({
+        bookId: book.id,
+        bookTitle: book.title,
+        diffs: [],
+        apiData: {},
+        dataSources: [],
+        error: err.message || 'Enrichment failed',
+      })
+    } finally {
+      setIsEnriching(false)
+      setEnrichProgress('')
+    }
+  }
+
+  async function handleApplyEnrichment(selectedDiffs: FieldDiff[]) {
+    if (!book || !enrichmentResult) return
+    setIsApplyingEnrichment(true)
+    try {
+      await applyEnrichment(book, selectedDiffs, enrichmentResult.apiData, enrichmentResult.dataSources)
+      setEnrichmentResult(null)
+      // Reload the book to show updated data
+      if (id) await loadBook(id)
+    } catch (err: any) {
+      alert('Failed to apply enrichment: ' + (err.message || 'Unknown error'))
+    } finally {
+      setIsApplyingEnrichment(false)
+    }
+  }
+
   // Other households this book could be moved to
   const otherHouseholds = households.filter(h => h.id !== (book as any)?.householdId)
 
@@ -231,6 +279,18 @@ function BookDetailPage() {
           }}>
             ✏️ Edit
           </button>
+          <button
+            onClick={handleEnrich}
+            disabled={isEnriching}
+            style={{
+              padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid #10b981',
+              background: isEnriching ? '#d1fae5' : '#ecfdf5', color: '#059669', fontWeight: 600,
+              cursor: isEnriching ? 'wait' : 'pointer', fontSize: '0.85rem',
+              opacity: isEnriching ? 0.7 : 1,
+            }}
+          >
+            {isEnriching ? `⏳ ${enrichProgress || 'Enriching...'}` : '🔍 Enrich'}
+          </button>
           {/* Move to another household */}
           {otherHouseholds.length > 0 && (
             <div ref={moveDropdownRef} style={{ position: 'relative' }}>
@@ -287,6 +347,16 @@ function BookDetailPage() {
           </button>
         </div>
       </div>
+
+      {/* Enrichment Preview Panel */}
+      {enrichmentResult && (
+        <EnrichmentPreview
+          result={enrichmentResult}
+          onApply={handleApplyEnrichment}
+          onCancel={() => setEnrichmentResult(null)}
+          isApplying={isApplyingEnrichment}
+        />
+      )}
 
       {/* Previously Owned Banner */}
       {(book as any).status === 'Previously Owned' && (

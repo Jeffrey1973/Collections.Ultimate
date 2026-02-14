@@ -215,9 +215,28 @@ function CatalogCard({ book, type, displayFields }: { book: Book; type: CardType
             marginBottom: '0.6rem',
             borderBottom: '1px solid #1a3a5c',
             paddingBottom: '0.3rem',
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: '0.35rem',
           }}>
-            {book.title}
-            {book.subtitle ? ` : ${book.subtitle}` : ''}
+            <span>{book.title}{book.subtitle ? ` : ${book.subtitle}` : ''}</span>
+            {book.enrichedAt && (
+              <span
+                title={`Enriched ${new Date(book.enrichedAt).toLocaleDateString()}`}
+                style={{
+                  flexShrink: 0,
+                  fontSize: '0.55rem',
+                  fontWeight: 700,
+                  lineHeight: 1,
+                  padding: '2px 5px',
+                  borderRadius: '9999px',
+                  backgroundColor: '#dcfce7',
+                  color: '#16a34a',
+                }}
+              >
+                ✦
+              </span>
+            )}
           </div>
         )}
 

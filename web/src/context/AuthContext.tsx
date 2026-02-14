@@ -10,6 +10,8 @@ interface AuthHousehold {
 interface AuthUser {
   accountId: string;
   displayName: string;
+  firstName: string | null;
+  lastName: string | null;
   email: string | null;
   households: AuthHousehold[];
 }
@@ -23,6 +25,8 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   /** Trigger Auth0 login redirect */
   login: () => void;
+  /** Trigger Auth0 signup redirect (opens registration screen) */
+  signup: () => void;
   /** Trigger Auth0 logout */
   logout: () => void;
   /** Get a valid access token for API calls */
@@ -34,6 +38,7 @@ const AuthContext = createContext<AuthContextValue>({
   isLoading: true,
   isAuthenticated: false,
   login: () => {},
+  signup: () => {},
   logout: () => {},
   getAccessToken: async () => null,
 });
@@ -61,6 +66,7 @@ async function getAuth0Client() {
     authorizationParams: {
       redirect_uri: window.location.origin,
       audience: AUTH0_AUDIENCE,
+      scope: 'openid profile email',
     },
     cacheLocation: 'localstorage',
   });
@@ -69,7 +75,7 @@ async function getAuth0Client() {
 
 // ── Provider ───────────────────────────────────────────────────────────────────
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5259';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5259';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -82,21 +88,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    // Guard against StrictMode double-invocation
+    let cancelled = false;
+
     const init = async () => {
       try {
         const client = await getAuth0Client();
-        if (!client) { setIsLoading(false); return; }
+        if (!client || cancelled) { setIsLoading(false); return; }
 
-        // Handle redirect callback
+        // Handle redirect callback (only if code+state are still in the URL)
         const params = new URLSearchParams(window.location.search);
         if (params.has('code') && params.has('state')) {
-          await client.handleRedirectCallback();
+          console.log('[Auth] Handling redirect callback...');
+          try {
+            await client.handleRedirectCallback();
+            console.log('[Auth] Redirect callback handled');
+          } catch (cbErr: any) {
+            // "Invalid state" means the callback was already processed (StrictMode re-run)
+            console.warn('[Auth] handleRedirectCallback error (may be StrictMode re-run):', cbErr.message);
+          }
+          // Always clear the URL params so we don't try again
           window.history.replaceState({}, '', window.location.pathname);
         }
 
+        if (cancelled) return;
+
         const isAuth = await client.isAuthenticated();
+        console.log('[Auth] isAuthenticated:', isAuth);
         if (isAuth) {
           const token = await client.getTokenSilently();
+          console.log('[Auth] Got token, calling /api/auth/login...');
           // Call our login endpoint to sync account
           const res = await fetch(`${API_BASE}/api/auth/login`, {
             method: 'POST',
@@ -105,30 +126,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               'Content-Type': 'application/json',
             },
           });
+          console.log('[Auth] /api/auth/login response:', res.status, res.statusText);
+          if (cancelled) return;
           if (res.ok) {
             const data = await res.json();
+            console.log('[Auth] Login success:', data);
             setUser({
               accountId: data.accountId,
               displayName: data.displayName,
+              firstName: data.firstName ?? null,
+              lastName: data.lastName ?? null,
               email: data.email,
               households: data.households,
             });
+          } else {
+            const text = await res.text();
+            console.error('[Auth] Login failed:', res.status, text);
           }
         }
       } catch (err) {
-        console.error('Auth init error:', err);
+        console.error('[Auth] Auth init error:', err);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     init();
+
+    return () => { cancelled = true; };
   }, []);
 
   const login = useCallback(async () => {
     const client = await getAuth0Client();
     if (client) {
       await client.loginWithRedirect();
+    }
+  }, []);
+
+  const signup = useCallback(async () => {
+    const client = await getAuth0Client();
+    if (client) {
+      await client.loginWithRedirect({
+        authorizationParams: { screen_hint: 'signup' },
+      });
     }
   }, []);
 
@@ -155,6 +195,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isLoading,
     isAuthenticated: !!user,
     login,
+    signup,
     logout,
     getAccessToken,
   };

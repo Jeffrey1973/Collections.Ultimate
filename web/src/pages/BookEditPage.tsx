@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getItem, updateItem, mapItemResponseToBook } from '../api/backend'
+import { getItem, updateItem, mapItemResponseToBook, ContributorRole } from '../api/backend'
 import { Book } from '../api/books'
 import { FIELD_CATEGORIES, FIELD_DEFINITIONS, type FieldConfig } from '../config/field-config'
 
@@ -44,9 +44,11 @@ function BookEditPage() {
       setIsSaving(true)
       setError(null)
 
-      // Normalize categories to strings (in case some are objects)
-      const categories = Array.isArray(formData.categories) 
-        ? formData.categories.map(cat => {
+      const d = formData as any
+
+      // Normalize categories/tags to strings
+      const categories = Array.isArray(d.categories) 
+        ? d.categories.map((cat: any) => {
             if (typeof cat === 'string') return cat
             if (cat && typeof cat === 'object') {
               return cat.name || cat.text || cat.value || JSON.stringify(cat)
@@ -55,22 +57,190 @@ function BookEditPage() {
           })
         : []
 
-      // Update basic item fields
-      await updateItem(id, {
-        notes: formData.notes,
-        location: (formData as any).location,
-        status: (formData as any).status,
-        condition: (formData as any).condition,
-        readStatus: (formData as any).readStatus,
-        completedDate: (formData as any).completedDate,
-        dateStarted: (formData as any).dateStarted,
-        userRating: (formData as any).userRating ? Number((formData as any).userRating) : undefined,
-        tags: categories,
-      })
+      // --- Build contributors from form data ---
+      const roleMap: Record<string, number> = {
+        author: ContributorRole.Author,
+        editor: ContributorRole.Editor,
+        translator: ContributorRole.Translator,
+        illustrator: ContributorRole.Illustrator,
+        narrator: ContributorRole.Narrator,
+        contributor: ContributorRole.Contributor,
+      }
 
-      // TODO: When backend supports metadata, also update:
-      // - All extended fields via metadata JSONB
-      // - Contributors, identifiers, subjects
+      const contributors: Array<{
+        personId?: string; displayName: string; roleId: number; ordinal: number; sortName?: string
+      }> = []
+
+      // Build from the detailed contributors array if present, otherwise from flat author string
+      if (Array.isArray(d.contributors) && d.contributors.length > 0) {
+        d.contributors.forEach((c: any, i: number) => {
+          if (c.name || c.displayName) {
+            contributors.push({
+              personId: c.personId,
+              displayName: c.name || c.displayName,
+              roleId: roleMap[c.role?.toLowerCase()] || ContributorRole.Contributor,
+              ordinal: c.ordinal ?? i,
+              sortName: c.sortName,
+            })
+          }
+        })
+      } else if (d.author) {
+        // Split flat author string into individual contributor records
+        const names = d.author.split(/,\s*|;\s*/).filter((n: string) => n.trim())
+        names.forEach((name: string, i: number) => {
+          contributors.push({
+            displayName: name.trim(),
+            roleId: ContributorRole.Author,
+            ordinal: i,
+          })
+        })
+      }
+
+      // Also add translator, illustrator, editor, narrator if set as flat strings
+      const extraRoles: Array<[string, number]> = [
+        ['translator', ContributorRole.Translator],
+        ['illustrator', ContributorRole.Illustrator],
+        ['editor', ContributorRole.Editor],
+        ['narrator', ContributorRole.Narrator],
+      ]
+      for (const [field, roleId] of extraRoles) {
+        if (d[field] && !contributors.some(c => c.roleId === roleId)) {
+          const names = (d[field] as string).split(/,\s*|;\s*/).filter((n: string) => n.trim())
+          names.forEach((name: string, i: number) => {
+            contributors.push({
+              displayName: name.trim(),
+              roleId,
+              ordinal: contributors.length + i,
+            })
+          })
+        }
+      }
+
+      // --- Build identifiers from form data ---
+      const IdentifierType = { ISBN10: 1, ISBN13: 2, ISSN: 3, LCCN: 4, OCLC: 5, DOI: 6, ASIN: 7, GoogleBooksId: 8, GoodreadsId: 9, LibraryThingId: 10, OpenLibraryId: 11, OCLCWorkId: 12, DNB: 13, BNF: 14, NLA: 15, NDL: 16, LAC: 17, BL: 18 }
+      const identifiers: Array<{ identifierTypeId: number; value: string; isPrimary?: boolean }> = []
+      const idFields: Array<[string, number, boolean?]> = [
+        ['isbn13', IdentifierType.ISBN13, true],
+        ['isbn10', IdentifierType.ISBN10],
+        ['issn', IdentifierType.ISSN],
+        ['lccn', IdentifierType.LCCN],
+        ['oclcNumber', IdentifierType.OCLC],
+        ['doi', IdentifierType.DOI],
+        ['asin', IdentifierType.ASIN],
+        ['googleBooksId', IdentifierType.GoogleBooksId],
+        ['goodreadsId', IdentifierType.GoodreadsId],
+        ['libraryThingId', IdentifierType.LibraryThingId],
+        ['olid', IdentifierType.OpenLibraryId],
+      ]
+      for (const [field, typeId, isPrimary] of idFields) {
+        if (d[field]) {
+          identifiers.push({ identifierTypeId: typeId as number, value: d[field], isPrimary: !!isPrimary })
+        }
+      }
+
+      // --- Build subjects ---
+      const subjects: Array<{ schemeId: number; text: string }> = []
+      if (Array.isArray(d.subjects)) {
+        d.subjects.forEach((s: any) => {
+          const text = typeof s === 'string' ? s : s.text
+          if (text) subjects.push({ schemeId: s.schemeId || 1, text })
+        })
+      }
+
+      // --- Build series ---
+      const seriesName = d.series || d.seriesInfo?.seriesName
+      const series = seriesName ? {
+        name: seriesName,
+        volumeNumber: d.volumeNumber || d.seriesInfo?.volumeNumber,
+        ordinal: d.seriesInfo?.ordinal,
+      } : undefined
+
+      // --- Extract year from publishedDate ---
+      const extractYear = (dateStr?: string): number | undefined => {
+        if (!dateStr) return undefined
+        const match = dateStr.match(/(\d{4})/)
+        return match ? parseInt(match[1]) : undefined
+      }
+
+      // --- Build Work MetadataJson (fields stored in Work.MetadataJson column) ---
+      const workMeta: Record<string, any> = {}
+      const workMetaFields = [
+        'churchHistoryPeriod', 'dateWritten', 'religiousTradition',
+        'mainCategory', 'deweyDecimal', 'deweyEdition', 'lcc', 'lccEdition',
+        'callNumber', 'bisacCodes', 'thema', 'fastSubjects',
+        'tableOfContents', 'firstSentence', 'excerpt',
+        'readingAge', 'lexileScore', 'arLevel',
+        'averageRating', 'ratingsCount', 'communityRating',
+        'numberOfVolumes',
+      ]
+      for (const key of workMetaFields) {
+        if (d[key] !== undefined && d[key] !== null && d[key] !== '') {
+          workMeta[key] = d[key]
+        }
+      }
+      const workMetadataJson = Object.keys(workMeta).length > 0
+        ? JSON.stringify(workMeta) : undefined
+
+      // --- Build Edition MetadataJson (fields stored in Edition.MetadataJson column) ---
+      const editionMeta: Record<string, any> = {}
+      const editionMetaFields = [
+        'dimensions', 'dimensionsHeight', 'dimensionsWidth', 'dimensionsThickness',
+        'weight', 'shippingWeight', 'pagination', 'physicalDescription',
+        'printType', 'originalPublicationDate', 'copyright', 'printingHistory',
+        'coverImageUrl', 'coverImageSmallThumbnail', 'coverImageThumbnail',
+        'coverImageSmall', 'coverImageMedium', 'coverImageLarge', 'coverImageExtraLarge',
+        'maturityRating', 'textSnippet',
+      ]
+      for (const key of editionMetaFields) {
+        if (d[key] !== undefined && d[key] !== null && d[key] !== '') {
+          editionMeta[key] = d[key]
+        }
+      }
+      const editionMetadataJson = Object.keys(editionMeta).length > 0
+        ? JSON.stringify(editionMeta) : undefined
+
+      // --- Send full PATCH ---
+      await updateItem(id, {
+        // Item-level fields
+        notes: d.notes,
+        location: d.location || d.pln,
+        status: d.status,
+        condition: d.condition,
+        acquiredOn: d.acquiredDate,
+        price: d.purchasePrice ? parseFloat(d.purchasePrice) : (d.price ? Number(d.price) : undefined),
+        barcode: d.barcode,
+        readStatus: d.readStatus,
+        completedDate: d.completedDate,
+        dateStarted: d.dateStarted,
+        userRating: d.userRating ? Number(d.userRating) : undefined,
+        tags: categories,
+        // Work-level fields
+        work: {
+          title: d.title,
+          subtitle: d.subtitle || null,
+          description: d.description || null,
+          originalTitle: d.originalTitle || null,
+          language: d.language || null,
+          metadataJson: workMetadataJson ?? null,
+        },
+        // Edition-level fields
+        edition: {
+          publisher: d.publisher || null,
+          publishedYear: extractYear(d.publishedDate) ?? null,
+          pageCount: d.pageCount ? Number(d.pageCount) : null,
+          format: d.format || null,
+          binding: d.binding || null,
+          editionStatement: d.editionStatement || null,
+          placeOfPublication: d.placeOfPublication || null,
+          language: d.language || null,
+          metadataJson: editionMetadataJson ?? null,
+        },
+        // Related entities
+        contributors: contributors.length > 0 ? contributors : undefined,
+        subjects: subjects.length > 0 ? subjects : undefined,
+        identifiers: identifiers.length > 0 ? identifiers : undefined,
+        series,
+      })
 
       navigate(`/book/${id}`)
     } catch (err) {

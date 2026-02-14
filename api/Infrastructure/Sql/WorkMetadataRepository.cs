@@ -238,4 +238,164 @@ public sealed class WorkMetadataRepository : IWorkMetadataRepository
 
         private static string NormalizeIdentifierValue(string value)
             => new string(value.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+
+    public async Task ReplaceContributorsAsync(WorkId workId, IReadOnlyList<(Person Person, ContributorRoleId RoleId, int Ordinal)> contributors, CancellationToken ct)
+    {
+        using var conn = _connectionFactory.Create();
+        if (conn.State != ConnectionState.Open)
+            conn.Open();
+        using var tx = conn.BeginTransaction();
+
+        // Remove existing contributors
+        await conn.ExecuteAsync(new CommandDefinition(
+            "delete from dbo.WorkContributor where WorkId = @WorkId;",
+            new { WorkId = workId.Value }, transaction: tx, cancellationToken: ct));
+
+        // Re-add
+        foreach (var c in contributors)
+        {
+            const string ensurePersonSql = """
+                if not exists (select 1 from dbo.Person where Id = @Id)
+                begin
+                    insert into dbo.Person (Id, DisplayName, SortName, BirthYear, DeathYear, CreatedUtc)
+                    values (@Id, @DisplayName, @SortName, @BirthYear, @DeathYear, @CreatedUtc);
+                end
+                else
+                begin
+                    update dbo.Person set DisplayName = @DisplayName, SortName = @SortName where Id = @Id;
+                end
+                """;
+
+            await conn.ExecuteAsync(new CommandDefinition(ensurePersonSql, new
+            {
+                Id = c.Person.Id.Value,
+                c.Person.DisplayName,
+                c.Person.SortName,
+                c.Person.BirthYear,
+                c.Person.DeathYear,
+                c.Person.CreatedUtc
+            }, transaction: tx, cancellationToken: ct));
+
+            await conn.ExecuteAsync(new CommandDefinition(
+                "insert into dbo.WorkContributor (WorkId, PersonId, RoleId, Ordinal) values (@WorkId, @PersonId, @RoleId, @Ordinal);",
+                new { WorkId = workId.Value, PersonId = c.Person.Id.Value, RoleId = c.RoleId.Value, Ordinal = c.Ordinal },
+                transaction: tx, cancellationToken: ct));
+        }
+
+        tx.Commit();
+    }
+
+    public async Task ReplaceSubjectsAsync(WorkId workId, IReadOnlyList<(SubjectSchemeId SchemeId, string Text)> subjects, CancellationToken ct)
+    {
+        using var conn = _connectionFactory.Create();
+        if (conn.State != ConnectionState.Open)
+            conn.Open();
+        using var tx = conn.BeginTransaction();
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "delete from dbo.WorkSubject where WorkId = @WorkId;",
+            new { WorkId = workId.Value }, transaction: tx, cancellationToken: ct));
+
+        // Dedup by (SchemeId, NormalizedText) to prevent PK violations on WorkSubject
+        var insertedSubjectIds = new HashSet<Guid>();
+        foreach (var s in subjects)
+        {
+            if (string.IsNullOrWhiteSpace(s.Text)) continue;
+
+            var normalized = NormalizeKey(s.Text);
+            var subjectId = await conn.ExecuteScalarAsync<Guid>(new CommandDefinition("""
+                declare @SubjectId uniqueidentifier;
+                select @SubjectId = Id from dbo.SubjectHeading where SchemeId = @SchemeId and NormalizedText = @NormalizedText;
+                if @SubjectId is null
+                begin
+                    set @SubjectId = newid();
+                    insert into dbo.SubjectHeading (Id, SchemeId, Text, NormalizedText) values (@SubjectId, @SchemeId, @Text, @NormalizedText);
+                end
+                select @SubjectId;
+                """,
+                new { SchemeId = s.SchemeId.Value, Text = s.Text.Trim(), NormalizedText = normalized },
+                transaction: tx, cancellationToken: ct));
+
+            // Skip if this SubjectHeadingId was already linked (dedup across casing differences)
+            if (!insertedSubjectIds.Add(subjectId)) continue;
+
+            await conn.ExecuteAsync(new CommandDefinition(
+                "insert into dbo.WorkSubject (WorkId, SubjectHeadingId) values (@WorkId, @SubjectId);",
+                new { WorkId = workId.Value, SubjectId = subjectId },
+                transaction: tx, cancellationToken: ct));
+        }
+
+        tx.Commit();
+    }
+
+    public async Task ReplaceIdentifiersAsync(EditionId editionId, IReadOnlyList<(IdentifierTypeId TypeId, string Value, bool IsPrimary)> identifiers, CancellationToken ct)
+    {
+        using var conn = _connectionFactory.Create();
+        if (conn.State != ConnectionState.Open)
+            conn.Open();
+        using var tx = conn.BeginTransaction();
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "delete from dbo.EditionIdentifier where EditionId = @EditionId;",
+            new { EditionId = editionId.Value }, transaction: tx, cancellationToken: ct));
+
+        // Dedup by (TypeId, Value) and truncate values to fit nvarchar(50)
+        var insertedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var i in identifiers)
+        {
+            if (string.IsNullOrWhiteSpace(i.Value)) continue;
+
+            var trimmedValue = i.Value.Trim();
+            if (trimmedValue.Length > 50) trimmedValue = trimmedValue[..50];
+
+            var dedupeKey = $"{i.TypeId.Value}:{trimmedValue.ToUpperInvariant()}";
+            if (!insertedKeys.Add(dedupeKey)) continue;
+
+            var normalized = NormalizeIdentifierValue(trimmedValue);
+            if (normalized.Length > 50) normalized = normalized[..50];
+
+            await conn.ExecuteAsync(new CommandDefinition(
+                "insert into dbo.EditionIdentifier (EditionId, IdentifierTypeId, Value, NormalizedValue, IsPrimary) values (@EditionId, @IdentifierTypeId, @Value, @NormalizedValue, @IsPrimary);",
+                new { EditionId = editionId.Value, IdentifierTypeId = i.TypeId.Value, Value = trimmedValue, NormalizedValue = normalized, IsPrimary = i.IsPrimary },
+                transaction: tx, cancellationToken: ct));
+        }
+
+        tx.Commit();
+    }
+
+    public async Task ReplaceSeriesAsync(WorkId workId, string? seriesName, string? volumeNumber, int? ordinal, CancellationToken ct)
+    {
+        using var conn = _connectionFactory.Create();
+        if (conn.State != ConnectionState.Open)
+            conn.Open();
+        using var tx = conn.BeginTransaction();
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "delete from dbo.WorkSeries where WorkId = @WorkId;",
+            new { WorkId = workId.Value }, transaction: tx, cancellationToken: ct));
+
+        if (!string.IsNullOrWhiteSpace(seriesName))
+        {
+            var normalized = NormalizeKey(seriesName);
+            var seriesId = await conn.ExecuteScalarAsync<Guid>(new CommandDefinition("""
+                declare @SeriesId uniqueidentifier;
+                select @SeriesId = Id from dbo.Series where NormalizedName = @NormalizedName;
+                if @SeriesId is null
+                begin
+                    set @SeriesId = newid();
+                    insert into dbo.Series (Id, Name, NormalizedName, CreatedUtc) values (@SeriesId, @Name, @NormalizedName, sysdatetimeoffset());
+                end
+                select @SeriesId;
+                """,
+                new { Name = seriesName.Trim(), NormalizedName = normalized },
+                transaction: tx, cancellationToken: ct));
+
+            await conn.ExecuteAsync(new CommandDefinition(
+                "insert into dbo.WorkSeries (WorkId, SeriesId, VolumeNumber, Ordinal) values (@WorkId, @SeriesId, @VolumeNumber, @Ordinal);",
+                new { WorkId = workId.Value, SeriesId = seriesId, VolumeNumber = volumeNumber, Ordinal = ordinal },
+                transaction: tx, cancellationToken: ct));
+        }
+
+        tx.Commit();
+    }
     }

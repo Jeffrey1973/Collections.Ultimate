@@ -720,9 +720,10 @@ export default function ImportBooksPage() {
 
         // Add location to item
         if (location) ingestRequest.item.location = location
-        // Add metadata to item
+        // Add extra metadata to item
         if (Object.keys(metadata).length > 0) {
-          ingestRequest.item.metadata = { ...ingestRequest.item.metadata, ...metadata }
+          const existing = ingestRequest.item.metadataJson ? JSON.parse(ingestRequest.item.metadataJson) : {}
+          ingestRequest.item.metadataJson = JSON.stringify({ ...existing, ...metadata })
         }
 
         await createBook(ingestRequest, selectedHousehold.id)

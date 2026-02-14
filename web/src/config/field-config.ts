@@ -57,6 +57,12 @@ export const FIELD_CATEGORIES: CategoryConfig[] = [
     defaultExpanded: true,
   },
   {
+    key: 'user',
+    label: 'User Information',
+    icon: '👤',
+    description: 'Personal reading progress and reviews',
+  },
+  {
     key: 'historical',
     label: 'Historical & Theological',
     icon: '✝️',
@@ -145,12 +151,6 @@ export const FIELD_CATEGORIES: CategoryConfig[] = [
     label: 'External Links',
     icon: '🔗',
     description: 'Preview, info, and buy links',
-  },
-  {
-    key: 'user',
-    label: 'User Information',
-    icon: '👤',
-    description: 'Personal reading progress and reviews',
   },
   {
     key: 'metadata',
@@ -1054,6 +1054,64 @@ export const FIELD_DEFINITIONS: FieldConfig[] = [
 
   // ===== USER INFORMATION =====
   {
+    key: 'barcode',
+    label: 'Barcode',
+    type: 'text',
+    category: 'identifiers',
+    description: 'Item barcode (often the ISBN)',
+    source: 'user',
+  },
+  {
+    key: 'location' as keyof Book,
+    label: 'Shelf Location',
+    type: 'text',
+    category: 'user',
+    description: 'Where this book is stored (e.g., Shelf A2, Office)',
+    source: 'user',
+  },
+  {
+    key: 'status' as keyof Book,
+    label: 'Ownership Status',
+    type: 'select',
+    category: 'user',
+    description: 'Current ownership status',
+    source: 'user',
+    options: ['Owned', 'Wishlist', 'Previously Owned', 'On Loan', 'Borrowed'],
+  },
+  {
+    key: 'condition' as keyof Book,
+    label: 'Condition',
+    type: 'select',
+    category: 'user',
+    description: 'Physical condition of the book',
+    source: 'user',
+    options: ['New', 'Like New', 'Very Good', 'Good', 'Acceptable', 'Poor'],
+  },
+  {
+    key: 'acquiredDate',
+    label: 'Date Acquired',
+    type: 'date',
+    category: 'user',
+    description: 'When you acquired this book',
+    source: 'user',
+  },
+  {
+    key: 'purchasePrice',
+    label: 'Purchase Price',
+    type: 'text',
+    category: 'user',
+    description: 'What you paid for this book',
+    source: 'user',
+  },
+  {
+    key: 'dateStarted',
+    label: 'Date Started Reading',
+    type: 'date',
+    category: 'user',
+    description: 'When you started reading this book',
+    source: 'user',
+  },
+  {
     key: 'isPurchased',
     label: 'Purchased',
     type: 'boolean',
@@ -1136,6 +1194,20 @@ export const FIELD_DEFINITIONS: FieldConfig[] = [
     label: 'Last Updated',
     type: 'text',
     category: 'metadata',
+  },
+  {
+    key: 'enrichedAt',
+    label: 'Enriched Date',
+    type: 'text',
+    category: 'metadata',
+    description: 'When this book was last enriched from external APIs',
+  },
+  {
+    key: 'enrichmentSources',
+    label: 'Enrichment Sources',
+    type: 'array',
+    category: 'metadata',
+    description: 'External APIs used to enrich this book',
   },
 ]
 

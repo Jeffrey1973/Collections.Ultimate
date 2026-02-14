@@ -56,6 +56,25 @@ function BookCard({ book, displayFields }: BookCardProps) {
         lineHeight: '1.4',
       }}>
         {book.title}
+        {book.enrichedAt && (
+          <span
+            title={`Enriched ${new Date(book.enrichedAt).toLocaleDateString()}${book.enrichmentSources?.length ? ' via ' + book.enrichmentSources.join(', ') : ''}`}
+            style={{
+              display: 'inline-block',
+              marginLeft: '0.35rem',
+              fontSize: '0.55rem',
+              fontWeight: 700,
+              lineHeight: 1,
+              padding: '2px 5px',
+              borderRadius: '9999px',
+              backgroundColor: '#dcfce7',
+              color: '#16a34a',
+              verticalAlign: 'middle',
+            }}
+          >
+            ✦
+          </span>
+        )}
       </h3>
       {fieldsToShow.map(fieldKey => {
         const raw = (book as any)[fieldKey]

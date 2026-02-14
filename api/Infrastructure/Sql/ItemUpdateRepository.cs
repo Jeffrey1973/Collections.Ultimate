@@ -92,4 +92,21 @@ public sealed class ItemUpdateRepository : IItemUpdateRepository
             return null;
         return s.Trim();
     }
+
+    public async Task<bool> UpdateMetadataJsonAsync(ItemId itemId, string? metadataJson, CancellationToken ct)
+    {
+        const string sql = """
+            update dbo.LibraryItem
+            set MetadataJson = @MetadataJson
+            where Id = @Id;
+            """;
+
+        using var conn = _connectionFactory.Create();
+        var affected = await conn.ExecuteAsync(new CommandDefinition(sql, new
+        {
+            Id = itemId.Value,
+            MetadataJson = metadataJson
+        }, cancellationToken: ct));
+        return affected > 0;
+    }
 }

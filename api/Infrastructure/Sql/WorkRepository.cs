@@ -73,6 +73,40 @@ public sealed class WorkRepository : IWorkRepository
         return row is null ? null : Map(row);
     }
 
+    public async Task<bool> UpdateAsync(WorkId id, string title, string? subtitle, string? sortTitle, string? description, string? originalTitle, string? language, string? metadataJson, CancellationToken ct)
+    {
+        const string sql = """
+            update dbo.Work
+            set Title = @Title,
+                Subtitle = coalesce(@Subtitle, Subtitle),
+                SortTitle = coalesce(@SortTitle, SortTitle),
+                Description = coalesce(@Description, Description),
+                OriginalTitle = coalesce(@OriginalTitle, OriginalTitle),
+                Language = coalesce(@Language, Language),
+                MetadataJson = coalesce(@MetadataJson, MetadataJson),
+                NormalizedTitle = @NormalizedTitle
+            where Id = @Id;
+            """;
+
+        using var conn = _connectionFactory.Create();
+        var affected = await conn.ExecuteAsync(new CommandDefinition(sql, new
+        {
+            Id = id.Value,
+            Title = title,
+            Subtitle = subtitle,
+            SortTitle = sortTitle,
+            Description = description,
+            OriginalTitle = originalTitle,
+            Language = language,
+            MetadataJson = metadataJson,
+            NormalizedTitle = NormalizeTitle(title)
+        }, cancellationToken: ct));
+        return affected > 0;
+    }
+
+    private static string NormalizeTitle(string title) =>
+        string.Join(' ', title.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant();
+
     private static Work Map(WorkRow r) => new()
     {
         Id = new WorkId(r.Id),

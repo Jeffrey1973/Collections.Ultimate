@@ -16,6 +16,12 @@ public interface IItemSearchRepository
         int skip,
         CancellationToken ct);
 
+    /// <summary>Fetch full item data for a list of item IDs (preserves order).</summary>
+    Task<IReadOnlyList<ItemSearchResult>> GetByIdsAsync(
+        HouseholdId householdId,
+        IReadOnlyList<Guid> itemIds,
+        CancellationToken ct);
+
     Task<IReadOnlyList<DuplicateGroup>> FindDuplicatesAsync(
         HouseholdId householdId,
         CancellationToken ct);

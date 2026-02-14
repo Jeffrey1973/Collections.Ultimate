@@ -137,6 +137,41 @@ public sealed class EditionRepository : IEditionRepository
         return await conn.QuerySingleOrDefaultAsync<string?>(new CommandDefinition(sql, new { Id = id.Value }, cancellationToken: ct));
     }
 
+    public async Task<bool> UpdateAsync(EditionId id, string? publisher, int? publishedYear, int? pageCount, string? description, string? format, string? binding, string? editionStatement, string? placeOfPublication, string? language, string? metadataJson, CancellationToken ct)
+    {
+        const string sql = """
+            update dbo.Edition
+            set Publisher = coalesce(@Publisher, Publisher),
+                PublishedYear = coalesce(@PublishedYear, PublishedYear),
+                PageCount = coalesce(@PageCount, PageCount),
+                Description = coalesce(@Description, Description),
+                Format = coalesce(@Format, Format),
+                Binding = coalesce(@Binding, Binding),
+                EditionStatement = coalesce(@EditionStatement, EditionStatement),
+                PlaceOfPublication = coalesce(@PlaceOfPublication, PlaceOfPublication),
+                Language = coalesce(@Language, Language),
+                MetadataJson = coalesce(@MetadataJson, MetadataJson)
+            where Id = @Id;
+            """;
+
+        using var conn = _connectionFactory.Create();
+        var affected = await conn.ExecuteAsync(new CommandDefinition(sql, new
+        {
+            Id = id.Value,
+            Publisher = publisher,
+            PublishedYear = publishedYear,
+            PageCount = pageCount,
+            Description = description,
+            Format = format,
+            Binding = binding,
+            EditionStatement = editionStatement,
+            PlaceOfPublication = placeOfPublication,
+            Language = language,
+            MetadataJson = metadataJson
+        }, cancellationToken: ct));
+        return affected > 0;
+    }
+
     private static Edition Map(EditionRow r) => new()
     {
         Id = new EditionId(r.Id),

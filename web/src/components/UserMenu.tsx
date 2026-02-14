@@ -30,7 +30,7 @@ export default function UserMenu() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
       <span style={{ fontSize: '0.9rem' }}>
-        {user.displayName}
+        {user.firstName ? `Hi, ${user.firstName}!` : user.displayName}
         {user.households.length > 0 && (
           <span style={{ opacity: 0.6, marginLeft: 4 }}>
             ({user.households.length} {user.households.length === 1 ? 'library' : 'libraries'})

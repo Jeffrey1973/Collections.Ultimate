@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ReactNode } from 'react'
 import HouseholdSelector from './HouseholdSelector.tsx'
+import UserMenu from './UserMenu.tsx'
 
 interface LayoutProps {
   children: ReactNode
@@ -52,6 +53,7 @@ function Layout({ children }: LayoutProps) {
               API Test
             </Link>
           </div>
+          <UserMenu />
         </nav>
       </header>
 

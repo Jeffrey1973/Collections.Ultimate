@@ -11,6 +11,12 @@
 *.sln.docstates
 *.env
 
+# Environment files with secrets
+.env.*
+!.env.example
+appsettings.Production.json
+appsettings.Staging.json
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
@@ -416,3 +422,7 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Meilisearch binary & data
+tools/meilisearch/meilisearch.exe
+tools/meilisearch/data.ms/
