@@ -324,3 +324,49 @@ public sealed class ItemPatchRequest
     /// </summary>
     public IReadOnlyList<string>? TagNames { get; init; }
 }
+
+// ── Item Event Log ─────────────────────────────────────────────────────────
+
+/// <summary>
+/// Lookup row for the type/category of event.
+/// </summary>
+public sealed class ItemEventType
+{
+    public int Id { get; init; }
+    public required string Name { get; init; }
+    public required string Label { get; init; }
+    public string? Icon { get; init; }
+    public int SortOrder { get; init; }
+}
+
+/// <summary>
+/// A single timestamped event in a library item's lifecycle.
+/// </summary>
+public sealed class ItemEvent
+{
+    public Guid Id { get; init; } = Guid.NewGuid();
+    public required ItemId ItemId { get; init; }
+    public required int EventTypeId { get; init; }
+    public DateTimeOffset OccurredUtc { get; init; } = DateTimeOffset.UtcNow;
+    public string? Notes { get; init; }
+    /// <summary>Structured context as JSON (e.g. {"shelf":"A3"}, {"lentTo":"John"}).</summary>
+    public string? DetailJson { get; init; }
+    public DateTimeOffset CreatedUtc { get; init; } = DateTimeOffset.UtcNow;
+}
+
+/// <summary>
+/// Projection returned by the timeline query — event + its type label/icon.
+/// </summary>
+public sealed class ItemEventEntry
+{
+    public Guid Id { get; init; }
+    public Guid ItemId { get; init; }
+    public int EventTypeId { get; init; }
+    public required string EventTypeName { get; init; }
+    public required string EventTypeLabel { get; init; }
+    public string? EventTypeIcon { get; init; }
+    public DateTimeOffset OccurredUtc { get; init; }
+    public string? Notes { get; init; }
+    public string? DetailJson { get; init; }
+    public DateTimeOffset CreatedUtc { get; init; }
+}

@@ -186,7 +186,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
                           and sh.NormalizedText = @SubjectNorm
                  )
               )
-            order by i.Title
+            order by coalesce(i.AcquiredOn, cast(i.CreatedUtc as date)) desc, i.Title
             offset @Skip rows fetch next @Take rows only;
             """;
 

@@ -1901,3 +1901,74 @@ export async function createHousehold(name: string): Promise<any> {
 
   return response.json()
 }
+
+// ─── Item Event Log ──────────────────────────────────────────────────────────
+
+export interface ItemEventType {
+  id: number
+  name: string
+  label: string
+  icon: string | null
+  sortOrder: number
+}
+
+export interface ItemEventEntry {
+  id: string
+  itemId: string
+  eventTypeId: number
+  eventTypeName: string
+  eventTypeLabel: string
+  eventTypeIcon: string | null
+  occurredUtc: string
+  notes: string | null
+  detailJson: string | null
+  createdUtc: string
+}
+
+export interface CreateItemEventRequest {
+  eventTypeId: number
+  occurredUtc?: string
+  notes?: string
+  detailJson?: string
+}
+
+/**
+ * Get all available event types (for dropdowns / pickers).
+ */
+export async function getItemEventTypes(): Promise<ItemEventType[]> {
+  const response = await authFetch(`${API_BASE_URL}/api/item-event-types`)
+  if (!response.ok) throw new Error('Failed to fetch event types')
+  return response.json()
+}
+
+/**
+ * Get the chronological timeline for a specific item (newest first).
+ */
+export async function getItemTimeline(itemId: string): Promise<ItemEventEntry[]> {
+  const response = await authFetch(`${API_BASE_URL}/api/items/${itemId}/events`)
+  if (!response.ok) throw new Error('Failed to fetch item timeline')
+  return response.json()
+}
+
+/**
+ * Record a new event for a library item.
+ */
+export async function createItemEvent(itemId: string, event: CreateItemEventRequest): Promise<any> {
+  const response = await authFetch(`${API_BASE_URL}/api/items/${itemId}/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(event),
+  })
+  if (!response.ok) throw new Error('Failed to create item event')
+  return response.json()
+}
+
+/**
+ * Delete an event entry from an item's timeline.
+ */
+export async function deleteItemEvent(itemId: string, eventId: string): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/api/items/${itemId}/events/${eventId}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) throw new Error('Failed to delete item event')
+}

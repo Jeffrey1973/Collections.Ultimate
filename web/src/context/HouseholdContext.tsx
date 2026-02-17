@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { getAllHouseholds, createHousehold } from '../api/backend'
+import { useAuth } from './AuthContext'
 
 interface Household {
   id: string
@@ -31,6 +32,7 @@ interface HouseholdProviderProps {
 }
 
 export function HouseholdProvider({ children }: HouseholdProviderProps) {
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
   const [households, setHouseholds] = useState<Household[]>([])
   const [selectedHousehold, setSelectedHousehold] = useState<Household | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -69,10 +71,18 @@ export function HouseholdProvider({ children }: HouseholdProviderProps) {
     }
   }, [selectedHousehold])
 
-  // Load households on mount
+  // Load households once auth is ready and user is authenticated
   useEffect(() => {
+    if (isAuthLoading) return // Still checking auth state
+    if (!isAuthenticated) {
+      // Not logged in — clear households and stop loading
+      setHouseholds([])
+      setSelectedHousehold(null)
+      setIsLoading(false)
+      return
+    }
     loadHouseholds()
-  }, [])
+  }, [isAuthenticated, isAuthLoading])
 
   async function loadHouseholds() {
     setIsLoading(true)

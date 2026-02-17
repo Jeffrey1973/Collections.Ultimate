@@ -7,6 +7,7 @@ import { FIELD_CATEGORIES, FIELD_DEFINITIONS } from '../config/field-config'
 import { useHousehold } from '../context/HouseholdContext'
 import { enrichBook, applyEnrichment, type EnrichmentResult, type FieldDiff } from '../api/enrichment'
 import EnrichmentPreview from '../components/EnrichmentPreview'
+import ItemTimeline from '../components/ItemTimeline'
 
 function BookDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -639,6 +640,18 @@ function BookDetailPage() {
           )
         })}
       </div>
+
+      {/* Event History Timeline */}
+      {id && (
+        <div style={{
+          padding: '2rem',
+          backgroundColor: 'white',
+          borderRadius: '8px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        }}>
+          <ItemTimeline itemId={id} />
+        </div>
+      )}
 
       {/* Action Buttons */}
       <div style={{ 

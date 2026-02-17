@@ -41,6 +41,7 @@ builder.Services.AddScoped<ILibraryItemLookupRepository, LibraryItemLookupReposi
 builder.Services.AddScoped<IItemSearchRepository, ItemSearchRepository>();
 builder.Services.AddScoped<IItemUpdateRepository, ItemUpdateRepository>();
 builder.Services.AddScoped<ITagRepository, TagRepository>();
+builder.Services.AddScoped<IItemEventRepository, ItemEventRepository>();
 
 // Register Meilisearch
 var meiliUrl = builder.Configuration["Meilisearch:Url"] ?? "http://localhost:7700";
@@ -682,6 +683,7 @@ app.MapPost("/api/households/{householdId:guid}/items", async (
     Guid householdId,
     CreateItemRequest request,
     ILibraryItemRepository repo,
+    IItemEventRepository eventRepo,
     CancellationToken ct) =>
 {
     var item = new LibraryItem
@@ -707,6 +709,18 @@ app.MapPost("/api/households/{householdId:guid}/items", async (
     };
 
     await repo.CreateAsync(item, ct);
+
+    // Auto-record "Acquired" event
+    await eventRepo.CreateAsync(new ItemEvent
+    {
+        ItemId = item.Id,
+        EventTypeId = 1, // Acquired
+        OccurredUtc = item.AcquiredOn.HasValue
+            ? new DateTimeOffset(item.AcquiredOn.Value, TimeOnly.MinValue, TimeSpan.Zero)
+            : DateTimeOffset.UtcNow,
+        Notes = "Added to library"
+    }, ct);
+
     return Results.Created($"/api/items/{item.Id.Value}", item);
 }).RequireAuthorization();
 
@@ -735,6 +749,7 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
     IWorkMetadataRepository metaRepo,
     IMeilisearchService meili,
     IItemSearchRepository searchRepo,
+    IItemEventRepository eventRepo,
     CancellationToken ct) =>
 {
     var work = new Work
@@ -806,6 +821,9 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
 
     await itemRepo.CreateAsync(item, ct);
 
+    // Auto-record "Acquired" event
+    _ = Task.Run(() => RecordAcquiredEventAsync(eventRepo, item.Id, request.Item.AcquiredOn));
+
     if (request.Contributors is not null)
     {
         foreach (var c in request.Contributors)
@@ -860,6 +878,24 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
     return Results.Created($"/api/items/{item.Id.Value}", response);
 }).RequireAuthorization();
 
+// Fire-and-forget: record the "Acquired" event for the newly created book
+static async Task RecordAcquiredEventAsync(IItemEventRepository eventRepo, ItemId itemId, DateOnly? acquiredOn)
+{
+    try
+    {
+        await eventRepo.CreateAsync(new ItemEvent
+        {
+            ItemId = itemId,
+            EventTypeId = 1, // Acquired
+            OccurredUtc = acquiredOn.HasValue
+                ? new DateTimeOffset(acquiredOn.Value, TimeOnly.MinValue, TimeSpan.Zero)
+                : DateTimeOffset.UtcNow,
+            Notes = "Added to library"
+        }, CancellationToken.None);
+    }
+    catch { /* best-effort */ }
+}
+
 app.MapPost("/api/works/{workId:guid}/contributors", async (Guid workId, AddContributorRequest request, IWorkMetadataRepository repo, CancellationToken ct) =>
 {
     var person = new Person
@@ -893,6 +929,59 @@ app.MapPost("/api/editions/{editionId:guid}/identifiers", async (Guid editionId,
     return Results.Ok();
 }).RequireAuthorization();
 
+// ── Item Event Log ──────────────────────────────────────────────────────────
+
+// List all event types (for dropdowns)
+app.MapGet("/api/item-event-types", async (IItemEventRepository repo, CancellationToken ct) =>
+{
+    var types = await repo.ListEventTypesAsync(ct);
+    return Results.Ok(types);
+}).RequireAuthorization();
+
+// Get chronological timeline for an item
+app.MapGet("/api/items/{itemId:guid}/events", async (Guid itemId, IItemEventRepository repo, CancellationToken ct) =>
+{
+    var timeline = await repo.GetTimelineAsync(new ItemId(itemId), ct);
+    return Results.Ok(timeline);
+}).RequireAuthorization();
+
+// Record a new event for an item
+app.MapPost("/api/items/{itemId:guid}/events", async (
+    Guid itemId,
+    CreateItemEventRequest request,
+    IItemEventRepository repo,
+    ILibraryItemRepository itemRepo,
+    CancellationToken ct) =>
+{
+    // Verify item exists
+    var item = await itemRepo.GetByIdAsync(new ItemId(itemId), ct);
+    if (item is null)
+        return Results.NotFound();
+
+    var evt = new ItemEvent
+    {
+        ItemId = new ItemId(itemId),
+        EventTypeId = request.EventTypeId,
+        OccurredUtc = request.OccurredUtc ?? DateTimeOffset.UtcNow,
+        Notes = request.Notes,
+        DetailJson = request.DetailJson
+    };
+
+    await repo.CreateAsync(evt, ct);
+    return Results.Created($"/api/items/{itemId}/events/{evt.Id}", evt);
+}).RequireAuthorization();
+
+// Delete an event entry
+app.MapDelete("/api/items/{itemId:guid}/events/{eventId:guid}", async (
+    Guid itemId,
+    Guid eventId,
+    IItemEventRepository repo,
+    CancellationToken ct) =>
+{
+    var deleted = await repo.DeleteAsync(eventId, ct);
+    return deleted ? Results.NoContent() : Results.NotFound();
+}).RequireAuthorization();
+
 app.MapDelete("/api/items/{itemId:guid}", async (Guid itemId, ILibraryItemRepository repo, IMeilisearchService meili, CancellationToken ct) =>
 {
     var deleted = await repo.DeleteAsync(new ItemId(itemId), ct);
@@ -918,6 +1007,7 @@ app.MapPatch("/api/items/{itemId:guid}", async (
     IWorkMetadataRepository workMetaRepo,
     IMeilisearchService meili,
     IItemSearchRepository searchRepo,
+    IItemEventRepository eventRepo,
     CancellationToken ct) =>
 {
     // Get item first to have access to WorkId and HouseholdId for tags
@@ -947,6 +1037,68 @@ app.MapPatch("/api/items/{itemId:guid}", async (
     {
         return Results.Conflict(new { message = ex.Message });
     }
+
+    // Auto-record events for meaningful field changes (best-effort, fire-and-forget)
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            // Status changed (e.g. Available → Lent Out)
+            if (patch.Status is { IsSpecified: true } patchStatus && patchStatus.Value != item.Status)
+            {
+                await eventRepo.CreateAsync(new ItemEvent
+                {
+                    ItemId = new ItemId(itemId),
+                    EventTypeId = 19, // StatusChanged
+                    Notes = $"Status changed from \"{item.Status ?? "none"}\" to \"{patchStatus.Value ?? "none"}\""
+                }, CancellationToken.None);
+            }
+
+            // Location changed (shelf move)
+            if (patch.Location is { IsSpecified: true } patchLoc && patchLoc.Value != item.Location)
+            {
+                await eventRepo.CreateAsync(new ItemEvent
+                {
+                    ItemId = new ItemId(itemId),
+                    EventTypeId = 3, // Moved
+                    Notes = $"Moved from \"{item.Location ?? "unset"}\" to \"{patchLoc.Value ?? "unset"}\""
+                }, CancellationToken.None);
+            }
+
+            // Started reading
+            if (patch.ReadStatus is { IsSpecified: true } patchRead)
+            {
+                if (patchRead.Value == "Reading" && item.ReadStatus != "Reading")
+                {
+                    await eventRepo.CreateAsync(new ItemEvent
+                    {
+                        ItemId = new ItemId(itemId),
+                        EventTypeId = 4 // StartedReading
+                    }, CancellationToken.None);
+                }
+                else if (patchRead.Value == "Read" && item.ReadStatus != "Read")
+                {
+                    await eventRepo.CreateAsync(new ItemEvent
+                    {
+                        ItemId = new ItemId(itemId),
+                        EventTypeId = 5 // FinishedReading
+                    }, CancellationToken.None);
+                }
+            }
+
+            // Rating changed
+            if (patch.UserRating is { IsSpecified: true } patchRating && patchRating.Value != item.UserRating)
+            {
+                await eventRepo.CreateAsync(new ItemEvent
+                {
+                    ItemId = new ItemId(itemId),
+                    EventTypeId = 14, // Rated
+                    Notes = $"Rated {patchRating.Value}"
+                }, CancellationToken.None);
+            }
+        }
+        catch { /* event recording is best-effort */ }
+    });
 
     // Handle tags if provided
     if (request.Tags is not null && request.Tags.Value.ValueKind != JsonValueKind.Undefined)
@@ -1571,3 +1723,6 @@ public sealed record AuthMeResponse(Guid AccountId, string DisplayName, string? 
 // Member management
 public sealed record AddMemberRequest(string Email, string? Role);
 public sealed record UpdateMemberRoleRequest(string Role);
+
+// Item events
+public sealed record CreateItemEventRequest(int EventTypeId, DateTimeOffset? OccurredUtc, string? Notes, string? DetailJson);
