@@ -1,0 +1,39 @@
+# =============================================================================
+# Collections Ultimate — Caddy Reverse Proxy
+# =============================================================================
+# Replace {$DOMAIN} with your actual domain, or set it as an env var.
+# Caddy automatically provisions HTTPS via Let's Encrypt.
+# =============================================================================
+
+{$DOMAIN} {
+
+    # API requests → .NET backend
+    handle /api/* {
+        reverse_proxy api:5259
+    }
+
+    # Cover image uploads → .NET backend static files
+    handle /uploads/* {
+        reverse_proxy api:5259
+    }
+
+    # CORS proxy for external book APIs
+    handle /proxy* {
+        reverse_proxy api:5259
+    }
+
+    # Health check endpoint
+    handle /health {
+        reverse_proxy api:5259
+    }
+
+    # Swagger (optional — remove in production if you don't want it public)
+    handle /swagger* {
+        reverse_proxy api:5259
+    }
+
+    # Everything else → React SPA
+    handle {
+        reverse_proxy frontend:80
+    }
+}

@@ -1,0 +1,110 @@
+# =============================================================================
+# Collections Ultimate — Production Docker Compose
+# =============================================================================
+# Usage:
+#   1. Copy .env.example to .env and fill in your values
+#   2. docker compose -f docker-compose.prod.yml up -d
+#   3. Run schema init (first time only — see DEPLOY_VPS.md)
+# =============================================================================
+
+services:
+
+  # ── Reverse Proxy (HTTPS termination + routing) ────────────
+  caddy:
+    image: caddy:2-alpine
+    container_name: cu-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - frontend
+
+  # ── .NET API ───────────────────────────────────────────────
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: cu-api
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Collections: "Server=sqlserver;Database=CollectionsUltimate;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;Encrypt=False;"
+      Storage__Provider: Local
+      Storage__Local__BasePath: /app/wwwroot/uploads
+      Storage__Local__BaseUrl: /uploads
+      Meilisearch__Url: http://meilisearch:7700
+      Meilisearch__MasterKey: "${MEILI_MASTER_KEY}"
+      Auth0__Domain: "${AUTH0_DOMAIN}"
+      Auth0__Audience: "${AUTH0_AUDIENCE}"
+      Cors__AllowedOrigins__0: "https://${DOMAIN}"
+      Cors__AllowedOrigins__1: "http://${DOMAIN}"
+    volumes:
+      - api_uploads:/app/wwwroot/uploads
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+
+  # ── React Frontend ────────────────────────────────────────
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: "https://${DOMAIN}/api"
+        VITE_AUTH0_DOMAIN: "${AUTH0_DOMAIN}"
+        VITE_AUTH0_CLIENT_ID: "${AUTH0_CLIENT_ID}"
+        VITE_AUTH0_AUDIENCE: "${AUTH0_AUDIENCE}"
+        VITE_GOOGLE_BOOKS_API_KEY: "${GOOGLE_BOOKS_API_KEY:-}"
+        VITE_ISBNDB_API_KEY: "${ISBNDB_API_KEY:-}"
+    container_name: cu-frontend
+    restart: unless-stopped
+
+  # ── SQL Server 2022 ───────────────────────────────────────
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: cu-sqlserver
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${SA_PASSWORD}"
+      MSSQL_PID: Express
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$${SA_PASSWORD}" -C -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ── Meilisearch ────────────────────────────────────────────
+  meilisearch:
+    image: getmeili/meilisearch:v1.12
+    container_name: cu-meilisearch
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: "${MEILI_MASTER_KEY}"
+      MEILI_ENV: production
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - meilisearch_data:/meili_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  caddy_data:
+  caddy_config:
+  api_uploads:
+  sqlserver_data:
+  meilisearch_data:
