@@ -163,8 +163,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('[Auth] login() got client:', !!client);
       if (client) {
         console.log('[Auth] Calling loginWithRedirect...');
-        await client.loginWithRedirect();
-        console.log('[Auth] loginWithRedirect returned (should not see this - page should redirect)');
+        await client.loginWithRedirect({
+          openUrl: async (url: string) => {
+            console.log('[Auth] Redirecting to:', url);
+            window.location.replace(url);
+          },
+        });
       } else {
         console.warn('[Auth] No client returned - AUTH0_ENABLED:', AUTH0_ENABLED);
       }
@@ -182,8 +186,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('[Auth] Calling loginWithRedirect with signup hint...');
         await client.loginWithRedirect({
           authorizationParams: { screen_hint: 'signup' },
+          openUrl: async (url: string) => {
+            console.log('[Auth] Redirecting to:', url);
+            window.location.replace(url);
+          },
         });
-        console.log('[Auth] loginWithRedirect returned (should not see this)');
       } else {
         console.warn('[Auth] No client returned - AUTH0_ENABLED:', AUTH0_ENABLED);
       }
