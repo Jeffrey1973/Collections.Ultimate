@@ -57,7 +57,7 @@ public sealed class AccountHouseholdRepository : IAccountHouseholdRepository
     public async Task<IReadOnlyList<HouseholdMember>> ListMembersAsync(HouseholdId householdId, CancellationToken ct)
     {
         const string sql = """
-            select a.Id as AccountId, a.DisplayName, a.Email, ah.Role, ah.CreatedUtc as JoinedUtc
+            select a.Id as AccountId, a.DisplayName, a.FirstName, a.LastName, a.Email, ah.Role, ah.CreatedUtc as JoinedUtc
             from dbo.AccountHousehold ah
             inner join dbo.Account a on a.Id = ah.AccountId
             where ah.HouseholdId = @HouseholdId

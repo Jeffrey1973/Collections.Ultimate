@@ -239,9 +239,30 @@ app.MapPost("/proxy", async (HttpContext ctx, CancellationToken ct) =>
     return Results.Content(content, contentType, System.Text.Encoding.UTF8, (int)response.StatusCode);
 });
 
-app.MapGet("/api/households", async (IHouseholdRepository repo, CancellationToken ct) =>
+app.MapGet("/api/households", async (
+    HttpContext http,
+    IAccountRepository accountRepo,
+    IAccountHouseholdRepository accountHouseholdRepo,
+    IHouseholdRepository householdRepo,
+    CancellationToken ct) =>
 {
-    var households = await repo.ListAsync(ct);
+    var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
+           ?? http.User.FindFirstValue("sub");
+    if (string.IsNullOrEmpty(sub))
+        return Results.Unauthorized();
+
+    var account = await accountRepo.GetByAuth0SubAsync(sub, ct);
+    if (account is null)
+        return Results.Unauthorized();
+
+    var memberships = await accountHouseholdRepo.ListHouseholdsAsync(account.Id, ct);
+    var households = new List<object>();
+    foreach (var m in memberships)
+    {
+        var h = await householdRepo.GetByIdAsync(m.HouseholdId, ct);
+        if (h is not null)
+            households.Add(new { id = h.Id.Value, name = h.Name, role = m.Role });
+    }
     return Results.Ok(households);
 }).RequireAuthorization();
 
@@ -477,7 +498,7 @@ app.MapPost("/api/households/{householdId:guid}/members", async (
 
     var role = request.Role ?? "Member";
     await ahRepo.AddAsync(account.Id, new HouseholdId(householdId), role, ct);
-    return Results.Ok(new { accountId = account.Id.Value, displayName = account.DisplayName, email = account.Email, role });
+    return Results.Ok(new { accountId = account.Id.Value, displayName = account.DisplayName, firstName = account.FirstName, lastName = account.LastName, email = account.Email, role });
 }).RequireAuthorization();
 
 // Update a member's role

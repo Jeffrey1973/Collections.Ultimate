@@ -38,6 +38,8 @@ interface HouseholdDetail {
 interface HouseholdMember {
   accountId: string
   displayName: string
+  firstName: string | null
+  lastName: string | null
   email: string | null
   role: string
   joinedUtc: string
@@ -1317,7 +1319,9 @@ export default function HouseholdManagementPage() {
                     </div>
                     <div style={styles.listCardBody}>
                       <div style={styles.listCardName}>
-                        {member.displayName}
+                        {member.firstName && member.lastName
+                          ? `${member.firstName} ${member.lastName}`
+                          : member.displayName}
                         <span style={styles.badge(
                           member.role === 'Owner' ? '#f59e0b' :
                           member.role === 'ReadOnly' ? '#94a3b8' :

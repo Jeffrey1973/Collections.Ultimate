@@ -17,7 +17,7 @@ public sealed class Account
 
 public sealed record AccountHousehold(AccountId AccountId, HouseholdId HouseholdId, string Role, DateTimeOffset CreatedUtc);
 
-public sealed record HouseholdMember(Guid AccountId, string DisplayName, string? Email, string Role, DateTimeOffset JoinedUtc);
+public sealed record HouseholdMember(Guid AccountId, string DisplayName, string? FirstName, string? LastName, string? Email, string Role, DateTimeOffset JoinedUtc);
 
 public sealed class Household
 {
