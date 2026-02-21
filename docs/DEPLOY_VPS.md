@@ -110,10 +110,10 @@ From your **local machine** (PowerShell):
 ```powershell
 # Option A: Git (recommended — push to GitHub/GitLab first)
 # On VPS:
-# git clone https://github.com/yourusername/Collections.Ultimate.git /opt/collections
+# git clone https://github.com/yourusername/Collections.Ultimate.git /opt/collections~
 
 # Option B: Direct copy via SCP (no git needed)
-scp -r C:\Collections.Ultimate root@164.90.xxx.xxx:/opt/collections
+scp -r C:\Collections.Ultimate root@164.90.xxx.xxx:/opt/collections~
 ```
 
 ### 4b. Configure environment
@@ -121,7 +121,7 @@ scp -r C:\Collections.Ultimate root@164.90.xxx.xxx:/opt/collections
 On the VPS:
 
 ```bash
-cd /opt/collections
+cd /opt/collections~
 
 # Create .env from example
 cp .env.example .env
@@ -133,30 +133,32 @@ nano .env
 Fill in your `.env`:
 
 ```dotenv
-DOMAIN=collections.yourdomain.com
+DOMAIN=collections.collectionsultimate.com
 
 # Must be 8+ chars with uppercase, lowercase, number, and symbol
-SA_PASSWORD=MyStr0ng!Password123
+SA_PASSWORD=&hg5$3#mklYoooP
 
-MEILI_MASTER_KEY=some-random-secret-key-at-least-16-chars
+MEILI_MASTER_KEY=hjnadsbcijwqhed8374f83872939""[+_^&5fxctr]
 
 AUTH0_DOMAIN=dev-3817i0s85bpfq13x.us.auth0.com
 AUTH0_CLIENT_ID=S6QHriD13lhlzbuUyM5XXmZHCpgfw3Tk
 AUTH0_AUDIENCE=Collections
 
 # Optional — your API keys from .env.local
-GOOGLE_BOOKS_API_KEY=your-key
-ISBNDB_API_KEY=your-key
+# Google Books API (get from: https://console.cloud.google.com/apis/library/books.googleapis.com)
+VITE_GOOGLE_BOOKS_API_KEY=AIzaSyDk717PAap9RcClImcr_u8w5XAA1HRula8
+
+# ISBNdb API (get from: https://isbndb.com/apidocs/v2)
+VITE_ISBNDB_API_KEY=66982_7aaad5d907bb62277568c5425dedc898
 ```
 
 Save and exit (`Ctrl+X`, `Y`, `Enter` in nano).
 
 ---
-
 ## Step 5: Start Everything
 
 ```bash
-cd /opt/collections
+cd /opt/collections~
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
@@ -176,7 +178,7 @@ Wait until you see the API and SQL Server are healthy:
 docker compose -f docker-compose.prod.yml ps
 ```
 
-All services should show `Up (healthy)` or `Up`.
+All services should show `Up (healthy)` or `Up`
 
 ---
 
@@ -185,7 +187,7 @@ All services should show `Up (healthy)` or `Up`.
 The database starts empty. Run the schema script **once**:
 
 ```bash
-cd /opt/collections
+cd /opt/collections~
 
 # Wait for SQL Server to be fully ready (30 seconds after starting)
 sleep 10
@@ -246,7 +248,7 @@ docker compose -f docker-compose.prod.yml logs -f sqlserver
 
 ### Restart after code changes
 ```bash
-cd /opt/collections
+cd /opt/collections~
 git pull                        # if using git
 docker compose -f docker-compose.prod.yml up -d --build
 ```
@@ -272,7 +274,7 @@ docker exec cu-sqlserver /opt/mssql-tools18/bin/sqlcmd \
 docker cp cu-sqlserver:/var/opt/mssql/backup/cu_backup.bak ./backups/
 
 # Download to your local machine (from your PC)
-scp root@164.90.xxx.xxx:/opt/collections/backups/cu_backup.bak .
+scp root@164.90.xxx.xxx:/opt/collections~/backups/cu_backup.bak .
 ```
 
 ### Restore from backup
@@ -287,12 +289,12 @@ docker exec cu-sqlserver /opt/mssql-tools18/bin/sqlcmd \
 ### Set up automatic backups (cron)
 ```bash
 # Create backup directory
-mkdir -p /opt/collections/backups
+mkdir -p /opt/collections~/backups
 
 # Add daily backup cron job
 crontab -e
 # Add this line (backs up daily at 2 AM):
-0 2 * * * docker exec cu-sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YOUR_SA_PASSWORD" -C -Q "BACKUP DATABASE CollectionsUltimate TO DISK='/var/opt/mssql/backup/cu_daily.bak' WITH INIT" && docker cp cu-sqlserver:/var/opt/mssql/backup/cu_daily.bak /opt/collections/backups/cu_$(date +\%Y\%m\%d).bak
+0 2 * * * docker exec cu-sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YOUR_SA_PASSWORD" -C -Q "BACKUP DATABASE CollectionsUltimate TO DISK='/var/opt/mssql/backup/cu_daily.bak' WITH INIT" && docker cp cu-sqlserver:/var/opt/mssql/backup/cu_daily.bak /opt/collections~/backups/cu_$(date +\%Y\%m\%d).bak
 ```
 
 ### Update the server OS
