@@ -157,20 +157,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = useCallback(async () => {
-    console.log('[Auth] login() called');
+    console.log('[Auth] login() called, AUTH0_ENABLED:', AUTH0_ENABLED);
+    console.log('[Auth] AUTH0_DOMAIN:', AUTH0_DOMAIN);
+    console.log('[Auth] AUTH0_CLIENT_ID:', AUTH0_CLIENT_ID);
     try {
       const client = await getAuth0Client();
       console.log('[Auth] login() got client:', !!client);
       if (client) {
-        console.log('[Auth] Calling loginWithRedirect...');
-        await client.loginWithRedirect({
-          openUrl: async (url: string) => {
-            console.log('[Auth] Redirecting to:', url);
-            window.location.replace(url);
-          },
-        });
+        await client.loginWithRedirect();
       } else {
-        console.warn('[Auth] No client returned - AUTH0_ENABLED:', AUTH0_ENABLED);
+        console.warn('[Auth] No client returned');
       }
     } catch (err) {
       console.error('[Auth] login() error:', err);
@@ -181,18 +177,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('[Auth] signup() called');
     try {
       const client = await getAuth0Client();
-      console.log('[Auth] signup() got client:', !!client);
       if (client) {
-        console.log('[Auth] Calling loginWithRedirect with signup hint...');
         await client.loginWithRedirect({
           authorizationParams: { screen_hint: 'signup' },
-          openUrl: async (url: string) => {
-            console.log('[Auth] Redirecting to:', url);
-            window.location.replace(url);
-          },
         });
-      } else {
-        console.warn('[Auth] No client returned - AUTH0_ENABLED:', AUTH0_ENABLED);
       }
     } catch (err) {
       console.error('[Auth] signup() error:', err);
