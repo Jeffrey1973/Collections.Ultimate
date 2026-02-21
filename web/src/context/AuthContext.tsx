@@ -96,8 +96,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const client = await getAuth0Client();
         if (!client || cancelled) { setIsLoading(false); return; }
 
-        // Handle redirect callback (only if code+state are still in the URL)
+        // Log the full URL to debug Auth0 redirects
+        console.log('[Auth] Current URL:', window.location.href);
+
+        // Handle Auth0 error responses
         const params = new URLSearchParams(window.location.search);
+        if (params.has('error')) {
+          console.error('[Auth] Auth0 error:', params.get('error'));
+          console.error('[Auth] Error description:', params.get('error_description'));
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+
+        // Handle redirect callback (only if code+state are still in the URL)
         if (params.has('code') && params.has('state')) {
           console.log('[Auth] Handling redirect callback...');
           try {
