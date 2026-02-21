@@ -12,8 +12,9 @@ interface ApiTestResult {
 }
 
 // Helper to use proxy for CORS-blocked APIs
+const PROXY_URL = import.meta.env.VITE_PROXY_URL || 'http://localhost:3001'
 const fetchThroughProxy = async (url: string, options?: RequestInit) => {
-  const proxyUrl = `http://localhost:3001/proxy?url=${encodeURIComponent(url)}`
+  const proxyUrl = `${PROXY_URL}/proxy?url=${encodeURIComponent(url)}`
   return fetch(proxyUrl, options)
 }
 
@@ -295,10 +296,10 @@ export default function ApiTestPage() {
     },
     {
       name: 'National Library of Australia (NLA)',
-      needsProxy: false,
+      needsProxy: true,
       test: async (isbn: string) => {
         const url = `https://www.nla.gov.au/apps/srw/search/nla?version=1.1&operation=searchRetrieve&query=isbn=${isbn}&recordSchema=marcxml&maximumRecords=1`
-        const response = await fetch(url)
+        const response = await fetchThroughProxy(url)
         if (!response.ok) throw new Error(`HTTP ${response.status}`)
         const text = await response.text()
         const hasRecord = text.includes('<marc:record')

@@ -24,6 +24,19 @@ public sealed class HouseholdRepository : IHouseholdRepository
         await conn.ExecuteAsync(new CommandDefinition(sql, new { Id = household.Id.Value, household.Name, CreatedUtc = DateTimeOffset.UtcNow }, cancellationToken: ct));
     }
 
+    public async Task<bool> UpdateAsync(HouseholdId id, string name, CancellationToken ct)
+    {
+        const string sql = """
+            update dbo.Household
+            set Name = @Name
+            where Id = @Id;
+            """;
+
+        using var conn = _connectionFactory.Create();
+        var affected = await conn.ExecuteAsync(new CommandDefinition(sql, new { Id = id.Value, Name = name }, cancellationToken: ct));
+        return affected > 0;
+    }
+
     public async Task<bool> DeleteAsync(HouseholdId id, CancellationToken ct)
     {
         const string sql = """

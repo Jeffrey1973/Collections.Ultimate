@@ -252,6 +252,17 @@ app.MapPost("/api/households", async (CreateHouseholdRequest request, IHousehold
     return Results.Created($"/api/households/{household.Id.Value}", household);
 }).RequireAuthorization();
 
+app.MapPut("/api/households/{householdId:guid}", async (
+    Guid householdId,
+    CreateHouseholdRequest request,
+    IHouseholdRepository repo,
+    CancellationToken ct) =>
+{
+    var id = new HouseholdId(householdId);
+    var updated = await repo.UpdateAsync(id, request.Name, ct);
+    return updated ? Results.NoContent() : Results.NotFound();
+}).RequireAuthorization();
+
 app.MapDelete("/api/households/{householdId:guid}", async (
     Guid householdId,
     IHouseholdRepository repo,
