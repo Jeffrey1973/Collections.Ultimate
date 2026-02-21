@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import BookCard from '../components/BookCard.tsx'
 import CardCatalogView from '../components/CardCatalogView.tsx'
 import { Book } from '../api/books'
-import { getItems, mapItemResponseToBook, mapSearchResultToBook, updateItem, softDeleteItem, hardDeleteItem } from '../api/backend'
+import { getItems, mapItemResponseToBook, mapSearchResultToBook, softDeleteItem, hardDeleteItem } from '../api/backend'
 import { useHousehold } from '../context/HouseholdContext'
 import { FIELD_DEFINITIONS, FIELD_CATEGORIES, type FieldConfig, type CategoryKey } from '../config/field-config'
 
