@@ -307,6 +307,18 @@ function LibraryPage() {
                   Maintenance
                 </div>
                 <button
+                  onClick={() => { setShowToolsMenu(false); navigate('/enrich') }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                    padding: '0.6rem 0.75rem', border: 'none', background: 'none',
+                    cursor: 'pointer', fontSize: '0.9rem', textAlign: 'left', color: '#334155',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                >
+                  <span>✦</span> Enrich All Unenriched
+                </button>
+                <button
                   onClick={() => { setShowToolsMenu(false); setSelectionMode(true) }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
@@ -316,7 +328,7 @@ function LibraryPage() {
                   onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                 >
-                  <span>✦</span> Enrich Books
+                  <span>☑️</span> Select Books to Enrich
                 </button>
                 <button
                   onClick={() => { setShowToolsMenu(false); navigate('/duplicates') }}
