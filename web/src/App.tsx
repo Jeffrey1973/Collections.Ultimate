@@ -13,10 +13,21 @@ import ImportBooksPage from './pages/ImportBooksPage.tsx'
 import DuplicateReviewPage from './pages/DuplicateReviewPage.tsx'
 import BatchEnrichmentPage from './pages/BatchEnrichmentPage.tsx'
 import { HouseholdProvider } from './context/HouseholdContext.tsx'
+import { useAuth } from './context/AuthContext.tsx'
+import CompleteProfileModal from './components/CompleteProfileModal.tsx'
 
-function App() {
+function AppContent() {
+  const { needsProfileCompletion, updateUserProfile } = useAuth()
+
   return (
-    <HouseholdProvider>
+    <>
+      {needsProfileCompletion && (
+        <CompleteProfileModal
+          onComplete={(firstName, lastName, displayName) => {
+            updateUserProfile(firstName, lastName, displayName)
+          }}
+        />
+      )}
       <BrowserRouter>
         <Routes>
           {/* Public route — login page (no Layout chrome) */}
@@ -43,6 +54,14 @@ function App() {
           } />
         </Routes>
       </BrowserRouter>
+    </>
+  )
+}
+
+function App() {
+  return (
+    <HouseholdProvider>
+      <AppContent />
     </HouseholdProvider>
   )
 }

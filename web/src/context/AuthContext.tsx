@@ -23,6 +23,10 @@ interface AuthContextValue {
   isLoading: boolean;
   /** True if Auth0 is configured and user is authenticated */
   isAuthenticated: boolean;
+  /** True if user needs to complete their profile (no first/last name) */
+  needsProfileCompletion: boolean;
+  /** Update user profile after completing profile form */
+  updateUserProfile: (firstName: string, lastName: string, displayName: string) => void;
   /** Trigger Auth0 login redirect */
   login: () => void;
   /** Trigger Auth0 signup redirect (opens registration screen) */
@@ -37,6 +41,8 @@ const AuthContext = createContext<AuthContextValue>({
   user: null,
   isLoading: true,
   isAuthenticated: false,
+  needsProfileCompletion: false,
+  updateUserProfile: () => {},
   login: () => {},
   signup: () => {},
   logout: () => {},
@@ -215,10 +221,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const updateUserProfile = useCallback((firstName: string, lastName: string, displayName: string) => {
+    setUser(prev => prev ? { ...prev, firstName, lastName, displayName } : prev);
+  }, []);
+
+  const needsProfileCompletion = !!user && (!user.firstName || !user.lastName);
+
   const value: AuthContextValue = {
     user,
     isLoading,
     isAuthenticated: !!user,
+    needsProfileCompletion,
+    updateUserProfile,
     login,
     signup,
     logout,

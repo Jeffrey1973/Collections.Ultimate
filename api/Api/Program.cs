@@ -645,6 +645,29 @@ app.MapGet("/api/auth/me", async (
         households.Select(h => new AuthHousehold(h.HouseholdId.Value, h.Role)).ToList()));
 }).RequireAuthorization();
 
+// PUT /api/auth/profile — update current user's first/last name
+app.MapPut("/api/auth/profile", async (
+    HttpContext http,
+    UpdateProfileRequest request,
+    IAccountRepository accountRepo,
+    CancellationToken ct) =>
+{
+    var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
+           ?? http.User.FindFirstValue("sub");
+    if (string.IsNullOrEmpty(sub))
+        return Results.Unauthorized();
+
+    var account = await accountRepo.GetByAuth0SubAsync(sub, ct);
+    if (account is null)
+        return Results.NotFound();
+
+    var displayName = $"{request.FirstName} {request.LastName}".Trim();
+    if (string.IsNullOrWhiteSpace(displayName)) displayName = account.DisplayName;
+
+    await accountRepo.UpdateNameAsync(account.Id, request.FirstName, request.LastName, displayName, account.Email, ct);
+    return Results.Ok(new { displayName, firstName = request.FirstName, lastName = request.LastName });
+}).RequireAuthorization();
+
 // Normalized model endpoints
 app.MapGet("/api/works/{workId:guid}", async (Guid workId, IWorkRepository repo, CancellationToken ct) =>
 {
@@ -1745,6 +1768,7 @@ public sealed record PatchItemRequest(
 public sealed record AuthHousehold(Guid Id, string Role);
 public sealed record AuthLoginResponse(Guid AccountId, string DisplayName, string? FirstName, string? LastName, string? Email, IReadOnlyList<AuthHousehold> Households, bool IsNewAccount);
 public sealed record AuthMeResponse(Guid AccountId, string DisplayName, string? FirstName, string? LastName, string? Email, IReadOnlyList<AuthHousehold> Households);
+public sealed record UpdateProfileRequest(string FirstName, string LastName);
 
 // Member management
 public sealed record AddMemberRequest(string Email, string? Role);
