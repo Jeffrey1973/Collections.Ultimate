@@ -5,10 +5,11 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { getItem, mapItemResponseToBook } from '../api/backend'
+import { getItem, getItems, mapItemResponseToBook, mapSearchResultToBook } from '../api/backend'
 import { Book } from '../api/books'
 import { enrichBook, applyEnrichment, type EnrichmentResult, type FieldDiff } from '../api/enrichment'
 import EnrichmentPreview from '../components/EnrichmentPreview'
+import { useHousehold } from '../context/HouseholdContext'
 
 type BookStatus = 'pending' | 'loading' | 'enriched' | 'applied' | 'skipped' | 'error'
 
@@ -25,30 +26,64 @@ interface BookEnrichmentState {
 export default function BatchEnrichmentPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const { selectedHousehold } = useHousehold()
 
   const [bookStates, setBookStates] = useState<BookEnrichmentState[]>([])
   const [isRunning, setIsRunning] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(-1)
   const [expandedBookId, setExpandedBookId] = useState<string | null>(null)
   const [isApplyingAll, setIsApplyingAll] = useState(false)
+  const [isLoadingBooks, setIsLoadingBooks] = useState(false)
   const abortRef = useRef(false)
 
   // Parse book IDs from URL
   const bookIds = (searchParams.get('ids') || '').split(',').filter(Boolean)
 
-  // Load book data on mount
+  // Load book data on mount — either from URL IDs or auto-load unenriched books
   useEffect(() => {
-    if (bookIds.length === 0) return
-    const states: BookEnrichmentState[] = bookIds.map(id => ({
-      bookId: id,
-      book: null,
-      status: 'pending' as BookStatus,
-      result: null,
-      progress: '',
-      selectedDiffs: [],
-    }))
-    setBookStates(states)
-  }, [searchParams.get('ids')])
+    if (bookIds.length > 0) {
+      // IDs provided via URL
+      const states: BookEnrichmentState[] = bookIds.map(id => ({
+        bookId: id,
+        book: null,
+        status: 'pending' as BookStatus,
+        result: null,
+        progress: '',
+        selectedDiffs: [],
+      }))
+      setBookStates(states)
+    } else if (selectedHousehold) {
+      // No IDs — auto-load unenriched books from current household
+      loadUnenrichedBooks()
+    }
+  }, [searchParams.get('ids'), selectedHousehold?.id])
+
+  async function loadUnenrichedBooks() {
+    if (!selectedHousehold) return
+    setIsLoadingBooks(true)
+    try {
+      const result = await getItems(selectedHousehold.id, { take: 10000 })
+      const unenriched = result.items
+        .filter((item: any) => {
+          // Check enrichedAt inside itemMetadataJson
+          const meta = item.itemMetadataJson ? JSON.parse(item.itemMetadataJson) : {}
+          return !meta.enrichedAt && item.status !== 'Previously Owned' && item.status !== 'Deleted'
+        })
+      const states: BookEnrichmentState[] = unenriched.map((item: any) => ({
+        bookId: item.itemId,
+        book: mapSearchResultToBook(item),
+        status: 'pending' as BookStatus,
+        result: null,
+        progress: '',
+        selectedDiffs: [],
+      }))
+      setBookStates(states)
+    } catch (err) {
+      console.error('Failed to load unenriched books:', err)
+    } finally {
+      setIsLoadingBooks(false)
+    }
+  }
 
   // Start batch enrichment
   async function startEnrichment() {
@@ -182,7 +217,18 @@ export default function BatchEnrichmentPage() {
     ? Math.round(((bookStates.length - pendingCount) / bookStates.length) * 100)
     : 0
 
-  if (bookIds.length === 0) {
+  if (isLoadingBooks) {
+    return (
+      <div>
+        <div className="page-header">
+          <h1 className="page-title">Batch Enrichment</h1>
+        </div>
+        <div className="loading">Loading unenriched books...</div>
+      </div>
+    )
+  }
+
+  if (bookStates.length === 0 && !isRunning) {
     return (
       <div>
         <div className="page-header">
@@ -192,8 +238,8 @@ export default function BatchEnrichmentPage() {
           <h1 className="page-title">Batch Enrichment</h1>
         </div>
         <div className="empty-state">
-          <div className="empty-state-icon">📚</div>
-          <p>No books selected for enrichment.</p>
+          <div className="empty-state-icon">✅</div>
+          <p>All books in this library have already been enriched!</p>
           <button onClick={() => navigate('/library')} className="btn btn-primary" style={{ marginTop: '1rem' }}>
             Go to Library
           </button>
