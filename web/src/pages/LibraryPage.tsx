@@ -54,10 +54,6 @@ function LibraryPage() {
   const [fieldSearch, setFieldSearch] = useState('')
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
 
-  // Batch enrichment selection
-  const [selectionMode, setSelectionMode] = useState(false)
-  const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set())
-
   // Tools dropdown
   const [showToolsMenu, setShowToolsMenu] = useState(false)
   const toolsMenuRef = useRef<HTMLDivElement>(null)
@@ -276,19 +272,6 @@ function LibraryPage() {
         >
           ⚙️ Display
         </button>
-        {selectionMode ? (
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => {
-              setSelectionMode(false)
-              setSelectedBookIds(new Set())
-            }}
-            style={{ backgroundColor: '#ecfdf5', borderColor: '#10b981', color: '#059669' }}
-          >
-            ✕ Cancel
-          </button>
-        ) : (
           <div ref={toolsMenuRef} style={{ position: 'relative' }}>
             <button
               type="button"
@@ -316,19 +299,7 @@ function LibraryPage() {
                   onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                 >
-                  <span>✦</span> Enrich All Unenriched
-                </button>
-                <button
-                  onClick={() => { setShowToolsMenu(false); setSelectionMode(true) }}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
-                    padding: '0.6rem 0.75rem', border: 'none', background: 'none',
-                    cursor: 'pointer', fontSize: '0.9rem', textAlign: 'left', color: '#334155',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                >
-                  <span>☑️</span> Select Books to Enrich
+                  <span>✦</span> Enrich Books
                 </button>
                 <button
                   onClick={() => { setShowToolsMenu(false); navigate('/duplicates') }}
@@ -366,72 +337,7 @@ function LibraryPage() {
               </div>
             )}
           </div>
-        )}
       </form>
-
-      {/* Batch selection toolbar */}
-      {selectionMode && (
-        <div style={{
-          backgroundColor: '#eff6ff', padding: '0.75rem 1rem', borderRadius: '8px',
-          marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem',
-          border: '1px solid #bfdbfe',
-        }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.85rem' }}>
-            <input
-              type="checkbox"
-              checked={displayedBooks.length > 0 && selectedBookIds.size === displayedBooks.length}
-              onChange={(e) => {
-                if (e.target.checked) {
-                  setSelectedBookIds(new Set(displayedBooks.map(b => b.id)))
-                } else {
-                  setSelectedBookIds(new Set())
-                }
-              }}
-              style={{ cursor: 'pointer' }}
-            />
-            <span style={{ fontWeight: 500, color: '#1e40af' }}>Select All</span>
-          </label>
-          <span style={{ fontSize: '0.8rem', color: '#3b82f6' }}>
-            {selectedBookIds.size} of {displayedBooks.length} selected
-          </span>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
-            <button
-              onClick={() => {
-                if (selectedBookIds.size === 0) {
-                  alert('Select at least one book to enrich.')
-                  return
-                }
-                const ids = Array.from(selectedBookIds).join(',')
-                navigate(`/enrich?ids=${ids}`)
-              }}
-              disabled={selectedBookIds.size === 0}
-              style={{
-                padding: '0.4rem 1rem', borderRadius: '6px', border: 'none',
-                backgroundColor: selectedBookIds.size === 0 ? '#cbd5e1' : '#10b981',
-                color: 'white', fontSize: '0.85rem', fontWeight: 600,
-                cursor: selectedBookIds.size === 0 ? 'not-allowed' : 'pointer',
-              }}
-            >
-              🔍 Enrich Selected ({selectedBookIds.size})
-            </button>
-            <button
-              onClick={() => {
-                // Select all and navigate
-                const allIds = displayedBooks.map(b => b.id).join(',')
-                navigate(`/enrich?ids=${allIds}`)
-              }}
-              disabled={displayedBooks.length === 0}
-              style={{
-                padding: '0.4rem 1rem', borderRadius: '6px', border: '1px solid #10b981',
-                backgroundColor: 'white', color: '#059669', fontSize: '0.85rem', fontWeight: 600,
-                cursor: displayedBooks.length === 0 ? 'not-allowed' : 'pointer',
-              }}
-            >
-              🔍 Enrich All ({displayedBooks.length})
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Display Settings */}
       {showSettings && (
@@ -658,18 +564,9 @@ function LibraryPage() {
               {displayedBooks.map((book) => (
                 <div
                   key={book.id}
-                  onClick={() => {
-                    if (selectionMode) {
-                      const next = new Set(selectedBookIds)
-                      if (next.has(book.id)) next.delete(book.id)
-                      else next.add(book.id)
-                      setSelectedBookIds(next)
-                    } else {
-                      navigate(`/book/${book.id}`)
-                    }
-                  }}
+                  onClick={() => navigate(`/book/${book.id}`)}
                   style={{
-                    backgroundColor: selectionMode && selectedBookIds.has(book.id) ? '#eff6ff' : showPreviouslyOwned ? '#fffbeb' : 'white',
+                    backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white',
                     padding: '1rem 1.5rem',
                     borderRadius: '8px',
                     boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
@@ -678,7 +575,7 @@ function LibraryPage() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '1rem',
-                    border: selectionMode && selectedBookIds.has(book.id) ? '2px solid #3b82f6' : '2px solid transparent',
+                    border: '2px solid transparent',
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'
@@ -689,16 +586,6 @@ function LibraryPage() {
                     e.currentTarget.style.transform = 'translateY(0)'
                   }}
                 >
-                  {/* Selection checkbox */}
-                  {selectionMode && (
-                    <input
-                      type="checkbox"
-                      checked={selectedBookIds.has(book.id)}
-                      onChange={() => {}} // handled by row click
-                      onClick={e => e.stopPropagation()}
-                      style={{ cursor: 'pointer', flexShrink: 0, width: '18px', height: '18px' }}
-                    />
-                  )}
                   {/* Cover thumbnail */}
                   {book.coverImageUrl ? (
                     <img
