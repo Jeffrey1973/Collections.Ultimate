@@ -561,12 +561,14 @@ app.MapPost("/api/auth/login", async (
     {
         // Refresh name + email from Auth0 profile on each login
         await accountRepo.UpdateNameAsync(account.Id, firstName, lastName, displayName, email, ct);
-        var existingHouseholds = await accountHouseholdRepo.ListHouseholdsAsync(account.Id, ct);
+        // Re-read so we get the COALESCE'd DB values (token claims may be null)
+        account = await accountRepo.GetByAuth0SubAsync(sub, ct);
+        var existingHouseholds = await accountHouseholdRepo.ListHouseholdsAsync(account!.Id, ct);
         return Results.Ok(new AuthLoginResponse(
             account.Id.Value,
-            displayName,
-            firstName,
-            lastName,
+            account.DisplayName,
+            account.FirstName,
+            account.LastName,
             email ?? account.Email,
             existingHouseholds.Select(h => new AuthHousehold(h.HouseholdId.Value, h.Role)).ToList(),
             false));
@@ -581,12 +583,14 @@ app.MapPost("/api/auth/login", async (
             // Link the Auth0 sub to the existing account + update name
             await accountRepo.UpdateAuth0SubAsync(account.Id, sub, ct);
             await accountRepo.UpdateNameAsync(account.Id, firstName, lastName, displayName, email, ct);
-            var existingHouseholds = await accountHouseholdRepo.ListHouseholdsAsync(account.Id, ct);
+            // Re-read so we get the COALESCE'd DB values (token claims may be null)
+            account = await accountRepo.GetByAuth0SubAsync(sub, ct);
+            var existingHouseholds = await accountHouseholdRepo.ListHouseholdsAsync(account!.Id, ct);
             return Results.Ok(new AuthLoginResponse(
                 account.Id.Value,
-                displayName,
-                firstName,
-                lastName,
+                account.DisplayName,
+                account.FirstName,
+                account.LastName,
                 email ?? account.Email,
                 existingHouseholds.Select(h => new AuthHousehold(h.HouseholdId.Value, h.Role)).ToList(),
                 false));
