@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import BarcodeScanner from '../components/BarcodeScanner'
 import BookSelectionModal from '../components/BookSelectionModal'
 import { searchBook, searchBookMultiple, Book, type SearchHints } from '../api/books'
-import { createBook, mapBookToIngestRequest, IdentifierType, ContributorRole, SubjectScheme, type CreateBookIngestRequest } from '../api/backend'
+import { createBook, mapBookToIngestRequest, getDedupIndex, normalizeTitle, IdentifierType, ContributorRole, SubjectScheme, type CreateBookIngestRequest } from '../api/backend'
 import { useHousehold } from '../context/HouseholdContext'
 import { 
   FIELD_CATEGORIES, 
@@ -35,6 +35,10 @@ function AddBookPage() {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(
     new Set(['basic']) // Basic category expanded by default
   )
+  
+  // Duplicate warning
+  const [showDuplicateWarning, setShowDuplicateWarning] = useState(false)
+  const [duplicateMatches, setDuplicateMatches] = useState<string[]>([])
   
   // Custom fields
   const [customFields, setCustomFields] = useState<Record<string, any>>({})
@@ -178,6 +182,26 @@ function AddBookPage() {
     setCustomFields(updated)
   }
 
+  async function saveBook() {
+    if (!selectedHousehold) return
+    setIsLoading(true)
+    setError(null)
+    try {
+      const finalData = {
+        ...formData,
+        customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
+      }
+      const bookRequest = mapBookToIngestRequest(finalData)
+      await createBook(bookRequest, selectedHousehold.id)
+      navigate('/library')
+    } catch (err) {
+      setError('Failed to add book. Is the backend API running on port 5259?')
+      console.error('Failed to add book:', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     
@@ -191,28 +215,38 @@ function AddBookPage() {
       return
     }
 
-    setIsLoading(true)
-    setError(null)
-
+    // Check for duplicates before saving
     try {
-      // Include custom fields in the form data
-      const finalData = {
-        ...formData,
-        customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
+      const index = await getDedupIndex(selectedHousehold.id)
+      const matches: string[] = []
+
+      // Check title match
+      const normTitle = normalizeTitle(formData.title as string)
+      if (index.normalizedTitles.includes(normTitle)) {
+        matches.push(`Title "${formData.title}" already exists in your library`)
       }
 
-      // Use the comprehensive mapping function to send ALL fields to backend
-      const bookRequest = mapBookToIngestRequest(finalData)
+      // Check ISBN matches
+      const isbn10 = (formData as any).isbn10 || (formData as any).isbn || ''
+      const isbn13 = (formData as any).isbn13 || ''
+      if (isbn10 && index.identifiers.includes(isbn10)) {
+        matches.push(`ISBN ${isbn10} already exists in your library`)
+      }
+      if (isbn13 && isbn13 !== isbn10 && index.identifiers.includes(isbn13)) {
+        matches.push(`ISBN ${isbn13} already exists in your library`)
+      }
 
-      await createBook(bookRequest, selectedHousehold.id)
-      
-      navigate('/library')
+      if (matches.length > 0) {
+        setDuplicateMatches(matches)
+        setShowDuplicateWarning(true)
+        return
+      }
     } catch (err) {
-      setError('Failed to add book. Is the backend API running on port 5259?')
-      console.error('Failed to add book:', err)
-    } finally {
-      setIsLoading(false)
+      // If dedup check fails, proceed with save anyway
+      console.warn('Duplicate check failed, proceeding with save:', err)
     }
+
+    await saveBook()
   }
 
   function handleCancel() {
@@ -908,6 +942,58 @@ function AddBookPage() {
             setSearchResults([])
           }}
         />
+      )}
+
+      {/* Duplicate Warning Modal */}
+      {showDuplicateWarning && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          padding: '1rem',
+        }}>
+          <div style={{
+            backgroundColor: 'white', borderRadius: '12px', padding: '2rem',
+            maxWidth: '480px', width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+              <span style={{ fontSize: '1.5rem' }}>⚠️</span>
+              <h3 style={{ margin: 0, color: '#92400e', fontSize: '1.1rem' }}>Possible Duplicate</h3>
+            </div>
+            <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '0.75rem' }}>
+              This book may already be in your library:
+            </p>
+            <ul style={{ margin: '0 0 1.5rem 0', padding: '0 0 0 1.25rem' }}>
+              {duplicateMatches.map((match, i) => (
+                <li key={i} style={{ color: '#b45309', fontSize: '0.9rem', marginBottom: '0.25rem' }}>
+                  {match}
+                </li>
+              ))}
+            </ul>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowDuplicateWarning(false)}
+                style={{
+                  padding: '0.5rem 1.25rem', borderRadius: '8px', border: '1px solid #d1d5db',
+                  background: 'white', color: '#374151', fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowDuplicateWarning(false)
+                  saveBook()
+                }}
+                style={{
+                  padding: '0.5rem 1.25rem', borderRadius: '8px', border: '1px solid #f59e0b',
+                  background: '#fef3c7', color: '#92400e', fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                Add Anyway
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
