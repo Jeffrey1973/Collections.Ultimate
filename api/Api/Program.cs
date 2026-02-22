@@ -564,6 +564,16 @@ app.MapPost("/api/auth/login", async (
         // Re-read so we get the COALESCE'd DB values (token claims may be null)
         account = await accountRepo.GetByAuth0SubAsync(sub, ct);
         var existingHouseholds = await accountHouseholdRepo.ListHouseholdsAsync(account!.Id, ct);
+
+        // If user has no household where they are Owner, create a default one
+        if (!existingHouseholds.Any(h => h.Role == "Owner"))
+        {
+            var defaultHousehold = new Household { Name = $"{account.DisplayName}'s Library" };
+            await householdRepo.CreateAsync(defaultHousehold, ct);
+            await accountHouseholdRepo.AddAsync(account.Id, defaultHousehold.Id, "Owner", ct);
+            existingHouseholds = await accountHouseholdRepo.ListHouseholdsAsync(account.Id, ct);
+        }
+
         return Results.Ok(new AuthLoginResponse(
             account.Id.Value,
             account.DisplayName,
@@ -586,6 +596,16 @@ app.MapPost("/api/auth/login", async (
             // Re-read so we get the COALESCE'd DB values (token claims may be null)
             account = await accountRepo.GetByAuth0SubAsync(sub, ct);
             var existingHouseholds = await accountHouseholdRepo.ListHouseholdsAsync(account!.Id, ct);
+
+            // If user has no household where they are Owner, create a default one
+            if (!existingHouseholds.Any(h => h.Role == "Owner"))
+            {
+                var defaultHousehold = new Household { Name = $"{account.DisplayName}'s Library" };
+                await householdRepo.CreateAsync(defaultHousehold, ct);
+                await accountHouseholdRepo.AddAsync(account.Id, defaultHousehold.Id, "Owner", ct);
+                existingHouseholds = await accountHouseholdRepo.ListHouseholdsAsync(account.Id, ct);
+            }
+
             return Results.Ok(new AuthLoginResponse(
                 account.Id.Value,
                 account.DisplayName,
