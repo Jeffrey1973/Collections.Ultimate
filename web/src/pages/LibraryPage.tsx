@@ -49,6 +49,7 @@ function LibraryPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [showPreviouslyOwned, setShowPreviouslyOwned] = useState(false)
   const [enrichmentFilter, setEnrichmentFilter] = useState<'all' | 'enriched' | 'unenriched'>('all')
+  const [verifiedFilter, setVerifiedFilter] = useState<'all' | 'verified' | 'unverified'>('all')
   const [showSettings, setShowSettings] = useState(false)
   const [displayFields, setDisplayFields] = useState<string[]>(loadSavedFields)
   const [fieldSearch, setFieldSearch] = useState('')
@@ -139,6 +140,8 @@ function LibraryPage() {
     let base = showPreviouslyOwned ? previouslyOwned : activeBooks
     if (enrichmentFilter === 'enriched') base = base.filter(b => !!(b as any).enrichedAt)
     if (enrichmentFilter === 'unenriched') base = base.filter(b => !(b as any).enrichedAt)
+    if (verifiedFilter === 'verified') base = base.filter(b => !!(b as any).inventoryVerifiedDate)
+    if (verifiedFilter === 'unverified') base = base.filter(b => !(b as any).inventoryVerifiedDate)
     return base
   })()
 
@@ -220,6 +223,21 @@ function LibraryPage() {
               title="Click to clear filter"
             >
               ✦ {enrichmentFilter === 'enriched' ? 'Enriched' : 'Unenriched'} ✕
+            </button>
+          )}
+          {verifiedFilter !== 'all' && (
+            <button
+              onClick={() => setVerifiedFilter('all')}
+              style={{
+                marginLeft: '0.5rem', padding: '0.2rem 0.6rem', borderRadius: '12px',
+                border: '1px solid #d1d5db', fontSize: '0.8rem', cursor: 'pointer',
+                backgroundColor: verifiedFilter === 'verified' ? '#dbeafe' : '#fef2f2',
+                color: verifiedFilter === 'verified' ? '#2563eb' : '#dc2626',
+                fontWeight: 500,
+              }}
+              title="Click to clear filter"
+            >
+              ✓ {verifiedFilter === 'verified' ? 'Verified' : 'Unverified'} ✕
             </button>
           )}
         </p>
@@ -332,6 +350,27 @@ function LibraryPage() {
                     onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = enrichmentFilter === val ? '#f0fdf4' : 'transparent' }}
                   >
                     {enrichmentFilter === val ? '●' : '○'} {val === 'all' ? 'All Books' : val === 'enriched' ? 'Enriched Only' : 'Unenriched Only'}
+                  </button>
+                ))}
+                <div style={{ borderTop: '1px solid #e2e8f0', margin: '0.25rem 0' }} />
+                <div style={{ padding: '0.35rem 0.75rem', fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Filter by Verification
+                </div>
+                {(['all', 'unverified', 'verified'] as const).map((val) => (
+                  <button
+                    key={`v-${val}`}
+                    onClick={() => { setVerifiedFilter(val); setShowToolsMenu(false) }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                      padding: '0.5rem 0.75rem', border: 'none', background: verifiedFilter === val ? '#eff6ff' : 'none',
+                      cursor: 'pointer', fontSize: '0.85rem', textAlign: 'left',
+                      color: verifiedFilter === val ? '#2563eb' : '#334155',
+                      fontWeight: verifiedFilter === val ? 600 : 400,
+                    }}
+                    onMouseEnter={(e) => { if (verifiedFilter !== val) e.currentTarget.style.backgroundColor = '#f1f5f9' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = verifiedFilter === val ? '#eff6ff' : 'transparent' }}
+                  >
+                    {verifiedFilter === val ? '●' : '○'} {val === 'all' ? 'All Books' : val === 'verified' ? 'Verified Only' : 'Unverified Only'}
                   </button>
                 ))}
               </div>
