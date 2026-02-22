@@ -717,6 +717,27 @@ function LibraryPage() {
                           ✦ enriched
                         </span>
                       )}
+                      {book.inventoryVerifiedDate && (
+                        <span
+                          title={`Verified ${new Date(book.inventoryVerifiedDate).toLocaleDateString()}`}
+                          style={{
+                            flexShrink: 0,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.6rem',
+                            fontWeight: 700,
+                            lineHeight: 1,
+                            padding: '2px 5px',
+                            borderRadius: '9999px',
+                            backgroundColor: '#dbeafe',
+                            color: '#2563eb',
+                            letterSpacing: '0.02em',
+                          }}
+                        >
+                          ✓ verified
+                        </span>
+                      )}
                     </div>
                     {book.subtitle && (
                       <div style={{
