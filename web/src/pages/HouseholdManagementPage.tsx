@@ -668,7 +668,7 @@ function AddMemberForm({
 
   async function handleSubmit() {
     setSubmitting(true)
-    await onSave(email.trim(), role)
+    await onSave(email.trim().replace(/[,;]+$/, ''), role)
     setSubmitting(false)
   }
 
