@@ -521,11 +521,7 @@ function AddBookPage() {
                 padding: '1rem 1.25rem',
                 backgroundColor: '#fffdf5',
               }}>
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '0.75rem',
-                }}>
+                <div className="two-col-grid">
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.25rem', color: '#78350f' }}>
                       Publisher
@@ -598,13 +594,14 @@ function AddBookPage() {
         )}
 
         {/* ── Action Buttons ── */}
-        <div style={{
+        <div className="search-action-buttons" style={{
           display: 'flex',
           gap: '0.5rem',
           alignItems: 'stretch',
           padding: '1rem 1.25rem',
           borderTop: '1px solid #e2e8f0',
           backgroundColor: '#f8fafc',
+          flexWrap: 'wrap',
         }}>
           <button
             type="submit"
@@ -873,19 +870,7 @@ function AddBookPage() {
       </form>
 
       {/* Sticky Action Bar – always visible at bottom of viewport */}
-      <div style={{
-        position: 'sticky',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        display: 'flex',
-        gap: '1rem',
-        padding: '0.75rem 1.5rem',
-        backgroundColor: '#fff',
-        borderTop: '2px solid #e2e8f0',
-        boxShadow: '0 -2px 8px rgba(0,0,0,0.08)',
-        zIndex: 100,
-      }}>
+      <div className="sticky-action-bar">
         <button
           type="submit"
           form="add-book-form"

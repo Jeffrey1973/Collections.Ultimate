@@ -14,26 +14,15 @@ function Layout({ children }: LayoutProps) {
       <header style={{
         backgroundColor: 'white',
         borderBottom: '1px solid #e2e8f0',
-        padding: '1rem 2rem',
+        padding: '0.75rem 1rem',
         boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
       }}>
-        <nav style={{
-          maxWidth: '1200px',
-          margin: '0 auto',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '2rem',
-        }}>
-          <Link to="/" style={{
-            fontSize: '1.5rem',
-            fontWeight: 700,
-            color: '#1e293b',
-            textDecoration: 'none',
-          }}>
+        <nav className="header-nav">
+          <Link to="/" className="header-logo">
             📚 Collections
           </Link>
           <HouseholdSelector />
-          <div style={{ display: 'flex', gap: '1.5rem', marginLeft: 'auto' }}>
+          <div className="header-links">
             <Link to="/library" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 500 }}>
               Library
             </Link>
@@ -46,13 +35,7 @@ function Layout({ children }: LayoutProps) {
       </header>
 
       {/* Main Content */}
-      <main style={{
-        flex: 1,
-        maxWidth: '1200px',
-        width: '100%',
-        margin: '0 auto',
-        padding: '2rem',
-      }}>
+      <main className="main-content">
         {children}
       </main>
 
@@ -60,10 +43,10 @@ function Layout({ children }: LayoutProps) {
       <footer style={{
         backgroundColor: 'white',
         borderTop: '1px solid #e2e8f0',
-        padding: '1.5rem 2rem',
+        padding: '1rem',
         textAlign: 'center',
         color: '#64748b',
-        fontSize: '0.875rem',
+        fontSize: '0.75rem',
       }}>
         Collections Ultimate © 2026
       </footer>

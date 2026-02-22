@@ -256,11 +256,11 @@ function BookDetailPage() {
 
   return (
     <div>
-      <div className="page-header" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="page-header detail-header" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
         <button onClick={() => navigate('/library')} className="btn btn-secondary">
           ← Back to Library
         </button>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div className="detail-actions" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
           {(book as any).status === 'Previously Owned' && (
             <button
               onClick={handleRestore}
@@ -372,7 +372,7 @@ function BookDetailPage() {
       )}
 
       {/* Book Header Section */}
-      <div style={{
+      <div className="book-header-section" style={{
         display: 'flex',
         gap: '2rem',
         marginBottom: '3rem',
@@ -472,10 +472,7 @@ function BookDetailPage() {
           </p>
           
           {/* Quick Info Grid */}
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
-            gap: '1rem',
+          <div className="two-col-grid" style={{ 
             marginTop: '1.5rem'
           }}>
             {book.publisher && (
@@ -593,10 +590,7 @@ function BookDetailPage() {
                   padding: '0 1.5rem 1.5rem 1.5rem',
                   borderTop: '1px solid #e2e8f0'
                 }}>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-                    gap: '1rem',
+                  <div className="two-col-grid" style={{
                     marginTop: '1rem'
                   }}>
                     {fields.map((field) => {

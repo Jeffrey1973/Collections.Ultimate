@@ -14,6 +14,9 @@
 
 body {
   min-height: 100vh;
+  /* iPhone safe areas */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  -webkit-text-size-adjust: 100%;
 }
 
 #root {
@@ -24,6 +27,39 @@ body {
 /* Page Header */
 .page-header {
   margin-bottom: 2rem;
+}
+
+/* App Header Nav */
+.header-nav {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.header-logo {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1e293b;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.header-links {
+  display: flex;
+  gap: 1.5rem;
+  margin-left: auto;
+}
+
+/* Main Content */
+.main-content {
+  flex: 1;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem;
 }
 
 .page-title {
@@ -152,4 +188,177 @@ body {
 @keyframes spin {
   from { transform: translateY(-50%) rotate(0deg); }
   to { transform: translateY(-50%) rotate(360deg); }
+}
+
+/* ── Mobile Responsive ─────────────────────────────────────────────────────── */
+
+/* Prevent iOS zoom on input focus (requires font-size >= 16px) */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+@media (max-width: 768px) {
+  /* Header: wrap to two rows on mobile */
+  .header-nav {
+    gap: 0.5rem;
+    justify-content: space-between;
+  }
+
+  .header-logo {
+    font-size: 1.2rem;
+  }
+
+  .header-links {
+    gap: 0.75rem;
+    margin-left: 0;
+    font-size: 0.85rem;
+  }
+
+  /* Main content: tighter padding */
+  .main-content {
+    padding: 1rem;
+  }
+
+  .page-header {
+    margin-bottom: 1rem;
+  }
+
+  .page-title {
+    font-size: 1.4rem;
+  }
+
+  .page-subtitle {
+    font-size: 0.875rem;
+  }
+
+  .card {
+    padding: 1rem;
+    border-radius: 8px;
+  }
+
+  .book-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .search-bar {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .search-bar > div:first-child {
+    flex: 1 1 100%;
+  }
+
+  .search-bar .btn {
+    flex: 1;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+
+  .btn {
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+  }
+
+  /* Search action buttons on Add Book page */
+  .search-action-buttons {
+    flex-direction: column;
+  }
+
+  .search-action-buttons .btn {
+    flex: unset;
+    width: 100%;
+  }
+
+  /* Book detail page */
+  .book-header-section {
+    flex-direction: column;
+    padding: 1rem !important;
+    gap: 1rem !important;
+    margin-bottom: 1.5rem !important;
+  }
+
+  .book-header-section > div:first-child {
+    width: 100% !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .book-header-section img {
+    width: 160px !important;
+    height: 240px !important;
+  }
+
+  .book-header-section h1 {
+    font-size: 1.4rem !important;
+  }
+
+  .book-header-section h2 {
+    font-size: 1rem !important;
+  }
+
+  .detail-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+
+  .detail-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .detail-actions button {
+    flex: 1;
+    font-size: 0.75rem !important;
+    padding: 0.4rem 0.5rem !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .book-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+}
+
+/* Sticky action bar (Add Book / Edit pages) */
+.sticky-action-bar {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  background-color: #fff;
+  border-top: 2px solid #e2e8f0;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+  z-index: 100;
+}
+
+@media (max-width: 768px) {
+  .sticky-action-bar {
+    padding: 0.75rem 1rem;
+    gap: 0.5rem;
+    /* Safe area for iPhones with home indicator */
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* Refinements / Detail grid */
+.two-col-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+@media (max-width: 768px) {
+  .two-col-grid {
+    grid-template-columns: 1fr;
+  }
 }

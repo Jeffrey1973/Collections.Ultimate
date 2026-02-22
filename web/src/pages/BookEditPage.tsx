@@ -677,10 +677,7 @@ function BookEditPage() {
                   padding: '0 1.5rem 1.5rem 1.5rem',
                   borderTop: '1px solid #e2e8f0'
                 }}>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-                    gap: '1.5rem',
+                  <div className="two-col-grid" style={{
                     marginTop: '1rem'
                   }}>
                     {fields.map(field => renderField(field))}
@@ -692,15 +689,8 @@ function BookEditPage() {
         })}
 
         {/* Save/Cancel Buttons */}
-        <div style={{
-          display: 'flex',
-          gap: '1rem',
-          padding: '1.5rem',
-          backgroundColor: 'white',
+        <div className="sticky-action-bar" style={{
           borderRadius: '8px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-          position: 'sticky',
-          bottom: '1rem',
           marginTop: '2rem'
         }}>
           <button 
