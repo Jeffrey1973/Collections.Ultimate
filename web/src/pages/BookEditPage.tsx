@@ -553,14 +553,12 @@ function BookEditPage() {
             value={value as string || ''}
             onChange={(e) => handleFieldChange(fieldConfig.key, e.target.value)}
             placeholder={fieldConfig.placeholder}
-            readOnly={fieldConfig.source !== 'user' && value !== undefined && value !== null && value !== ''}
             style={{
               width: '100%',
               padding: '0.5rem',
               borderRadius: '4px',
               border: '1px solid #cbd5e1',
-              fontSize: '0.875rem',
-              backgroundColor: (fieldConfig.source !== 'user' && value !== undefined && value !== null && value !== '') ? '#f8fafc' : 'white'
+              fontSize: '0.875rem'
             }}
           />
         )}
