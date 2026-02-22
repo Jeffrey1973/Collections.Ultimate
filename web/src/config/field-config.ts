@@ -1063,10 +1063,10 @@ export const FIELD_DEFINITIONS: FieldConfig[] = [
   },
   {
     key: 'location' as keyof Book,
-    label: 'Shelf Location',
+    label: 'Physical Location',
     type: 'text',
     category: 'user',
-    description: 'Where this book is stored (e.g., Shelf A2, Office)',
+    description: 'Where this book is physically stored (e.g., Living Room Bookshelf, Office)',
     source: 'user',
   },
   {
@@ -1138,14 +1138,6 @@ export const FIELD_DEFINITIONS: FieldConfig[] = [
     type: 'textarea',
     category: 'user',
     source: 'google-books',
-  },
-  {
-    key: 'pln',
-    label: 'Physical Location',
-    type: 'text',
-    category: 'user',
-    description: 'Where this book is physically stored (e.g., Living Room Bookshelf, Office)',
-    source: 'user',
   },
   {
     key: 'readStatus',

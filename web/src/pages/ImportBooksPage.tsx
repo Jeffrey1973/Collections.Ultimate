@@ -39,9 +39,9 @@ const CUSTOM_CSV_COLUMN_MAP: Record<string, { field: string; label: string }> = 
   'tags': { field: 'categories', label: 'Tags' },
   'genre': { field: 'categories', label: 'Genre' },
   'category': { field: 'categories', label: 'Category' },
-  'pln': { field: 'pln', label: 'Physical Location' },
+  'pln': { field: 'location', label: 'Physical Location' },
   'location': { field: 'location', label: 'Location' },
-  'shelf': { field: 'pln', label: 'Shelf Location' },
+  'shelf': { field: 'location', label: 'Shelf Location' },
   'completed': { field: 'completedDate', label: 'Completed Date' },
   'completed date': { field: 'completedDate', label: 'Completed Date' },
   'date completed': { field: 'completedDate', label: 'Completed Date' },
@@ -237,8 +237,7 @@ const COMMON_TARGET_FIELDS = [
   { value: 'series', label: 'Series' },
   { value: 'volumeNumber', label: 'Volume Number' },
   { value: 'format', label: 'Format / Binding' },
-  { value: 'pln', label: 'Physical Location (PLN)' },
-  { value: 'location', label: 'Location' },
+  { value: 'location', label: 'Physical Location' },
   { value: 'barcode', label: 'Barcode' },
   { value: 'notes', label: 'Notes' },
   { value: 'read', label: 'Read Status' },
@@ -956,7 +955,7 @@ export default function ImportBooksPage() {
               <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.85rem', color: '#78350f', lineHeight: 1.8 }}>
                 <li>Export from Google Sheets: <strong>File → Download → .csv</strong></li>
                 <li>First row must be column headers</li>
-                <li>Column names are auto-detected: isbn, title, author, pages, tags, genre, pln, location, read, completed</li>
+                <li>Column names are auto-detected: isbn, title, author, pages, tags, genre, location, read, completed</li>
                 <li>ISBN column enables richer API lookups (cover images, description, subjects, etc.)</li>
               </ul>
             )}

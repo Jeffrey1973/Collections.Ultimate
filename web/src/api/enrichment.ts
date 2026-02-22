@@ -425,7 +425,6 @@ export async function applyEnrichment(
   // Stamp enrichment metadata into itemMetadataJson
   const existingItemMeta: Record<string, any> = {}
   // Preserve any existing item metadata fields
-  if ((book as any).pln) existingItemMeta.pln = (book as any).pln
   if ((book as any).readCount) existingItemMeta.readCount = (book as any).readCount
   if ((book as any).acquisitionSource) existingItemMeta.acquisitionSource = (book as any).acquisitionSource
   if ((book as any).fromWhere) existingItemMeta.fromWhere = (book as any).fromWhere

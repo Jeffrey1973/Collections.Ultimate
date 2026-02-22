@@ -506,9 +506,6 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
   if (book.bestsellerRank) itemMetadata.bestsellerRank = book.bestsellerRank
   if (book.librariesOwning) itemMetadata.librariesOwning = book.librariesOwning
   if (book.nearbyLibraries) itemMetadata.nearbyLibraries = book.nearbyLibraries
-  
-  // Physical location name
-  if (book.pln) itemMetadata.pln = book.pln
 
   // Reading status — promoted to real columns
   if (book.readCount) itemMetadata.readCount = book.readCount
@@ -1393,8 +1390,7 @@ export function mapSearchResultToBook(item: ItemSearchResponse): any {
 
     // Item fields
     barcode: item.barcode,
-    location: item.location,
-    pln: itemMetadata.pln,
+    location: item.location || itemMetadata.pln,
     readStatus: item.readStatus || itemMetadata.readStatus,
     completedDate: item.completedDate || itemMetadata.completedDate,
     dateStarted: item.dateStarted || itemMetadata.dateStarted,
@@ -1845,8 +1841,7 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     webReaderLink: editionMetadata.webReaderLink,
     
     // User-Specific
-    location: item.location,
-    pln: itemMetadata.pln,
+    location: item.location || itemMetadata.pln,
     readStatus: item.readStatus || itemMetadata.readStatus,
     completedDate: item.completedDate || itemMetadata.completedDate,
     dateStarted: item.dateStarted || itemMetadata.dateStarted,

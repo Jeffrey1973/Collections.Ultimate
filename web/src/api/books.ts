@@ -234,7 +234,6 @@ export interface Book {
   
   // Traditional library catalog fields
   notes?: string
-  pln?: string // Physical Location Name (e.g., 'Living Room Bookshelf', 'Office')
   awards?: string[]
   barcode?: string
 

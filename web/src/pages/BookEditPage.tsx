@@ -214,7 +214,7 @@ function BookEditPage() {
       await updateItem(id, {
         // Item-level fields
         notes: d.notes,
-        location: d.location || d.pln,
+        location: d.location,
         status: d.status,
         condition: d.condition,
         acquiredOn: d.acquiredDate,
@@ -525,7 +525,7 @@ function BookEditPage() {
               <option key={opt} value={opt}>{opt}</option>
             ))}
           </select>
-        ) : (fieldConfig.key === 'location' || fieldConfig.key === 'pln') && knownLocations.length > 0 ? (
+        ) : fieldConfig.key === 'location' && knownLocations.length > 0 ? (
           <>
             <input
               type="text"

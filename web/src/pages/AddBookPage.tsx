@@ -333,7 +333,7 @@ function AddBookPage() {
               Separate multiple values with commas
             </p>
           </div>
-        ) : (fieldConfig.key === 'location' || fieldConfig.key === 'pln') && knownLocations.length > 0 ? (
+        ) : fieldConfig.key === 'location' && knownLocations.length > 0 ? (
           <>
             <input
               type="text"
