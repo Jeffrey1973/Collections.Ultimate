@@ -84,16 +84,17 @@ public sealed class AccountRepository : IAccountRepository
         await conn.ExecuteAsync(new CommandDefinition(sql, new { Id = id.Value, Auth0Sub = auth0Sub }, cancellationToken: ct));
     }
 
-    public async Task UpdateNameAsync(AccountId id, string? firstName, string? lastName, string displayName, CancellationToken ct)
+    public async Task UpdateNameAsync(AccountId id, string? firstName, string? lastName, string displayName, string? email, CancellationToken ct)
     {
         const string sql = """
             update dbo.Account
-            set FirstName = @FirstName, LastName = @LastName, DisplayName = @DisplayName
+            set FirstName = @FirstName, LastName = @LastName, DisplayName = @DisplayName,
+                Email = COALESCE(@Email, Email)
             where Id = @Id;
             """;
 
         using var conn = _connectionFactory.Create();
-        await conn.ExecuteAsync(new CommandDefinition(sql, new { Id = id.Value, FirstName = firstName, LastName = lastName, DisplayName = displayName }, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(sql, new { Id = id.Value, FirstName = firstName, LastName = lastName, DisplayName = displayName, Email = email }, cancellationToken: ct));
     }
 
     private static Account Map(AccountRow r) => new()

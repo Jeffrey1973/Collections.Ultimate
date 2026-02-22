@@ -89,14 +89,9 @@ export function HouseholdProvider({ children }: HouseholdProviderProps) {
     setError(null)
     
     try {
-      // Fetch all households directly (no account ID needed)
+      // Fetch households the current user belongs to
       const data = await getAllHouseholds()
       setHouseholds(data)
-      
-      if (data.length === 0) {
-        // No households exist, create a default one
-        await createNewHousehold('My Library')
-      }
     } catch (err) {
       console.error('Failed to load households:', err)
       setError('Failed to load households. Is the backend API running?')

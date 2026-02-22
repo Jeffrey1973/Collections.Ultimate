@@ -559,18 +559,15 @@ app.MapPost("/api/auth/login", async (
     var account = await accountRepo.GetByAuth0SubAsync(sub, ct);
     if (account is not null)
     {
-        // Refresh name from Auth0 profile on each login (user may have updated it)
-        if (!string.IsNullOrWhiteSpace(firstName) || !string.IsNullOrWhiteSpace(lastName))
-        {
-            await accountRepo.UpdateNameAsync(account.Id, firstName, lastName, displayName, ct);
-        }
+        // Refresh name + email from Auth0 profile on each login
+        await accountRepo.UpdateNameAsync(account.Id, firstName, lastName, displayName, email, ct);
         var existingHouseholds = await accountHouseholdRepo.ListHouseholdsAsync(account.Id, ct);
         return Results.Ok(new AuthLoginResponse(
             account.Id.Value,
             displayName,
             firstName,
             lastName,
-            account.Email,
+            email ?? account.Email,
             existingHouseholds.Select(h => new AuthHousehold(h.HouseholdId.Value, h.Role)).ToList(),
             false));
     }
@@ -583,17 +580,14 @@ app.MapPost("/api/auth/login", async (
         {
             // Link the Auth0 sub to the existing account + update name
             await accountRepo.UpdateAuth0SubAsync(account.Id, sub, ct);
-            if (!string.IsNullOrWhiteSpace(firstName) || !string.IsNullOrWhiteSpace(lastName))
-            {
-                await accountRepo.UpdateNameAsync(account.Id, firstName, lastName, displayName, ct);
-            }
+            await accountRepo.UpdateNameAsync(account.Id, firstName, lastName, displayName, email, ct);
             var existingHouseholds = await accountHouseholdRepo.ListHouseholdsAsync(account.Id, ct);
             return Results.Ok(new AuthLoginResponse(
                 account.Id.Value,
                 displayName,
                 firstName,
                 lastName,
-                account.Email,
+                email ?? account.Email,
                 existingHouseholds.Select(h => new AuthHousehold(h.HouseholdId.Value, h.Role)).ToList(),
                 false));
         }
