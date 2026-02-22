@@ -349,6 +349,23 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
     return Results.Ok(new { sqlPaged.TotalCount, Items = sqlPaged.Items });
 }).RequireAuthorization();
 
+// Distinct locations used across a household's library
+app.MapGet("/api/households/{householdId:guid}/locations", async (
+    Guid householdId,
+    SqlConnectionFactory dbFactory,
+    CancellationToken ct) =>
+{
+    using var db = dbFactory.Create();
+    var locations = await Dapper.SqlMapper.QueryAsync<string>(db,
+        """
+        SELECT DISTINCT Location FROM dbo.LibraryItem
+        WHERE OwnerHouseholdId = @HouseholdId AND Location IS NOT NULL AND Location <> ''
+        ORDER BY Location
+        """,
+        new { HouseholdId = householdId });
+    return Results.Ok(locations);
+}).RequireAuthorization();
+
 // Duplicate detection
 app.MapGet("/api/households/{householdId:guid}/items/duplicates", async (
     Guid householdId,

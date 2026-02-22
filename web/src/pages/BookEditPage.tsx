@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getItem, updateItem, mapItemResponseToBook, ContributorRole } from '../api/backend'
+import { getItem, updateItem, mapItemResponseToBook, getHouseholdLocations, ContributorRole } from '../api/backend'
 import { Book } from '../api/books'
 import { FIELD_CATEGORIES, FIELD_DEFINITIONS, type FieldConfig } from '../config/field-config'
+import { useHousehold } from '../context/HouseholdContext'
 
 function BookEditPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { selectedHousehold } = useHousehold()
   const [formData, setFormData] = useState<Partial<Book>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -15,12 +17,21 @@ function BookEditPage() {
     new Set(['basic']) // Start with basic expanded
   )
   const [newCategory, setNewCategory] = useState('')
+  const [knownLocations, setKnownLocations] = useState<string[]>([])
 
   useEffect(() => {
     if (id) {
       loadBook(id)
     }
   }, [id])
+
+  useEffect(() => {
+    if (selectedHousehold) {
+      getHouseholdLocations(selectedHousehold.id)
+        .then(setKnownLocations)
+        .catch(() => {}) // best-effort
+    }
+  }, [selectedHousehold])
 
   async function loadBook(itemId: string) {
     try {
@@ -514,6 +525,28 @@ function BookEditPage() {
               <option key={opt} value={opt}>{opt}</option>
             ))}
           </select>
+        ) : (fieldConfig.key === 'location' || fieldConfig.key === 'pln') && knownLocations.length > 0 ? (
+          <>
+            <input
+              type="text"
+              list={`datalist-${fieldConfig.key}`}
+              value={value as string || ''}
+              onChange={(e) => handleFieldChange(fieldConfig.key, e.target.value)}
+              placeholder={fieldConfig.placeholder || 'Select or type a location'}
+              style={{
+                width: '100%',
+                padding: '0.5rem',
+                borderRadius: '4px',
+                border: '1px solid #cbd5e1',
+                fontSize: '0.875rem',
+              }}
+            />
+            <datalist id={`datalist-${fieldConfig.key}`}>
+              {knownLocations.map(loc => (
+                <option key={loc} value={loc} />
+              ))}
+            </datalist>
+          </>
         ) : (
           <input
             type="text"

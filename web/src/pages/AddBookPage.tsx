@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import BarcodeScanner from '../components/BarcodeScanner'
 import BookSelectionModal from '../components/BookSelectionModal'
 import { searchBook, searchBookMultiple, Book, type SearchHints } from '../api/books'
-import { createBook, mapBookToIngestRequest, getDedupIndex, normalizeTitle, IdentifierType, ContributorRole, SubjectScheme, type CreateBookIngestRequest } from '../api/backend'
+import { createBook, mapBookToIngestRequest, getDedupIndex, normalizeTitle, getHouseholdLocations, IdentifierType, ContributorRole, SubjectScheme, type CreateBookIngestRequest } from '../api/backend'
 import { useHousehold } from '../context/HouseholdContext'
 import { 
   FIELD_CATEGORIES, 
@@ -30,6 +30,7 @@ function AddBookPage() {
   const [searchInput, setSearchInput] = useState('')
   const [searchProgress, setSearchProgress] = useState<{ current: number; total: number; apiName: string } | null>(null)
   const [showRefinements, setShowRefinements] = useState(false)
+  const [knownLocations, setKnownLocations] = useState<string[]>([])
   
   // Expanded categories state
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(
@@ -62,6 +63,14 @@ function AddBookPage() {
 
   // Derived: whether a book has been populated from search results
   const isBookPopulated = !!(formData.title && (formData.title as string).trim())
+
+  useEffect(() => {
+    if (selectedHousehold) {
+      getHouseholdLocations(selectedHousehold.id)
+        .then(setKnownLocations)
+        .catch(() => {})
+    }
+  }, [selectedHousehold])
 
   async function handleSearch(query: string) {
     setIsLoading(true)
@@ -324,6 +333,24 @@ function AddBookPage() {
               Separate multiple values with commas
             </p>
           </div>
+        ) : (fieldConfig.key === 'location' || fieldConfig.key === 'pln') && knownLocations.length > 0 ? (
+          <>
+            <input
+              type="text"
+              className="search-input"
+              list={`add-datalist-${fieldConfig.key}`}
+              value={value as string || ''}
+              onChange={(e) => handleInputChange(fieldConfig.key, e.target.value)}
+              placeholder={fieldConfig.placeholder || 'Select or type a location'}
+              style={{ fontSize: '0.9rem' }}
+              required={isRequired}
+            />
+            <datalist id={`add-datalist-${fieldConfig.key}`}>
+              {knownLocations.map(loc => (
+                <option key={loc} value={loc} />
+              ))}
+            </datalist>
+          </>
         ) : (
           <input
             type={fieldConfig.type}

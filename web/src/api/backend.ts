@@ -50,6 +50,13 @@ export async function getDedupIndex(householdId: string): Promise<DedupIndex> {
   return resp.json()
 }
 
+/** Fetch distinct physical locations used in a household's library. */
+export async function getHouseholdLocations(householdId: string): Promise<string[]> {
+  const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/locations`)
+  if (!resp.ok) throw new Error('Failed to fetch locations')
+  return resp.json()
+}
+
 /** Normalize a title the same way the backend does (uppercase, collapse whitespace). */
 export function normalizeTitle(title: string): string {
   return title.trim().replace(/\s+/g, ' ').toUpperCase()
