@@ -46,8 +46,24 @@ BEGIN
         (17, 'MetadataUpdated','Metadata updated',        N'🔄',  17),
         (18, 'Donated',        'Donated',                 N'❤️',  18),
         (19, 'StatusChanged',  'Status changed',          N'🏷️',  19),
-        (20, 'Custom',         'Custom event',            N'📋',  20);
+        (20, 'Custom',         'Custom event',            N'📋',  20),
+        (21, 'Imported',       'Imported from file',      N'📂',  21),
+        (22, 'Enriched',       'Enriched from API',       N'✨',  22),
+        (23, 'Edited',         'Manually edited',         N'✏️',  23);
 
+    SET IDENTITY_INSERT dbo.ItemEventType OFF;
+END
+GO
+
+-- Backfill new event types if the seed already ran
+IF NOT EXISTS (SELECT 1 FROM dbo.ItemEventType WHERE Name = 'Imported')
+BEGIN
+    SET IDENTITY_INSERT dbo.ItemEventType ON;
+    INSERT INTO dbo.ItemEventType (Id, Name, Label, Icon, SortOrder)
+    VALUES
+        (21, 'Imported',  'Imported from file', N'📂', 21),
+        (22, 'Enriched',  'Enriched from API',  N'✨', 22),
+        (23, 'Edited',    'Manually edited',    N'✏️', 23);
     SET IDENTITY_INSERT dbo.ItemEventType OFF;
 END
 GO

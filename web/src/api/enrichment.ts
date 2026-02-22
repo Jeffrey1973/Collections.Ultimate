@@ -450,7 +450,7 @@ export async function applyEnrichment(
   patchData.itemMetadataJson = JSON.stringify(existingItemMeta)
 
   console.log('[Enrichment] PATCH payload for', book.id, JSON.stringify(patchData, null, 2))
-  await updateItem(book.id, patchData)
+  await updateItem(book.id, patchData, 'enrichment')
 }
 
 /**

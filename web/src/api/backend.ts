@@ -730,16 +730,18 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
  */
 export async function createBook(
   data: CreateBookIngestRequest,
-  householdId: string = DEV_HOUSEHOLD_ID
+  householdId: string = DEV_HOUSEHOLD_ID,
+  source?: 'import' | 'manual'
 ): Promise<BookResponse> {
+  const sourceParam = source ? `?source=${source}` : ''
   console.log('📤 Creating book:', {
-    url: `${API_BASE_URL}/api/households/${householdId}/library/books`,
+    url: `${API_BASE_URL}/api/households/${householdId}/library/books${sourceParam}`,
     data: JSON.stringify(data, null, 2)
   })
 
   try {
     const response = await authFetch(
-      `${API_BASE_URL}/api/households/${householdId}/library/books`,
+      `${API_BASE_URL}/api/households/${householdId}/library/books${sourceParam}`,
       {
         method: 'POST',
         headers: {
@@ -995,9 +997,11 @@ export async function updateItem(
     subjects?: Array<{ schemeId: number; text: string }>
     identifiers?: Array<{ identifierTypeId: number; value: string; isPrimary?: boolean }>
     series?: { name: string; volumeNumber?: string; ordinal?: number }
-  }
+  },
+  source?: 'enrichment' | 'edit'
 ): Promise<void> {
-  const response = await authFetch(`${API_BASE_URL}/api/items/${itemId}`, {
+  const sourceParam = source ? `?source=${source}` : ''
+  const response = await authFetch(`${API_BASE_URL}/api/items/${itemId}${sourceParam}`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',

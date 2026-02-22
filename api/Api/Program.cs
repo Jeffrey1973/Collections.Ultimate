@@ -805,6 +805,7 @@ app.MapGet("/api/households/{householdId:guid}/library/dedup-index", async (
 
 // One-shot create: work + edition + item + metadata
 app.MapPost("/api/households/{householdId:guid}/library/books", async (
+    HttpContext http,
     Guid householdId,
     CreateBookIngestRequest request,
     IWorkRepository workRepo,
@@ -887,6 +888,25 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
 
     // Auto-record "Acquired" event
     _ = Task.Run(() => RecordAcquiredEventAsync(eventRepo, item.Id, request.Item.AcquiredOn));
+
+    // Record source-specific event (Imported vs manual add)
+    var source = http.Request.Query["source"].FirstOrDefault();
+    if (string.Equals(source, "import", StringComparison.OrdinalIgnoreCase))
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await eventRepo.CreateAsync(new ItemEvent
+                {
+                    ItemId = item.Id,
+                    EventTypeId = 21, // Imported
+                    Notes = "Imported from file"
+                }, CancellationToken.None);
+            }
+            catch { /* best-effort */ }
+        });
+    }
 
     if (request.Contributors is not null)
     {
@@ -1061,6 +1081,7 @@ app.MapDelete("/api/items/{itemId:guid}", async (Guid itemId, ILibraryItemReposi
 }).RequireAuthorization();
 
 app.MapPatch("/api/items/{itemId:guid}", async (
+    HttpContext http,
     Guid itemId,
     PatchItemRequest request,
     IItemUpdateRepository updateRepo,
@@ -1163,6 +1184,37 @@ app.MapPatch("/api/items/{itemId:guid}", async (
         }
         catch { /* event recording is best-effort */ }
     });
+
+    // Record source-specific event: Enriched vs Edited (best-effort)
+    var patchSource = http.Request.Query["source"].FirstOrDefault();
+    if (!string.IsNullOrEmpty(patchSource))
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (string.Equals(patchSource, "enrichment", StringComparison.OrdinalIgnoreCase))
+                {
+                    await eventRepo.CreateAsync(new ItemEvent
+                    {
+                        ItemId = new ItemId(itemId),
+                        EventTypeId = 22, // Enriched
+                        Notes = "Enriched from external API"
+                    }, CancellationToken.None);
+                }
+                else if (string.Equals(patchSource, "edit", StringComparison.OrdinalIgnoreCase))
+                {
+                    await eventRepo.CreateAsync(new ItemEvent
+                    {
+                        ItemId = new ItemId(itemId),
+                        EventTypeId = 23, // Edited
+                        Notes = "Manually edited"
+                    }, CancellationToken.None);
+                }
+            }
+            catch { /* best-effort */ }
+        });
+    }
 
     // Handle tags if provided
     if (request.Tags is not null && request.Tags.Value.ValueKind != JsonValueKind.Undefined)

@@ -726,7 +726,7 @@ export default function ImportBooksPage() {
           ingestRequest.item.metadataJson = JSON.stringify({ ...existing, ...metadata })
         }
 
-        await createBook(ingestRequest, selectedHousehold.id)
+        await createBook(ingestRequest, selectedHousehold.id, 'import')
 
         // Add to local dedup sets so later rows in this batch are caught
         if (isbn) existingBarcodes.add(isbn.toString().replace(/[^0-9Xx]/g, '').toUpperCase())

@@ -240,7 +240,7 @@ function BookEditPage() {
         subjects: subjects.length > 0 ? subjects : undefined,
         identifiers: identifiers.length > 0 ? identifiers : undefined,
         series,
-      })
+      }, 'edit')
 
       navigate(`/book/${id}`)
     } catch (err) {
