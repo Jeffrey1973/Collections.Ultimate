@@ -942,6 +942,27 @@ export async function deleteItemCover(itemId: string): Promise<void> {
 }
 
 /**
+ * Mark a library item as physically verified (inventory check)
+ */
+export async function verifyItem(itemId: string): Promise<{ inventoryVerifiedDate: string }> {
+  const response = await authFetch(`${API_BASE_URL}/api/items/${itemId}/verify`, {
+    method: 'POST',
+  })
+  if (!response.ok) throw new Error('Failed to verify item')
+  return response.json()
+}
+
+/**
+ * Remove the inventory verification from a library item
+ */
+export async function unverifyItem(itemId: string): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/api/items/${itemId}/verify`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) throw new Error('Failed to unverify item')
+}
+
+/**
  * Update an item
  */
 export async function updateItem(
@@ -1445,6 +1466,9 @@ export function mapSearchResultToBook(item: ItemSearchResponse): any {
     // Enrichment tracking
     enrichedAt: itemMetadata.enrichedAt,
     enrichmentSources: itemMetadata.enrichmentSources,
+
+    // Inventory verification
+    inventoryVerifiedDate: itemMetadata.inventoryVerifiedDate,
   }
 }
 
@@ -1825,6 +1849,9 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     // Enrichment tracking
     enrichedAt: itemMetadata.enrichedAt,
     enrichmentSources: itemMetadata.enrichmentSources,
+
+    // Inventory verification
+    inventoryVerifiedDate: itemMetadata.inventoryVerifiedDate,
   }
 }
 

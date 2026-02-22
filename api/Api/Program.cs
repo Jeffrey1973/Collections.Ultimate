@@ -1625,6 +1625,52 @@ app.MapDelete("/api/items/{itemId:guid}/cover", async (
     return Results.NoContent();
 }).RequireAuthorization();
 
+// ─── Inventory verification (mark a book as physically checked) ─────────
+app.MapPost("/api/items/{itemId:guid}/verify", async (
+    Guid itemId,
+    ILibraryItemRepository itemRepo,
+    IItemUpdateRepository updateRepo,
+    CancellationToken ct) =>
+{
+    var item = await itemRepo.GetByIdAsync(new ItemId(itemId), ct);
+    if (item is null) return Results.NotFound();
+
+    // Merge inventoryVerifiedDate into existing metadata JSON
+    var meta = new Dictionary<string, object?>();
+    if (!string.IsNullOrEmpty(item.MetadataJson))
+    {
+        try { meta = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object?>>(item.MetadataJson) ?? new(); }
+        catch { meta = new(); }
+    }
+    meta["inventoryVerifiedDate"] = DateTimeOffset.UtcNow.ToString("o");
+    var newJson = System.Text.Json.JsonSerializer.Serialize(meta);
+    await updateRepo.UpdateMetadataJsonAsync(new ItemId(itemId), newJson, ct);
+
+    return Results.Ok(new { inventoryVerifiedDate = meta["inventoryVerifiedDate"] });
+}).RequireAuthorization();
+
+app.MapDelete("/api/items/{itemId:guid}/verify", async (
+    Guid itemId,
+    ILibraryItemRepository itemRepo,
+    IItemUpdateRepository updateRepo,
+    CancellationToken ct) =>
+{
+    var item = await itemRepo.GetByIdAsync(new ItemId(itemId), ct);
+    if (item is null) return Results.NotFound();
+
+    var meta = new Dictionary<string, object?>();
+    if (!string.IsNullOrEmpty(item.MetadataJson))
+    {
+        try { meta = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object?>>(item.MetadataJson) ?? new(); }
+        catch { meta = new(); }
+    }
+    meta.Remove("inventoryVerifiedDate");
+    var newJson = System.Text.Json.JsonSerializer.Serialize(meta);
+    await updateRepo.UpdateMetadataJsonAsync(new ItemId(itemId), newJson, ct);
+
+    return Results.NoContent();
+}).RequireAuthorization();
+
 app.Run();
 
 public sealed record CreateHouseholdRequest(string Name);

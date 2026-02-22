@@ -279,6 +279,7 @@ export interface Book {
   lastUpdated?: string
   enrichedAt?: string // ISO date when book was last enriched
   enrichmentSources?: string[] // APIs that provided enrichment data
+  inventoryVerifiedDate?: string // ISO date when book was last physically verified
   
   // Custom fields (user-defined)
   customFields?: Record<string, any>

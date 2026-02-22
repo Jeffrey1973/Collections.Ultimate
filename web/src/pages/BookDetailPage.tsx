@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getItem, uploadItemCover, deleteItemCover } from '../api/backend'
+import { getItem, uploadItemCover, deleteItemCover, verifyItem, unverifyItem } from '../api/backend'
 import { mapItemResponseToBook, softDeleteItem, hardDeleteItem, restoreItem, moveItemToHousehold } from '../api/backend'
 import { Book } from '../api/books'
 import { FIELD_CATEGORIES, FIELD_DEFINITIONS } from '../config/field-config'
@@ -24,6 +24,7 @@ function BookDetailPage() {
   const [showMoveDropdown, setShowMoveDropdown] = useState(false)
   const [isMoving, setIsMoving] = useState(false)
   const [isUploadingCover, setIsUploadingCover] = useState(false)
+  const [isVerifying, setIsVerifying] = useState(false)
   const coverFileRef = useRef<HTMLInputElement>(null)
   const moveDropdownRef = useRef<HTMLDivElement>(null)
 
@@ -194,6 +195,25 @@ function BookDetailPage() {
     }
   }
 
+  async function handleVerifyToggle() {
+    if (!id || !book) return
+    setIsVerifying(true)
+    try {
+      if (book.inventoryVerifiedDate) {
+        await unverifyItem(id)
+        setBook(prev => prev ? { ...prev, inventoryVerifiedDate: undefined } : prev)
+      } else {
+        const result = await verifyItem(id)
+        setBook(prev => prev ? { ...prev, inventoryVerifiedDate: result.inventoryVerifiedDate } : prev)
+      }
+    } catch (err) {
+      console.error('Failed to toggle verification:', err)
+      alert('Failed to update verification status')
+    } finally {
+      setIsVerifying(false)
+    }
+  }
+
   // Other households this book could be moved to
   const otherHouseholds = households.filter(h => h.id !== (book as any)?.householdId)
 
@@ -279,6 +299,22 @@ function BookDetailPage() {
             fontSize: '0.85rem',
           }}>
             ✏️ Edit
+          </button>
+          <button
+            onClick={handleVerifyToggle}
+            disabled={isVerifying}
+            style={{
+              padding: '0.5rem 1rem', borderRadius: '8px',
+              border: `1px solid ${book.inventoryVerifiedDate ? '#10b981' : '#6b7280'}`,
+              background: book.inventoryVerifiedDate ? '#dcfce7' : '#f9fafb',
+              color: book.inventoryVerifiedDate ? '#059669' : '#374151',
+              fontWeight: 600, cursor: isVerifying ? 'wait' : 'pointer', fontSize: '0.85rem',
+              opacity: isVerifying ? 0.7 : 1,
+            }}
+          >
+            {isVerifying ? '⏳ ...' : book.inventoryVerifiedDate
+              ? `✅ Verified ${new Date(book.inventoryVerifiedDate).toLocaleDateString()}`
+              : '☐ Verify'}
           </button>
           <button
             onClick={handleEnrich}
