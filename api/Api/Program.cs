@@ -1630,6 +1630,7 @@ app.MapPost("/api/items/{itemId:guid}/verify", async (
     Guid itemId,
     ILibraryItemRepository itemRepo,
     IItemUpdateRepository updateRepo,
+    IItemEventRepository eventRepo,
     CancellationToken ct) =>
 {
     var item = await itemRepo.GetByIdAsync(new ItemId(itemId), ct);
@@ -1642,9 +1643,19 @@ app.MapPost("/api/items/{itemId:guid}/verify", async (
         try { meta = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object?>>(item.MetadataJson) ?? new(); }
         catch { meta = new(); }
     }
-    meta["inventoryVerifiedDate"] = DateTimeOffset.UtcNow.ToString("o");
+    var verifiedDate = DateTimeOffset.UtcNow;
+    meta["inventoryVerifiedDate"] = verifiedDate.ToString("o");
     var newJson = System.Text.Json.JsonSerializer.Serialize(meta);
     await updateRepo.UpdateMetadataJsonAsync(new ItemId(itemId), newJson, ct);
+
+    // Record event
+    await eventRepo.CreateAsync(new ItemEvent
+    {
+        ItemId = new ItemId(itemId),
+        EventTypeId = 24, // InventoryVerified
+        OccurredUtc = verifiedDate,
+        Notes = "Inventory verified"
+    }, ct);
 
     return Results.Ok(new { inventoryVerifiedDate = meta["inventoryVerifiedDate"] });
 }).RequireAuthorization();
@@ -1653,6 +1664,7 @@ app.MapDelete("/api/items/{itemId:guid}/verify", async (
     Guid itemId,
     ILibraryItemRepository itemRepo,
     IItemUpdateRepository updateRepo,
+    IItemEventRepository eventRepo,
     CancellationToken ct) =>
 {
     var item = await itemRepo.GetByIdAsync(new ItemId(itemId), ct);
@@ -1667,6 +1679,15 @@ app.MapDelete("/api/items/{itemId:guid}/verify", async (
     meta.Remove("inventoryVerifiedDate");
     var newJson = System.Text.Json.JsonSerializer.Serialize(meta);
     await updateRepo.UpdateMetadataJsonAsync(new ItemId(itemId), newJson, ct);
+
+    // Record un-verify event
+    await eventRepo.CreateAsync(new ItemEvent
+    {
+        ItemId = new ItemId(itemId),
+        EventTypeId = 24, // InventoryVerified
+        OccurredUtc = DateTimeOffset.UtcNow,
+        Notes = "Inventory verification removed"
+    }, ct);
 
     return Results.NoContent();
 }).RequireAuthorization();
