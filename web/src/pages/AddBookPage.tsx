@@ -743,7 +743,7 @@ function AddBookPage() {
       )}
 
       {/* Book Form with Collapsible Categories */}
-      <form onSubmit={handleSubmit} className="card" style={{ maxWidth: '800px' }}>
+      <form id="add-book-form" onSubmit={handleSubmit} className="card" style={{ maxWidth: 'none' }}>
         <div style={{ 
           display: 'flex', 
           justifyContent: 'space-between', 
@@ -868,30 +868,42 @@ function AddBookPage() {
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div style={{
-          display: 'flex',
-          gap: '1rem',
-          marginTop: '2rem',
-        }}>
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={isLoading}
-            style={{ flex: 1 }}
-          >
-            {isLoading ? 'Adding...' : 'Add Book'}
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={handleCancel}
-            disabled={isLoading}
-          >
-            Cancel
-          </button>
-        </div>
+        {/* Spacer so content isn't hidden behind the sticky bar */}
+        <div style={{ height: '5rem' }} />
       </form>
+
+      {/* Sticky Action Bar – always visible at bottom of viewport */}
+      <div style={{
+        position: 'sticky',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        display: 'flex',
+        gap: '1rem',
+        padding: '0.75rem 1.5rem',
+        backgroundColor: '#fff',
+        borderTop: '2px solid #e2e8f0',
+        boxShadow: '0 -2px 8px rgba(0,0,0,0.08)',
+        zIndex: 100,
+      }}>
+        <button
+          type="submit"
+          form="add-book-form"
+          className="btn btn-primary"
+          disabled={isLoading}
+          style={{ flex: 1 }}
+        >
+          {isLoading ? 'Adding...' : 'Add Book'}
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={handleCancel}
+          disabled={isLoading}
+        >
+          Cancel
+        </button>
+      </div>
 
       {/* Barcode Scanner Modal */}
       {showScanner && (
