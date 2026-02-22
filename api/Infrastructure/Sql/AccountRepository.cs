@@ -88,7 +88,9 @@ public sealed class AccountRepository : IAccountRepository
     {
         const string sql = """
             update dbo.Account
-            set FirstName = @FirstName, LastName = @LastName, DisplayName = @DisplayName,
+            set FirstName = COALESCE(@FirstName, FirstName),
+                LastName  = COALESCE(@LastName, LastName),
+                DisplayName = COALESCE(@DisplayName, DisplayName),
                 Email = COALESCE(@Email, Email)
             where Id = @Id;
             """;
