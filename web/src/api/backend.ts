@@ -863,6 +863,8 @@ export async function getItems(
     barcode?: string
     status?: string
     location?: string
+    verified?: string
+    enriched?: string
     take?: number
     skip?: number
   }
@@ -874,6 +876,8 @@ export async function getItems(
   if (params?.barcode) queryParams.append('barcode', params.barcode)
   if (params?.status) queryParams.append('status', params.status)
   if (params?.location) queryParams.append('location', params.location)
+  if (params?.verified) queryParams.append('verified', params.verified)
+  if (params?.enriched) queryParams.append('enriched', params.enriched)
   if (params?.take !== undefined) queryParams.append('take', params.take.toString())
   if (params?.skip) queryParams.append('skip', params.skip.toString())
 

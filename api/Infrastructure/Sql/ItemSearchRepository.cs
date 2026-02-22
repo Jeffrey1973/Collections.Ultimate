@@ -21,6 +21,8 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         string? barcode,
         string? status,
         string? location,
+        bool? verified,
+        bool? enriched,
         int take,
         int skip,
         CancellationToken ct)
@@ -41,6 +43,8 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         parameters.Add("Barcode", string.IsNullOrWhiteSpace(barcode) ? null : barcode.Trim());
         parameters.Add("Status", string.IsNullOrWhiteSpace(status) ? null : status.Trim());
         parameters.Add("Location", string.IsNullOrWhiteSpace(location) ? null : location.Trim());
+        parameters.Add("Verified", verified.HasValue ? (verified.Value ? 1 : 0) : (int?)null);
+        parameters.Add("Enriched", enriched.HasValue ? (enriched.Value ? 1 : 0) : (int?)null);
         parameters.Add("Take", take);
         parameters.Add("Skip", skip);
 
@@ -164,6 +168,12 @@ public sealed class ItemSearchRepository : IItemSearchRepository
               and (@Barcode is null or i.Barcode = @Barcode)
               and (@Status is null or i.Status = @Status)
               and (@Location is null or i.Location = @Location)
+              and (@Verified is null
+                   or (@Verified = 1 and i.MetadataJson like N'%inventoryVerifiedDate%')
+                   or (@Verified = 0 and (i.MetadataJson is null or i.MetadataJson not like N'%inventoryVerifiedDate%')))
+              and (@Enriched is null
+                   or (@Enriched = 1 and i.MetadataJson like N'%enrichedAt%')
+                   or (@Enriched = 0 and (i.MetadataJson is null or i.MetadataJson not like N'%enrichedAt%')))
               {termClauses}
               and (
                     @TagNorm is null

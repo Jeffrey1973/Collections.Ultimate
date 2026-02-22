@@ -96,6 +96,11 @@ function LibraryPage() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [searchQuery])
 
+  // Reload when server-side filters change
+  useEffect(() => {
+    if (selectedHousehold) loadBooks()
+  }, [enrichmentFilter, verifiedFilter])
+
   async function loadBooks() {
     if (!selectedHousehold) return
     
@@ -105,9 +110,14 @@ function LibraryPage() {
       console.log('📚 Loading items for household:', selectedHousehold.id)
       
       // Use items endpoint instead of books - it returns all types
+      // Build server-side filter params
+      const verified = verifiedFilter === 'verified' ? 'true' : verifiedFilter === 'unverified' ? 'false' : undefined
+      const enriched = enrichmentFilter === 'enriched' ? 'true' : enrichmentFilter === 'unenriched' ? 'false' : undefined
       const result = await getItems(selectedHousehold.id, { 
         q: searchQuery || undefined,
-        take: searchQuery ? 10000 : 500,
+        verified,
+        enriched,
+        take: 10000,
       })
       
       console.log('📦 Items response:', result)
@@ -133,17 +143,10 @@ function LibraryPage() {
     loadBooks()
   }
 
-  // Filter books based on ownership status
+  // Filter books based on ownership status (Previously Owned/Deleted are client-side; enriched/verified are server-side)
   const activeBooks = books.filter(b => (b as any).status !== 'Previously Owned' && (b as any).status !== 'Deleted')
   const previouslyOwned = books.filter(b => (b as any).status === 'Previously Owned')
-  const displayedBooks = (() => {
-    let base = showPreviouslyOwned ? previouslyOwned : activeBooks
-    if (enrichmentFilter === 'enriched') base = base.filter(b => !!(b as any).enrichedAt)
-    if (enrichmentFilter === 'unenriched') base = base.filter(b => !(b as any).enrichedAt)
-    if (verifiedFilter === 'verified') base = base.filter(b => !!(b as any).inventoryVerifiedDate)
-    if (verifiedFilter === 'unverified') base = base.filter(b => !(b as any).inventoryVerifiedDate)
-    return base
-  })()
+  const displayedBooks = showPreviouslyOwned ? previouslyOwned : activeBooks
 
   async function handleSoftDelete(bookId: string) {
     try {

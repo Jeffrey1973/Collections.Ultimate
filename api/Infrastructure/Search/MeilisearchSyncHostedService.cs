@@ -53,6 +53,7 @@ public sealed class MeilisearchSyncHostedService : BackgroundService
                 var result = await searchRepo.SearchAsync(
                     h.Id,
                     null, null, null, null, null, null,
+                    null, null,
                     10000, 0,
                     stoppingToken);
 

@@ -12,6 +12,8 @@ public interface IItemSearchRepository
         string? barcode,
         string? status,
         string? location,
+        bool? verified,
+        bool? enriched,
         int take,
         int skip,
         CancellationToken ct);

@@ -305,6 +305,8 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
     string? barcode,
     string? status,
     string? location,
+    string? verified,
+    string? enriched,
     int? take,
     int? skip,
     IItemSearchRepository repo,
@@ -313,8 +315,12 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
 {
     var actualTake = Math.Clamp(take ?? 500, 1, 10000);
     var actualSkip = Math.Max(skip ?? 0, 0);
+    // Parse verified/enriched tri-state: "true" | "false" | null (no filter)
+    bool? verifiedFilter = verified?.ToLowerInvariant() switch { "true" => true, "false" => false, _ => null };
+    bool? enrichedFilter = enriched?.ToLowerInvariant() switch { "true" => true, "false" => false, _ => null };
     var hasFilters = tag is not null || subject is not null || barcode is not null
-                  || status is not null || location is not null;
+                  || status is not null || location is not null
+                  || verifiedFilter is not null || enrichedFilter is not null;
 
     // Use Meilisearch for free-text queries (it has typo tolerance),
     // fall back to SQL when Meilisearch is unreachable or when using structured filters.
@@ -342,6 +348,8 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
         barcode,
         status,
         location,
+        verifiedFilter,
+        enrichedFilter,
         actualTake,
         actualSkip,
         ct);
