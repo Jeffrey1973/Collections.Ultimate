@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getItem, updateItem, mapItemResponseToBook, getHouseholdLocations, ContributorRole } from '../api/backend'
+import { getItem, updateItem, mapItemResponseToBook, getAllHouseholdLocations, ContributorRole } from '../api/backend'
 import { Book } from '../api/books'
 import { FIELD_CATEGORIES, FIELD_DEFINITIONS, type FieldConfig } from '../config/field-config'
 import { useHousehold } from '../context/HouseholdContext'
@@ -27,7 +27,7 @@ function BookEditPage() {
 
   useEffect(() => {
     if (selectedHousehold) {
-      getHouseholdLocations(selectedHousehold.id)
+      getAllHouseholdLocations(selectedHousehold.id)
         .then(setKnownLocations)
         .catch(() => {}) // best-effort
     }

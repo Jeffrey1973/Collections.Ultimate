@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import BarcodeScanner from '../components/BarcodeScanner'
 import BookSelectionModal from '../components/BookSelectionModal'
 import { searchBook, searchBookMultiple, Book, type SearchHints } from '../api/books'
-import { createBook, mapBookToIngestRequest, getDedupIndex, normalizeTitle, getHouseholdLocations, IdentifierType, ContributorRole, SubjectScheme, type CreateBookIngestRequest } from '../api/backend'
+import { createBook, mapBookToIngestRequest, getDedupIndex, normalizeTitle, getAllHouseholdLocations, IdentifierType, ContributorRole, SubjectScheme, type CreateBookIngestRequest } from '../api/backend'
 import { useHousehold } from '../context/HouseholdContext'
 import { 
   FIELD_CATEGORIES, 
@@ -66,7 +66,7 @@ function AddBookPage() {
 
   useEffect(() => {
     if (selectedHousehold) {
-      getHouseholdLocations(selectedHousehold.id)
+      getAllHouseholdLocations(selectedHousehold.id)
         .then(setKnownLocations)
         .catch(() => {})
     }
