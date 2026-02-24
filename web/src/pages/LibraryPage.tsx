@@ -77,17 +77,18 @@ function LibraryPage() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(displayFields))
   }, [displayFields])
 
+  const initialLoadDone = useRef(false)
+
   useEffect(() => {
     if (selectedHousehold) {
+      initialLoadDone.current = true
       loadBooks()
     }
   }, [selectedHousehold])
 
   // Debounced search: fires 300ms after the user stops typing
   useEffect(() => {
-    if (!selectedHousehold) return
-    // Skip debounce on initial load (searchQuery is '')
-    // Allow empty query to reset to full list
+    if (!selectedHousehold || !initialLoadDone.current) return
     if (debounceRef.current) clearTimeout(debounceRef.current)
     setIsSearching(true)
     debounceRef.current = setTimeout(() => {
@@ -98,7 +99,7 @@ function LibraryPage() {
 
   // Reload when server-side filters change
   useEffect(() => {
-    if (selectedHousehold) loadBooks()
+    if (selectedHousehold && initialLoadDone.current) loadBooks()
   }, [enrichmentFilter, verifiedFilter])
 
   async function loadBooks() {
@@ -107,9 +108,7 @@ function LibraryPage() {
     try {
       setIsLoading(true)
       setError(null)
-      console.log('📚 Loading items for household:', selectedHousehold.id)
       
-      // Use items endpoint instead of books - it returns all types
       // Build server-side filter params
       const verified = verifiedFilter === 'verified' ? 'true' : verifiedFilter === 'unverified' ? 'false' : undefined
       const enriched = enrichmentFilter === 'enriched' ? 'true' : enrichmentFilter === 'unenriched' ? 'false' : undefined
@@ -119,8 +118,6 @@ function LibraryPage() {
         enriched,
         take: 10000,
       })
-      
-      console.log('📦 Items response:', result)
       
       setTotalCount(result.totalCount)
       // Map search results to Book objects — the list endpoint now includes tags/subjects
