@@ -357,21 +357,96 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
     return Results.Ok(new { sqlPaged.TotalCount, Items = sqlPaged.Items });
 }).RequireAuthorization();
 
-// Distinct locations used across a household's library
+// Distinct locations used across a household's library + user-defined locations
 app.MapGet("/api/households/{householdId:guid}/locations", async (
     Guid householdId,
     SqlConnectionFactory dbFactory,
     CancellationToken ct) =>
 {
     using var db = dbFactory.Create();
+    // Merge in-use locations with user-defined locations, deduplicated
     var locations = await Dapper.SqlMapper.QueryAsync<string>(db,
         """
-        SELECT DISTINCT Location FROM dbo.LibraryItem
-        WHERE OwnerHouseholdId = @HouseholdId AND Location IS NOT NULL AND Location <> ''
-        ORDER BY Location
+        SELECT Name FROM (
+            SELECT DISTINCT Location AS Name FROM dbo.LibraryItem
+            WHERE OwnerHouseholdId = @HouseholdId AND Location IS NOT NULL AND Location <> ''
+            UNION
+            SELECT Name FROM dbo.HouseholdLocation
+            WHERE HouseholdId = @HouseholdId
+        ) AS AllLocations
+        ORDER BY Name
         """,
         new { HouseholdId = householdId });
     return Results.Ok(locations);
+}).RequireAuthorization();
+
+// Get user-defined locations only (with full metadata)
+app.MapGet("/api/households/{householdId:guid}/locations/defined", async (
+    Guid householdId,
+    SqlConnectionFactory dbFactory,
+    CancellationToken ct) =>
+{
+    using var db = dbFactory.Create();
+    var locations = await Dapper.SqlMapper.QueryAsync<dynamic>(db,
+        """
+        SELECT Id, HouseholdId, Name, Description, LocationType, SortOrder, CreatedUtc
+        FROM dbo.HouseholdLocation
+        WHERE HouseholdId = @HouseholdId
+        ORDER BY SortOrder, Name
+        """,
+        new { HouseholdId = householdId });
+    return Results.Ok(locations);
+}).RequireAuthorization();
+
+// Add a user-defined location
+app.MapPost("/api/households/{householdId:guid}/locations", async (
+    Guid householdId,
+    CreateLocationRequest req,
+    SqlConnectionFactory dbFactory,
+    CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Name))
+        return Results.BadRequest(new { message = "Name is required." });
+
+    var id = Guid.NewGuid();
+    using var db = dbFactory.Create();
+    try
+    {
+        await Dapper.SqlMapper.ExecuteAsync(db,
+            """
+            INSERT INTO dbo.HouseholdLocation (Id, HouseholdId, Name, Description, LocationType, SortOrder)
+            VALUES (@Id, @HouseholdId, @Name, @Description, @LocationType, @SortOrder)
+            """,
+            new
+            {
+                Id = id,
+                HouseholdId = householdId,
+                Name = req.Name.Trim(),
+                Description = req.Description,
+                LocationType = req.LocationType,
+                SortOrder = req.SortOrder ?? 0
+            });
+    }
+    catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 2601 || ex.Number == 2627)
+    {
+        return Results.Conflict(new { message = $"Location '{req.Name.Trim()}' already exists." });
+    }
+
+    return Results.Created($"/api/households/{householdId}/locations/{id}", new { id, name = req.Name.Trim() });
+}).RequireAuthorization();
+
+// Delete a user-defined location
+app.MapDelete("/api/households/{householdId:guid}/locations/{locationId:guid}", async (
+    Guid householdId,
+    Guid locationId,
+    SqlConnectionFactory dbFactory,
+    CancellationToken ct) =>
+{
+    using var db = dbFactory.Create();
+    var affected = await Dapper.SqlMapper.ExecuteAsync(db,
+        "DELETE FROM dbo.HouseholdLocation WHERE Id = @Id AND HouseholdId = @HouseholdId",
+        new { Id = locationId, HouseholdId = householdId });
+    return affected > 0 ? Results.NoContent() : Results.NotFound();
 }).RequireAuthorization();
 
 // Duplicate detection
@@ -1721,6 +1796,7 @@ app.Run();
 
 public sealed record CreateHouseholdRequest(string Name);
 public sealed record CreateAccountRequest(string DisplayName, string? Email);
+public sealed record CreateLocationRequest(string Name, string? Description, string? LocationType, int? SortOrder);
 public sealed record MergeDuplicatesRequest(Guid KeepItemId, Guid[] DeleteItemIds);
 
 /// <summary>

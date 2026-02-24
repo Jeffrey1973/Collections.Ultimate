@@ -28,13 +28,6 @@ interface DigitalLocation {
   updatedAt: string
 }
 
-interface HouseholdDetail {
-  id: string
-  name: string
-  shelfLocations: ShelfLocation[]
-  digitalLocations: DigitalLocation[]
-}
-
 interface HouseholdMember {
   accountId: string
   displayName: string
@@ -49,25 +42,43 @@ interface HouseholdMember {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5259'
 
-async function getHouseholdDetail(householdId: string): Promise<HouseholdDetail> {
-  // TODO: Replace with real API call: GET /api/households/{id}/details
-  // For now, return household with empty locations — they'll be managed locally
-  // until the API endpoints exist
-  const storedData = localStorage.getItem(`household_detail_${householdId}`)
-  if (storedData) {
-    return JSON.parse(storedData)
-  }
-  return {
-    id: householdId,
-    name: '',
-    shelfLocations: [],
-    digitalLocations: [],
-  }
+// ── Location API calls ──
+
+interface DefinedLocation {
+  id: string
+  householdId: string
+  name: string
+  description: string | null
+  locationType: string | null
+  sortOrder: number
+  createdUtc: string
 }
 
-function persistHouseholdDetail(detail: HouseholdDetail) {
-  // TODO: Replace with real API calls. For now, persist to localStorage
-  localStorage.setItem(`household_detail_${detail.id}`, JSON.stringify(detail))
+async function apiGetDefinedLocations(householdId: string): Promise<DefinedLocation[]> {
+  const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/locations/defined`)
+  if (!resp.ok) throw new Error('Failed to fetch defined locations')
+  return resp.json()
+}
+
+async function apiCreateLocation(householdId: string, data: { name: string; description?: string; locationType?: string; sortOrder?: number }): Promise<{ id: string; name: string }> {
+  const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/locations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (resp.status === 409) {
+    const err = await resp.json()
+    throw new Error(err.message || 'Location already exists')
+  }
+  if (!resp.ok) throw new Error('Failed to create location')
+  return resp.json()
+}
+
+async function apiDeleteLocation(householdId: string, locationId: string): Promise<void> {
+  const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/locations/${locationId}`, {
+    method: 'DELETE',
+  })
+  if (!resp.ok && resp.status !== 404) throw new Error('Failed to delete location')
 }
 
 async function apiDeleteHousehold(householdId: string): Promise<void> {
@@ -768,11 +779,23 @@ export default function HouseholdManagementPage() {
     if (!selectedHousehold) return
     setIsLoading(true)
     try {
-      const detail = await getHouseholdDetail(selectedHousehold.id)
-      setShelfLocations(detail.shelfLocations)
-      setDigitalLocations(detail.digitalLocations)
+      const defined = await apiGetDefinedLocations(selectedHousehold.id)
+      // Map API response to ShelfLocation shape for the UI
+      const shelves: ShelfLocation[] = defined.map(d => ({
+        id: d.id,
+        householdId: d.householdId,
+        name: d.name,
+        description: d.description || '',
+        locationType: (d.locationType as ShelfLocation['locationType']) || 'other',
+        parentId: null,
+        sortOrder: d.sortOrder,
+        createdAt: d.createdUtc,
+        updatedAt: d.createdUtc,
+      }))
+      setShelfLocations(shelves)
+      setDigitalLocations([]) // digital locations not yet backed by API
     } catch (err) {
-      console.error('Failed to load household details:', err)
+      console.error('Failed to load household locations:', err)
     } finally {
       setIsLoading(false)
     }
@@ -802,19 +825,6 @@ export default function HouseholdManagementPage() {
     if (activeTab === 'members') loadMembers()
   }, [activeTab, loadMembers])
 
-  // ── Persist helper ──
-  function saveLocations(shelves: ShelfLocation[], digital: DigitalLocation[]) {
-    if (!selectedHousehold) return
-    setShelfLocations(shelves)
-    setDigitalLocations(digital)
-    persistHouseholdDetail({
-      id: selectedHousehold.id,
-      name: selectedHousehold.name,
-      shelfLocations: shelves,
-      digitalLocations: digital,
-    })
-  }
-
   // ── Household CRUD ──
   async function handleCreateHousehold(name: string) {
     await createNewHousehold(name)
@@ -836,44 +846,54 @@ export default function HouseholdManagementPage() {
   }
 
   // ── Shelf Location CRUD ──
-  function handleSaveShelf(data: Omit<ShelfLocation, 'id' | 'householdId' | 'createdAt' | 'updatedAt'>) {
+  async function handleSaveShelf(data: Omit<ShelfLocation, 'id' | 'householdId' | 'createdAt' | 'updatedAt'>) {
     if (!selectedHousehold) return
-    const now = new Date().toISOString()
 
     if (editingShelf) {
-      // Update
-      const updated = shelfLocations.map((s) =>
-        s.id === editingShelf.id
-          ? { ...s, ...data, updatedAt: now }
-          : s
-      )
-      saveLocations(updated, digitalLocations)
+      // Update: delete old + create new (simple approach since API has no PUT)
+      try {
+        await apiDeleteLocation(selectedHousehold.id, editingShelf.id)
+        await apiCreateLocation(selectedHousehold.id, {
+          name: data.name,
+          description: data.description || undefined,
+          locationType: data.locationType || undefined,
+          sortOrder: data.sortOrder,
+        })
+        await loadLocations()
+      } catch (err) {
+        console.error('Failed to update location:', err)
+      }
     } else {
       // Create
-      const newShelf: ShelfLocation = {
-        id: generateId(),
-        householdId: selectedHousehold.id,
-        ...data,
-        createdAt: now,
-        updatedAt: now,
+      try {
+        await apiCreateLocation(selectedHousehold.id, {
+          name: data.name,
+          description: data.description || undefined,
+          locationType: data.locationType || undefined,
+          sortOrder: data.sortOrder,
+        })
+        await loadLocations()
+      } catch (err: any) {
+        console.error('Failed to create location:', err)
+        alert(err.message || 'Failed to create location')
       }
-      saveLocations([...shelfLocations, newShelf], digitalLocations)
     }
     setShowShelfForm(false)
     setEditingShelf(null)
   }
 
-  function handleDeleteShelf() {
-    if (!deleteTarget || deleteTarget.type !== 'shelf') return
-    // Also un-parent any children
-    const updated = shelfLocations
-      .filter((s) => s.id !== deleteTarget.id)
-      .map((s) => (s.parentId === deleteTarget.id ? { ...s, parentId: null } : s))
-    saveLocations(updated, digitalLocations)
+  async function handleDeleteShelf() {
+    if (!deleteTarget || deleteTarget.type !== 'shelf' || !selectedHousehold) return
+    try {
+      await apiDeleteLocation(selectedHousehold.id, deleteTarget.id)
+      await loadLocations()
+    } catch (err) {
+      console.error('Failed to delete location:', err)
+    }
     setDeleteTarget(null)
   }
 
-  // ── Digital Location CRUD ──
+  // ── Digital Location CRUD (local state only — not yet backed by API) ──
   function handleSaveDigital(data: Omit<DigitalLocation, 'id' | 'householdId' | 'createdAt' | 'updatedAt'>) {
     if (!selectedHousehold) return
     const now = new Date().toISOString()
@@ -884,7 +904,7 @@ export default function HouseholdManagementPage() {
           ? { ...d, ...data, updatedAt: now }
           : d
       )
-      saveLocations(shelfLocations, updated)
+      setDigitalLocations(updated)
     } else {
       const newDigital: DigitalLocation = {
         id: generateId(),
@@ -893,7 +913,7 @@ export default function HouseholdManagementPage() {
         createdAt: now,
         updatedAt: now,
       }
-      saveLocations(shelfLocations, [...digitalLocations, newDigital])
+      setDigitalLocations([...digitalLocations, newDigital])
     }
     setShowDigitalForm(false)
     setEditingDigital(null)
@@ -902,7 +922,7 @@ export default function HouseholdManagementPage() {
   function handleDeleteDigital() {
     if (!deleteTarget || deleteTarget.type !== 'digital') return
     const updated = digitalLocations.filter((d) => d.id !== deleteTarget.id)
-    saveLocations(shelfLocations, updated)
+    setDigitalLocations(updated)
     setDeleteTarget(null)
   }
 

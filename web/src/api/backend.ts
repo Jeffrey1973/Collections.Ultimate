@@ -58,33 +58,11 @@ export async function getHouseholdLocations(householdId: string): Promise<string
 }
 
 /**
- * Get all known locations for a household: user-defined (from household management localStorage)
- * merged with locations already in use on items (from API). Returns a deduplicated sorted list.
+ * Get all known locations for a household: user-defined locations + locations already
+ * in use on items. The API merges and deduplicates both sets.
  */
 export async function getAllHouseholdLocations(householdId: string): Promise<string[]> {
-  // 1. User-defined locations from household management (localStorage)
-  const defined: string[] = []
-  try {
-    const stored = localStorage.getItem(`household_detail_${householdId}`)
-    if (stored) {
-      const detail = JSON.parse(stored)
-      if (Array.isArray(detail.shelfLocations)) {
-        for (const loc of detail.shelfLocations) {
-          if (loc.name) defined.push(loc.name)
-        }
-      }
-    }
-  } catch { /* ignore parse errors */ }
-
-  // 2. Locations already in use on items (from API)
-  let inUse: string[] = []
-  try {
-    inUse = await getHouseholdLocations(householdId)
-  } catch { /* best-effort */ }
-
-  // 3. Merge and deduplicate
-  const all = new Set([...defined, ...inUse])
-  return [...all].sort((a, b) => a.localeCompare(b))
+  return getHouseholdLocations(householdId)
 }
 
 /** Normalize a title the same way the backend does (uppercase, collapse whitespace). */
