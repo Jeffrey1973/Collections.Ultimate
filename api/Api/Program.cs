@@ -369,7 +369,7 @@ app.MapGet("/api/households/{householdId:guid}/locations", async (
         """
         SELECT Name FROM (
             SELECT DISTINCT Location AS Name FROM dbo.LibraryItem
-            WHERE OwnerHouseholdId = @HouseholdId AND Location IS NOT NULL AND Location <> ''
+            WHERE HouseholdId = @HouseholdId AND Location IS NOT NULL AND Location <> ''
             UNION
             SELECT Name FROM dbo.HouseholdLocation
             WHERE HouseholdId = @HouseholdId
