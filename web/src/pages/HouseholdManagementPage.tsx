@@ -428,19 +428,16 @@ function HouseholdForm({
 
 function ShelfLocationForm({
   initial,
-  parentOptions,
   onSave,
   onCancel,
 }: {
   initial?: ShelfLocation
-  parentOptions: ShelfLocation[]
   onSave: (data: Omit<ShelfLocation, 'id' | 'householdId' | 'createdAt' | 'updatedAt'>) => void
   onCancel: () => void
 }) {
   const [name, setName] = useState(initial?.name ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
   const [locationType, setLocationType] = useState<ShelfLocation['locationType']>(initial?.locationType ?? 'shelf')
-  const [parentId, setParentId] = useState<string | null>(initial?.parentId ?? null)
   const [sortOrder, setSortOrder] = useState(initial?.sortOrder ?? 0)
 
   return (
@@ -474,24 +471,6 @@ function ShelfLocationForm({
       </div>
 
       <div style={styles.fieldGroup}>
-        <label style={styles.label}>Inside Of (optional)</label>
-        <select
-          style={styles.select}
-          value={parentId ?? ''}
-          onChange={(e) => setParentId(e.target.value || null)}
-        >
-          <option value="">— None (top level) —</option>
-          {parentOptions
-            .filter((p) => p.id !== initial?.id) // can't be inside itself
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {LOCATION_TYPES.find((lt) => lt.value === p.locationType)?.icon} {p.name}
-              </option>
-            ))}
-        </select>
-      </div>
-
-      <div style={styles.fieldGroup}>
         <label style={styles.label}>Description</label>
         <textarea
           style={styles.textarea}
@@ -521,7 +500,7 @@ function ShelfLocationForm({
               name: name.trim(),
               description,
               locationType,
-              parentId,
+              parentId: null,
               sortOrder,
             })
           }
@@ -1154,12 +1133,6 @@ export default function HouseholdManagementPage() {
                       <div style={styles.listCardMeta}>
                         {LOCATION_TYPES.find((lt) => lt.value === shelf.locationType)?.label}
                         {shelf.description && ` · ${shelf.description}`}
-                        {shelf.parentId && (
-                          <>
-                            {' · inside '}
-                            <em>{shelfLocations.find((s) => s.id === shelf.parentId)?.name ?? 'Unknown'}</em>
-                          </>
-                        )}
                       </div>
                     </div>
                     <div style={styles.listCardActions}>
@@ -1410,7 +1383,6 @@ export default function HouseholdManagementPage() {
       {showShelfForm && (
         <ShelfLocationForm
           initial={editingShelf ?? undefined}
-          parentOptions={shelfLocations}
           onSave={handleSaveShelf}
           onCancel={() => {
             setShowShelfForm(false)
