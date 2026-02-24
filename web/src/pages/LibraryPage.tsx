@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import BookCard from '../components/BookCard.tsx'
 import CardCatalogView from '../components/CardCatalogView.tsx'
 import { Book } from '../api/books'
-import { getItems, mapItemResponseToBook, mapSearchResultToBook, softDeleteItem, hardDeleteItem } from '../api/backend'
+import { getItems, mapSearchResultToBook, softDeleteItem, hardDeleteItem } from '../api/backend'
 import { useHousehold } from '../context/HouseholdContext'
-import { FIELD_DEFINITIONS, FIELD_CATEGORIES, type FieldConfig, type CategoryKey } from '../config/field-config'
+import { FIELD_DEFINITIONS, FIELD_CATEGORIES, type CategoryKey } from '../config/field-config'
 
 // Default fields shown in list/grid/catalog views
 const DEFAULT_DISPLAY_FIELDS = ['author', 'publisher', 'publishedDate', 'isbn']
@@ -598,226 +598,151 @@ function LibraryPage() {
 
       {!isLoading && !error && displayedBooks.length > 0 && (
         <>
-          {viewMode === 'list' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {displayedBooks.map((book) => (
-                <div
-                  key={book.id}
-                  onClick={() => navigate(`/book/${book.id}`)}
-                  style={{
-                    backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white',
-                    padding: '1rem 1.5rem',
-                    borderRadius: '8px',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '1rem',
-                    border: '2px solid transparent',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'
-                    e.currentTarget.style.transform = 'translateY(-2px)'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)'
-                    e.currentTarget.style.transform = 'translateY(0)'
-                  }}
-                >
-                  {/* Cover thumbnail */}
-                  {book.coverImageUrl ? (
-                    <img
-                      src={book.coverImageUrl}
-                      alt={book.title}
-                      data-fallbacks={JSON.stringify(book.coverImageFallbacks || [])}
-                      data-fallback-index="0"
-                      onError={(e) => {
-                        const img = e.currentTarget
-                        const fallbacks: string[] = JSON.parse(img.dataset.fallbacks || '[]')
-                        const idx = parseInt(img.dataset.fallbackIndex || '0', 10)
-                        if (idx < fallbacks.length) {
-                          img.dataset.fallbackIndex = String(idx + 1)
-                          img.src = fallbacks[idx]
-                        } else {
-                          // Replace with placeholder on final failure
-                          const parent = img.parentElement
-                          if (parent) {
-                            const placeholder = document.createElement('div')
-                            placeholder.style.cssText = 'width:50px;height:75px;border-radius:4px;flex-shrink:0;background:#f1f5f9;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.6rem;text-align:center;line-height:1.2'
-                            placeholder.textContent = 'No Cover'
-                            parent.replaceChild(placeholder, img)
-                          }
-                        }
-                      }}
-                      style={{
-                        width: '50px',
-                        height: '75px',
-                        objectFit: 'cover',
-                        borderRadius: '4px',
-                        flexShrink: 0
-                      }}
-                    />
-                  ) : (
-                    <div style={{
-                      width: '50px',
-                      height: '75px',
-                      borderRadius: '4px',
-                      flexShrink: 0,
-                      backgroundColor: '#f1f5f9',
-                      border: '1px solid #e2e8f0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: '#94a3b8',
-                      fontSize: '0.6rem',
-                      textAlign: 'center',
-                      lineHeight: 1.2,
-                    }}>
-                      No Cover
-                    </div>
-                  )}
-                  
-                  {/* Title - always shown */}
-                  <div style={{ 
-                    flex: '1 1 300px',
-                    minWidth: 0
+          {viewMode === 'list' && (() => {
+            // Build grid template: cover + title + each display field + delete button
+            const colCount = 2 + displayFields.length + 1 // cover, title, ...fields, delete
+            const gridCols = `50px minmax(200px, 2fr) ${displayFields.map(() => 'minmax(100px, 1fr)').join(' ')} 36px`
+            
+            // Helper to format a field value for display
+            const formatValue = (value: any): string => {
+              if (value === null || value === undefined || value === '') return '—'
+              if (Array.isArray(value)) {
+                if (value.length === 0) return '—'
+                return value.map(v => typeof v === 'object' ? (v.text || v.name || JSON.stringify(v)) : v).join(', ')
+              }
+              if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+              if (typeof value === 'object') return JSON.stringify(value)
+              return String(value)
+            }
+
+            return (
+              <div style={{ overflowX: 'auto' }}>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: gridCols,
+                  gap: '0',
+                  minWidth: `${colCount * 120}px`,
+                }}>
+                  {/* Header row */}
+                  <div style={{
+                    display: 'contents',
                   }}>
-                    <div style={{
-                      fontSize: '1rem',
-                      fontWeight: 600,
-                      color: '#1e293b',
-                      marginBottom: '0.25rem',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.4rem'
-                    }}>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{book.title}</span>
-                      {book.enrichedAt && (
-                        <span
-                          title={`Enriched ${new Date(book.enrichedAt).toLocaleDateString()}${book.enrichmentSources?.length ? ' via ' + book.enrichmentSources.join(', ') : ''}`}
-                          style={{
-                            flexShrink: 0,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '0.6rem',
-                            fontWeight: 700,
-                            lineHeight: 1,
-                            padding: '2px 5px',
-                            borderRadius: '9999px',
-                            backgroundColor: '#dcfce7',
-                            color: '#16a34a',
-                            letterSpacing: '0.02em',
-                          }}
-                        >
-                          ✦ enriched
-                        </span>
-                      )}
-                      {book.inventoryVerifiedDate && (
-                        <span
-                          title={`Verified ${new Date(book.inventoryVerifiedDate).toLocaleDateString()}`}
-                          style={{
-                            flexShrink: 0,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '0.6rem',
-                            fontWeight: 700,
-                            lineHeight: 1,
-                            padding: '2px 5px',
-                            borderRadius: '9999px',
-                            backgroundColor: '#dbeafe',
-                            color: '#2563eb',
-                            letterSpacing: '0.02em',
-                          }}
-                        >
-                          ✓ verified
-                        </span>
-                      )}
-                    </div>
-                    {book.subtitle && (
-                      <div style={{
-                        fontSize: '0.875rem',
-                        color: '#64748b',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis'
-                      }}>
-                        {book.subtitle}
-                      </div>
-                    )}
+                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1 }} />
+                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1 }}>Title</div>
+                    {displayFields.map(fieldKey => {
+                      const fieldDef = ALL_DISPLAY_FIELDS.find(f => f.key === fieldKey)
+                      return (
+                        <div key={fieldKey} style={{ padding: '0.5rem 0.75rem', fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1 }}>
+                          {fieldDef?.label || fieldKey}
+                        </div>
+                      )
+                    })}
+                    <div style={{ padding: '0.5rem 0.75rem', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1 }} />
                   </div>
 
-                  {/* Configurable fields */}
-                  {displayFields.map(fieldKey => {
-                    const value = (book as any)[fieldKey]
-                    if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) return null
-                    
-                    const fieldDef = ALL_DISPLAY_FIELDS.find(f => f.key === fieldKey)
-                    const fieldLabel = fieldDef?.label || fieldKey
-                    let displayValue: string
-                    if (Array.isArray(value)) {
-                      displayValue = value.map(v => typeof v === 'object' ? (v.text || v.name || JSON.stringify(v)) : v).join(', ')
-                    } else if (typeof value === 'boolean') {
-                      displayValue = value ? 'Yes' : 'No'
-                    } else if (typeof value === 'object') {
-                      displayValue = JSON.stringify(value)
-                    } else {
-                      displayValue = String(value)
-                    }
-                    
-                    return (
-                      <div 
-                        key={fieldKey}
-                        style={{
-                          flex: '0 0 auto',
-                          minWidth: '150px',
-                          maxWidth: '200px'
-                        }}
-                      >
-                        <div style={{
-                          fontSize: '0.75rem',
-                          color: '#94a3b8',
-                          marginBottom: '0.125rem'
-                        }}>
-                          {fieldLabel}
-                        </div>
-                        <div style={{
-                          fontSize: '0.875rem',
-                          color: '#475569',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis'
-                        }}>
-                          {displayValue}
-                        </div>
+                  {/* Data rows */}
+                  {displayedBooks.map((book) => (
+                    <div
+                      key={book.id}
+                      className="library-list-row"
+                      style={{ display: 'contents', cursor: 'pointer' }}
+                      onClick={() => navigate(`/book/${book.id}`)}
+                    >
+                      {/* Cover */}
+                      <div style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
+                        {book.coverImageUrl ? (
+                          <img
+                            src={book.coverImageUrl}
+                            alt={book.title}
+                            data-fallbacks={JSON.stringify(book.coverImageFallbacks || [])}
+                            data-fallback-index="0"
+                            onError={(e) => {
+                              const img = e.currentTarget
+                              const fallbacks: string[] = JSON.parse(img.dataset.fallbacks || '[]')
+                              const idx = parseInt(img.dataset.fallbackIndex || '0', 10)
+                              if (idx < fallbacks.length) {
+                                img.dataset.fallbackIndex = String(idx + 1)
+                                img.src = fallbacks[idx]
+                              } else {
+                                const parent = img.parentElement
+                                if (parent) {
+                                  const placeholder = document.createElement('div')
+                                  placeholder.style.cssText = 'width:40px;height:56px;border-radius:3px;background:#f1f5f9;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.5rem;text-align:center;line-height:1.2'
+                                  placeholder.textContent = 'No Cover'
+                                  parent.replaceChild(placeholder, img)
+                                }
+                              }
+                            }}
+                            style={{ width: '40px', height: '56px', objectFit: 'cover', borderRadius: '3px' }}
+                          />
+                        ) : (
+                          <div style={{
+                            width: '40px', height: '56px', borderRadius: '3px',
+                            backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: '#94a3b8', fontSize: '0.5rem', textAlign: 'center', lineHeight: 1.2,
+                          }}>No Cover</div>
+                        )}
                       </div>
-                    )
-                  })}
 
-                  {/* Trash icon — stop propagation so click doesn't navigate */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: book.id, title: book.title }) }}
-                    title="Remove book"
-                    style={{
-                      flexShrink: 0, width: '32px', height: '32px', borderRadius: '6px',
-                      border: 'none', background: 'transparent', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '0.9rem', opacity: 0.3, transition: 'opacity 0.15s',
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-                    onMouseLeave={e => (e.currentTarget.style.opacity = '0.3')}
-                  >
-                    🗑️
-                  </button>
+                      {/* Title + badges */}
+                      <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{book.title}</span>
+                          {book.enrichedAt && (
+                            <span title={`Enriched ${new Date(book.enrichedAt).toLocaleDateString()}`} style={{ flexShrink: 0, fontSize: '0.55rem', fontWeight: 700, padding: '1px 4px', borderRadius: '9999px', backgroundColor: '#dcfce7', color: '#16a34a' }}>✦</span>
+                          )}
+                          {book.inventoryVerifiedDate && (
+                            <span title={`Verified ${new Date(book.inventoryVerifiedDate).toLocaleDateString()}`} style={{ flexShrink: 0, fontSize: '0.55rem', fontWeight: 700, padding: '1px 4px', borderRadius: '9999px', backgroundColor: '#dbeafe', color: '#2563eb' }}>✓</span>
+                          )}
+                        </div>
+                        {book.subtitle && (
+                          <div style={{ fontSize: '0.75rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{book.subtitle}</div>
+                        )}
+                      </div>
+
+                      {/* Display fields — always render every column for alignment */}
+                      {displayFields.map(fieldKey => (
+                        <div
+                          key={fieldKey}
+                          style={{
+                            padding: '0.5rem 0.75rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            borderBottom: '1px solid #f1f5f9',
+                            backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white',
+                            minWidth: 0,
+                          }}
+                        >
+                          <span style={{ fontSize: '0.8rem', color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {formatValue((book as any)[fieldKey])}
+                          </span>
+                        </div>
+                      ))}
+
+                      {/* Delete button */}
+                      <div style={{ padding: '0.5rem 0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: book.id, title: book.title }) }}
+                          title="Remove book"
+                          style={{
+                            width: '28px', height: '28px', borderRadius: '6px',
+                            border: 'none', background: 'transparent', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.8rem', opacity: 0.3, transition: 'opacity 0.15s',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                          onMouseLeave={e => (e.currentTarget.style.opacity = '0.3')}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            )
+          })()}
 
           {viewMode === 'grid' && (
             <div className="book-grid">

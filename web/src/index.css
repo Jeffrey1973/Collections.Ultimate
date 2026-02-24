@@ -89,6 +89,13 @@ body {
 }
 
 /* Grid Layouts */
+.library-list-row > div {
+  transition: background-color 0.1s;
+}
+.library-list-row:hover > div {
+  background-color: #f1f5f9 !important;
+}
+
 .book-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
