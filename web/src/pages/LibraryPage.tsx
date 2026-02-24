@@ -116,7 +116,7 @@ function LibraryPage() {
         q: searchQuery || undefined,
         verified,
         enriched,
-        take: 10000,
+        take: 500,
       })
       
       setTotalCount(result.totalCount)
