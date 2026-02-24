@@ -334,23 +334,18 @@ function AddBookPage() {
             </p>
           </div>
         ) : fieldConfig.key === 'location' && knownLocations.length > 0 ? (
-          <>
-            <input
-              type="text"
-              className="search-input"
-              list={`add-datalist-${fieldConfig.key}`}
-              value={value as string || ''}
-              onChange={(e) => handleInputChange(fieldConfig.key, e.target.value)}
-              placeholder={fieldConfig.placeholder || 'Select or type a location'}
-              style={{ fontSize: '0.9rem' }}
-              required={isRequired}
-            />
-            <datalist id={`add-datalist-${fieldConfig.key}`}>
-              {knownLocations.map(loc => (
-                <option key={loc} value={loc} />
-              ))}
-            </datalist>
-          </>
+          <select
+            className="search-input"
+            value={value as string || ''}
+            onChange={(e) => handleInputChange(fieldConfig.key, e.target.value)}
+            style={{ fontSize: '0.9rem' }}
+            required={isRequired}
+          >
+            <option value="">— Select Location —</option>
+            {knownLocations.map(loc => (
+              <option key={loc} value={loc}>{loc}</option>
+            ))}
+          </select>
         ) : (
           <input
             type={fieldConfig.type}

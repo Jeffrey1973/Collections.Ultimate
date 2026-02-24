@@ -526,27 +526,23 @@ function BookEditPage() {
             ))}
           </select>
         ) : fieldConfig.key === 'location' && knownLocations.length > 0 ? (
-          <>
-            <input
-              type="text"
-              list={`datalist-${fieldConfig.key}`}
-              value={value as string || ''}
-              onChange={(e) => handleFieldChange(fieldConfig.key, e.target.value)}
-              placeholder={fieldConfig.placeholder || 'Select or type a location'}
-              style={{
-                width: '100%',
-                padding: '0.5rem',
-                borderRadius: '4px',
-                border: '1px solid #cbd5e1',
-                fontSize: '0.875rem',
-              }}
-            />
-            <datalist id={`datalist-${fieldConfig.key}`}>
-              {knownLocations.map(loc => (
-                <option key={loc} value={loc} />
-              ))}
-            </datalist>
-          </>
+          <select
+            value={value as string || ''}
+            onChange={(e) => handleFieldChange(fieldConfig.key, e.target.value)}
+            style={{
+              width: '100%',
+              padding: '0.5rem',
+              borderRadius: '4px',
+              border: '1px solid #cbd5e1',
+              fontSize: '0.875rem',
+              backgroundColor: 'white'
+            }}
+          >
+            <option value="">— Select Location —</option>
+            {knownLocations.map(loc => (
+              <option key={loc} value={loc}>{loc}</option>
+            ))}
+          </select>
         ) : (
           <input
             type="text"
