@@ -387,7 +387,7 @@ app.MapGet("/api/households/{householdId:guid}/locations/defined", async (
     CancellationToken ct) =>
 {
     using var db = dbFactory.Create();
-    var locations = await Dapper.SqlMapper.QueryAsync<dynamic>(db,
+    var locations = await Dapper.SqlMapper.QueryAsync<DefinedLocationResponse>(db,
         """
         SELECT Id, HouseholdId, Name, Description, LocationType, SortOrder, CreatedUtc
         FROM dbo.HouseholdLocation
@@ -1797,6 +1797,7 @@ app.Run();
 public sealed record CreateHouseholdRequest(string Name);
 public sealed record CreateAccountRequest(string DisplayName, string? Email);
 public sealed record CreateLocationRequest(string Name, string? Description, string? LocationType, int? SortOrder);
+public sealed record DefinedLocationResponse(Guid Id, Guid HouseholdId, string Name, string? Description, string? LocationType, int SortOrder, DateTimeOffset CreatedUtc);
 public sealed record MergeDuplicatesRequest(Guid KeepItemId, Guid[] DeleteItemIds);
 
 /// <summary>
