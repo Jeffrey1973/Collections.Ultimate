@@ -544,6 +544,14 @@ function BookDetailPage() {
                 <div style={{ fontSize: '0.875rem', color: '#1e293b', fontFamily: 'monospace' }}>{book.isbn}</div>
               </div>
             )}
+            {book.location && (
+              <div>
+                <div style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
+                  Location
+                </div>
+                <div style={{ fontSize: '0.875rem', color: '#1e293b' }}>📍 {book.location}</div>
+              </div>
+            )}
           </div>
 
           {/* Description */}

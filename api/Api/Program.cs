@@ -1358,11 +1358,16 @@ app.MapPatch("/api/items/{itemId:guid}", async (
                 }
                 else if (string.Equals(patchSource, "edit", StringComparison.OrdinalIgnoreCase))
                 {
+                    // Include changed field names if provided
+                    var changedFields = http.Request.Query["fields"].FirstOrDefault();
+                    var notes = string.IsNullOrWhiteSpace(changedFields)
+                        ? "Manually edited"
+                        : $"Edited: {changedFields}";
                     await eventRepo.CreateAsync(new ItemEvent
                     {
                         ItemId = new ItemId(itemId),
                         EventTypeId = 23, // Edited
-                        Notes = "Manually edited"
+                        Notes = notes
                     }, CancellationToken.None);
                 }
             }
@@ -1715,6 +1720,7 @@ app.MapPost("/api/items/{itemId:guid}/cover", async (
     IFormFile file,
     IBlobStorageService blobService,
     ILibraryItemRepository itemRepo,
+    IItemEventRepository eventRepo,
     CancellationToken ct) =>
 {
     if (file.Length == 0)
@@ -1761,6 +1767,21 @@ app.MapPost("/api/items/{itemId:guid}/cover", async (
 
     await itemRepo.UpdateCustomCoverUrlAsync(new ItemId(itemId), url, ct);
 
+    // Record cover-uploaded event (best-effort)
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            await eventRepo.CreateAsync(new ItemEvent
+            {
+                ItemId = new ItemId(itemId),
+                EventTypeId = 16, // CoverUploaded
+                Notes = "Custom cover photo uploaded"
+            }, CancellationToken.None);
+        }
+        catch { /* best-effort */ }
+    });
+
     return Results.Ok(new { customCoverUrl = url });
 })
 .DisableAntiforgery()
@@ -1770,6 +1791,7 @@ app.MapDelete("/api/items/{itemId:guid}/cover", async (
     Guid itemId,
     IBlobStorageService blobService,
     ILibraryItemRepository itemRepo,
+    IItemEventRepository eventRepo,
     CancellationToken ct) =>
 {
     var item = await itemRepo.GetByIdAsync(new ItemId(itemId), ct);
@@ -1787,6 +1809,22 @@ app.MapDelete("/api/items/{itemId:guid}/cover", async (
     }
 
     await itemRepo.UpdateCustomCoverUrlAsync(new ItemId(itemId), null, ct);
+
+    // Record cover-removed event (best-effort)
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            await eventRepo.CreateAsync(new ItemEvent
+            {
+                ItemId = new ItemId(itemId),
+                EventTypeId = 16, // CoverUploaded (cover change)
+                Notes = "Custom cover photo removed"
+            }, CancellationToken.None);
+        }
+        catch { /* best-effort */ }
+    });
+
     return Results.NoContent();
 }).RequireAuthorization();
 

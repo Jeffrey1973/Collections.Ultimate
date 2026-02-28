@@ -1036,10 +1036,14 @@ export async function updateItem(
     identifiers?: Array<{ identifierTypeId: number; value: string; isPrimary?: boolean }>
     series?: { name: string; volumeNumber?: string; ordinal?: number }
   },
-  source?: 'enrichment' | 'edit'
+  source?: 'enrichment' | 'edit',
+  changedFields?: string[]
 ): Promise<void> {
-  const sourceParam = source ? `?source=${source}` : ''
-  const response = await authFetch(`${API_BASE_URL}/api/items/${itemId}${sourceParam}`, {
+  const params = new URLSearchParams()
+  if (source) params.set('source', source)
+  if (changedFields && changedFields.length > 0) params.set('fields', changedFields.join(', '))
+  const qs = params.toString() ? `?${params.toString()}` : ''
+  const response = await authFetch(`${API_BASE_URL}/api/items/${itemId}${qs}`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',

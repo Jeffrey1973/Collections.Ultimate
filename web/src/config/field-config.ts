@@ -1065,7 +1065,7 @@ export const FIELD_DEFINITIONS: FieldConfig[] = [
     key: 'location' as keyof Book,
     label: 'Physical Location',
     type: 'text',
-    category: 'user',
+    category: 'basic',
     description: 'Where this book is physically stored (e.g., Living Room Bookshelf, Office)',
     source: 'user',
   },

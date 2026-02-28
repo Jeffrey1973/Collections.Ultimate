@@ -5,11 +5,56 @@ import { Book } from '../api/books'
 import { FIELD_CATEGORIES, FIELD_DEFINITIONS, type FieldConfig } from '../config/field-config'
 import { useHousehold } from '../context/HouseholdContext'
 
+/** Compare original and current form data, return human-readable list of changed field groups */
+function computeChangedFields(original: Partial<Book>, current: Partial<Book>): string[] {
+  const changed = new Set<string>()
+
+  // Group fields by friendly category name
+  const fieldGroups: Record<string, string[]> = {
+    'Title/Subtitle': ['title', 'subtitle', 'originalTitle'],
+    'Author': ['author'],
+    'Description': ['description'],
+    'Publisher/Date': ['publisher', 'publishedDate'],
+    'Pages': ['pageCount'],
+    'Language': ['language'],
+    'Location': ['location', 'locationId'],
+    'Status': ['status'],
+    'Condition': ['condition'],
+    'Read Status': ['readStatus', 'dateStarted', 'completedDate'],
+    'Rating': ['userRating'],
+    'Notes': ['notes'],
+    'Format/Binding': ['format', 'binding', 'editionStatement'],
+    'Categories': ['categories'],
+    'Identifiers': ['isbn', 'isbn13', 'isbn10', 'asin', 'lccn', 'oclcNumber', 'doi', 'issn', 'googleBooksId', 'goodreadsId', 'libraryThingId', 'olid'],
+    'Series': ['series', 'volumeNumber'],
+    'Contributors': ['translator', 'illustrator', 'editor', 'narrator'],
+    'Price': ['purchasePrice', 'price'],
+    'Barcode': ['barcode'],
+    'Cover Image': ['coverImageUrl'],
+  }
+
+  for (const [groupName, keys] of Object.entries(fieldGroups)) {
+    for (const key of keys) {
+      const oldVal = (original as any)[key]
+      const newVal = (current as any)[key]
+      const oldStr = Array.isArray(oldVal) ? JSON.stringify(oldVal) : String(oldVal ?? '')
+      const newStr = Array.isArray(newVal) ? JSON.stringify(newVal) : String(newVal ?? '')
+      if (oldStr !== newStr) {
+        changed.add(groupName)
+        break
+      }
+    }
+  }
+
+  return Array.from(changed)
+}
+
 function BookEditPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { selectedHousehold } = useHousehold()
   const [formData, setFormData] = useState<Partial<Book>>({})
+  const [originalData, setOriginalData] = useState<Partial<Book>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -40,6 +85,7 @@ function BookEditPage() {
       const item = await getItem(itemId)
       const mappedBook = mapItemResponseToBook(item)
       setFormData(mappedBook)
+      setOriginalData(mappedBook)
     } catch (err) {
       setError('Failed to load book')
       console.error('Failed to load book:', err)
@@ -251,7 +297,7 @@ function BookEditPage() {
         subjects: subjects.length > 0 ? subjects : undefined,
         identifiers: identifiers.length > 0 ? identifiers : undefined,
         series,
-      }, 'edit')
+      }, 'edit', computeChangedFields(originalData, formData))
 
       navigate(`/book/${id}`)
     } catch (err) {
