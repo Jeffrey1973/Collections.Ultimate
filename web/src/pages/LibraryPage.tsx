@@ -25,6 +25,25 @@ const ALL_DISPLAY_FIELDS: { key: string; label: string; category: CategoryKey }[
   .map(f => ({ key: f.key as string, label: f.label, category: f.category }))
 
 const STORAGE_KEY = 'library_display_fields'
+const FILTERS_STORAGE_KEY = 'library_filters'
+
+interface SavedFilters {
+  enrichment?: 'all' | 'enriched' | 'unenriched'
+  verified?: 'all' | 'verified' | 'unverified'
+  location?: string
+  status?: string
+  tag?: string
+  subject?: string
+  search?: string
+}
+
+function loadSavedFilters(): SavedFilters {
+  try {
+    const saved = localStorage.getItem(FILTERS_STORAGE_KEY)
+    if (saved) return JSON.parse(saved)
+  } catch { /* ignore */ }
+  return {}
+}
 
 function loadSavedFields(): string[] {
   try {
@@ -39,7 +58,8 @@ function LibraryPage() {
   const navigate = useNavigate()
   const [books, setBooks] = useState<Book[]>([])
   const [totalCount, setTotalCount] = useState(0)
-  const [searchQuery, setSearchQuery] = useState('')
+  const savedFilters = useRef(loadSavedFilters())
+  const [searchQuery, setSearchQuery] = useState(savedFilters.current.search ?? '')
   const [isLoading, setIsLoading] = useState(true)
   const [isSearching, setIsSearching] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -50,8 +70,8 @@ function LibraryPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showPreviouslyOwned, setShowPreviouslyOwned] = useState(false)
-  const [enrichmentFilter, setEnrichmentFilter] = useState<'all' | 'enriched' | 'unenriched'>('all')
-  const [verifiedFilter, setVerifiedFilter] = useState<'all' | 'verified' | 'unverified'>('all')
+  const [enrichmentFilter, setEnrichmentFilter] = useState<'all' | 'enriched' | 'unenriched'>(savedFilters.current.enrichment ?? 'all')
+  const [verifiedFilter, setVerifiedFilter] = useState<'all' | 'verified' | 'unverified'>(savedFilters.current.verified ?? 'all')
   const [showSettings, setShowSettings] = useState(false)
   const [displayFields, setDisplayFields] = useState<string[]>(loadSavedFields)
   const [fieldSearch, setFieldSearch] = useState('')
@@ -59,10 +79,10 @@ function LibraryPage() {
 
   // Filter panel state
   const [showFilters, setShowFilters] = useState(false)
-  const [locationFilter, setLocationFilter] = useState<string>('')
-  const [statusFilter, setStatusFilter] = useState<string>('')
-  const [tagFilter, setTagFilter] = useState<string>('')
-  const [subjectFilter, setSubjectFilter] = useState<string>('')
+  const [locationFilter, setLocationFilter] = useState<string>(savedFilters.current.location ?? '')
+  const [statusFilter, setStatusFilter] = useState<string>(savedFilters.current.status ?? '')
+  const [tagFilter, setTagFilter] = useState<string>(savedFilters.current.tag ?? '')
+  const [subjectFilter, setSubjectFilter] = useState<string>(savedFilters.current.subject ?? '')
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([])
 
   // Count active filters for badge
@@ -96,6 +116,26 @@ function LibraryPage() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(displayFields))
   }, [displayFields])
+
+  // Persist filter choices
+  useEffect(() => {
+    const filters: SavedFilters = {
+      enrichment: enrichmentFilter !== 'all' ? enrichmentFilter : undefined,
+      verified: verifiedFilter !== 'all' ? verifiedFilter : undefined,
+      location: locationFilter || undefined,
+      status: statusFilter || undefined,
+      tag: tagFilter.trim() || undefined,
+      subject: subjectFilter.trim() || undefined,
+      search: searchQuery || undefined,
+    }
+    // Only store if there's at least one filter; otherwise remove the key
+    const hasAny = Object.values(filters).some(v => v !== undefined)
+    if (hasAny) {
+      localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters))
+    } else {
+      localStorage.removeItem(FILTERS_STORAGE_KEY)
+    }
+  }, [enrichmentFilter, verifiedFilter, locationFilter, statusFilter, tagFilter, subjectFilter, searchQuery])
 
   const initialLoadDone = useRef(false)
 
