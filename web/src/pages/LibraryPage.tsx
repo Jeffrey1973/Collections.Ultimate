@@ -26,6 +26,7 @@ const ALL_DISPLAY_FIELDS: { key: string; label: string; category: CategoryKey }[
 
 const STORAGE_KEY = 'library_display_fields'
 const FILTERS_STORAGE_KEY = 'library_filters'
+const SCROLL_STORAGE_KEY = 'library_scroll_pos'
 
 interface SavedFilters {
   enrichment?: 'all' | 'enriched' | 'unenriched'
@@ -138,6 +139,19 @@ function LibraryPage() {
   }, [enrichmentFilter, verifiedFilter, locationFilter, statusFilter, tagFilter, subjectFilter, searchQuery])
 
   const initialLoadDone = useRef(false)
+  const pendingScrollRestore = useRef(true)
+
+  // Save scroll position on scroll and before unload
+  useEffect(() => {
+    const saveScroll = () => sessionStorage.setItem(SCROLL_STORAGE_KEY, String(window.scrollY))
+    window.addEventListener('scroll', saveScroll, { passive: true })
+    window.addEventListener('beforeunload', saveScroll)
+    return () => {
+      saveScroll()
+      window.removeEventListener('scroll', saveScroll)
+      window.removeEventListener('beforeunload', saveScroll)
+    }
+  }, [])
 
   useEffect(() => {
     if (selectedHousehold) {
@@ -198,6 +212,18 @@ function LibraryPage() {
     } finally {
       setIsLoading(false)
       setIsSearching(false)
+
+      // Restore scroll position after initial load
+      if (pendingScrollRestore.current) {
+        pendingScrollRestore.current = false
+        requestAnimationFrame(() => {
+          const saved = sessionStorage.getItem(SCROLL_STORAGE_KEY)
+          if (saved) {
+            const y = parseInt(saved, 10)
+            if (!isNaN(y) && y > 0) window.scrollTo(0, y)
+          }
+        })
+      }
     }
   }
 
