@@ -78,7 +78,25 @@ async function apiDeleteLocation(householdId: string, locationId: string): Promi
   const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/locations/${locationId}`, {
     method: 'DELETE',
   })
+  if (resp.status === 409) {
+    const err = await resp.json()
+    throw new Error(err.message || 'Cannot delete location — it is assigned to items')
+  }
   if (!resp.ok && resp.status !== 404) throw new Error('Failed to delete location')
+}
+
+async function apiUpdateLocation(householdId: string, locationId: string, data: { name: string; description?: string; locationType?: string; sortOrder?: number }): Promise<{ id: string; name: string }> {
+  const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/locations/${locationId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (resp.status === 409) {
+    const err = await resp.json()
+    throw new Error(err.message || 'Location name already exists')
+  }
+  if (!resp.ok) throw new Error('Failed to update location')
+  return resp.json()
 }
 
 async function apiDeleteHousehold(householdId: string): Promise<void> {
@@ -829,18 +847,18 @@ export default function HouseholdManagementPage() {
     if (!selectedHousehold) return
 
     if (editingShelf) {
-      // Update: delete old + create new (simple approach since API has no PUT)
+      // Update existing location via PUT
       try {
-        await apiDeleteLocation(selectedHousehold.id, editingShelf.id)
-        await apiCreateLocation(selectedHousehold.id, {
+        await apiUpdateLocation(selectedHousehold.id, editingShelf.id, {
           name: data.name,
           description: data.description || undefined,
           locationType: data.locationType || undefined,
           sortOrder: data.sortOrder,
         })
         await loadLocations()
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to update location:', err)
+        alert(err.message || 'Failed to update location')
       }
     } else {
       // Create
@@ -866,8 +884,9 @@ export default function HouseholdManagementPage() {
     try {
       await apiDeleteLocation(selectedHousehold.id, deleteTarget.id)
       await loadLocations()
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to delete location:', err)
+      alert(err.message || 'Failed to delete location')
     }
     setDeleteTarget(null)
   }

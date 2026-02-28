@@ -430,6 +430,43 @@ app.MapPost("/api/households/{householdId:guid}/locations", async (
     return Results.Created($"/api/households/{householdId}/locations/{id}", new { id, name = req.Name.Trim() });
 }).RequireAuthorization();
 
+// Update a user-defined location
+app.MapPut("/api/households/{householdId:guid}/locations/{locationId:guid}", async (
+    Guid householdId,
+    Guid locationId,
+    CreateLocationRequest req,
+    SqlConnectionFactory dbFactory,
+    CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Name))
+        return Results.BadRequest(new { message = "Name is required." });
+
+    using var db = dbFactory.Create();
+    try
+    {
+        var affected = await Dapper.SqlMapper.ExecuteAsync(db,
+            """
+            UPDATE dbo.HouseholdLocation
+            SET Name = @Name, Description = @Description, LocationType = @LocationType, SortOrder = @SortOrder
+            WHERE Id = @Id AND HouseholdId = @HouseholdId
+            """,
+            new
+            {
+                Id = locationId,
+                HouseholdId = householdId,
+                Name = req.Name.Trim(),
+                Description = req.Description,
+                LocationType = req.LocationType,
+                SortOrder = req.SortOrder ?? 0
+            });
+        return affected > 0 ? Results.Ok(new { id = locationId, name = req.Name.Trim() }) : Results.NotFound();
+    }
+    catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number is 2601 or 2627)
+    {
+        return Results.Conflict(new { message = $"Location '{req.Name.Trim()}' already exists." });
+    }
+}).RequireAuthorization();
+
 // Delete a user-defined location
 app.MapDelete("/api/households/{householdId:guid}/locations/{locationId:guid}", async (
     Guid householdId,
