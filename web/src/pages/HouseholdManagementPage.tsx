@@ -166,10 +166,6 @@ async function apiRemoveMember(householdId: string, accountId: string): Promise<
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function generateId(): string {
-  return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-}
-
 const LOCATION_TYPES: { value: ShelfLocation['locationType']; label: string; icon: string }[] = [
   { value: 'room', label: 'Room', icon: '🏠' },
   { value: 'shelf', label: 'Bookshelf', icon: '📚' },
@@ -777,20 +773,46 @@ export default function HouseholdManagementPage() {
     setIsLoading(true)
     try {
       const defined = await apiGetDefinedLocations(selectedHousehold.id)
-      // Map API response to ShelfLocation shape for the UI
-      const shelves: ShelfLocation[] = defined.map(d => ({
-        id: d.id,
-        householdId: d.householdId,
-        name: d.name,
-        description: d.description || '',
-        locationType: (d.locationType as ShelfLocation['locationType']) || 'other',
-        parentId: null,
-        sortOrder: d.sortOrder,
-        createdAt: d.createdUtc,
-        updatedAt: d.createdUtc,
-      }))
+
+      // Split into physical vs digital based on locationType
+      const shelves: ShelfLocation[] = []
+      const digitals: DigitalLocation[] = []
+
+      for (const d of defined) {
+        if (d.locationType === 'digital') {
+          // Parse JSON description for extra fields
+          let extras: { platform?: string; url?: string; accountEmail?: string; notes?: string } = {}
+          if (d.description) {
+            try { extras = JSON.parse(d.description) } catch { /* not JSON — ignore */ }
+          }
+          digitals.push({
+            id: d.id,
+            householdId: d.householdId,
+            name: d.name,
+            platform: extras.platform || '',
+            url: extras.url || '',
+            accountEmail: extras.accountEmail || '',
+            notes: extras.notes || '',
+            createdAt: d.createdUtc,
+            updatedAt: d.createdUtc,
+          })
+        } else {
+          shelves.push({
+            id: d.id,
+            householdId: d.householdId,
+            name: d.name,
+            description: d.description || '',
+            locationType: (d.locationType as ShelfLocation['locationType']) || 'other',
+            parentId: null,
+            sortOrder: d.sortOrder,
+            createdAt: d.createdUtc,
+            updatedAt: d.createdUtc,
+          })
+        }
+      }
+
       setShelfLocations(shelves)
-      setDigitalLocations([]) // digital locations not yet backed by API
+      setDigitalLocations(digitals)
     } catch (err) {
       console.error('Failed to load household locations:', err)
     } finally {
@@ -891,36 +913,56 @@ export default function HouseholdManagementPage() {
     setDeleteTarget(null)
   }
 
-  // ── Digital Location CRUD (local state only — not yet backed by API) ──
-  function handleSaveDigital(data: Omit<DigitalLocation, 'id' | 'householdId' | 'createdAt' | 'updatedAt'>) {
+  // ── Digital Location CRUD (backed by API — stored as locationType='digital') ──
+  async function handleSaveDigital(data: Omit<DigitalLocation, 'id' | 'householdId' | 'createdAt' | 'updatedAt'>) {
     if (!selectedHousehold) return
-    const now = new Date().toISOString()
+
+    // Serialize extra fields into Description as JSON
+    const description = JSON.stringify({
+      platform: data.platform,
+      url: data.url,
+      accountEmail: data.accountEmail,
+      notes: data.notes,
+    })
 
     if (editingDigital) {
-      const updated = digitalLocations.map((d) =>
-        d.id === editingDigital.id
-          ? { ...d, ...data, updatedAt: now }
-          : d
-      )
-      setDigitalLocations(updated)
-    } else {
-      const newDigital: DigitalLocation = {
-        id: generateId(),
-        householdId: selectedHousehold.id,
-        ...data,
-        createdAt: now,
-        updatedAt: now,
+      try {
+        await apiUpdateLocation(selectedHousehold.id, editingDigital.id, {
+          name: data.name,
+          description,
+          locationType: 'digital',
+        })
+        await loadLocations()
+      } catch (err: any) {
+        console.error('Failed to update digital location:', err)
+        alert(err.message || 'Failed to update digital location')
       }
-      setDigitalLocations([...digitalLocations, newDigital])
+    } else {
+      try {
+        await apiCreateLocation(selectedHousehold.id, {
+          name: data.name,
+          description,
+          locationType: 'digital',
+        })
+        await loadLocations()
+      } catch (err: any) {
+        console.error('Failed to create digital location:', err)
+        alert(err.message || 'Failed to create digital location')
+      }
     }
     setShowDigitalForm(false)
     setEditingDigital(null)
   }
 
-  function handleDeleteDigital() {
-    if (!deleteTarget || deleteTarget.type !== 'digital') return
-    const updated = digitalLocations.filter((d) => d.id !== deleteTarget.id)
-    setDigitalLocations(updated)
+  async function handleDeleteDigital() {
+    if (!deleteTarget || deleteTarget.type !== 'digital' || !selectedHousehold) return
+    try {
+      await apiDeleteLocation(selectedHousehold.id, deleteTarget.id)
+      await loadLocations()
+    } catch (err: any) {
+      console.error('Failed to delete digital location:', err)
+      alert(err.message || 'Failed to delete digital location')
+    }
     setDeleteTarget(null)
   }
 
