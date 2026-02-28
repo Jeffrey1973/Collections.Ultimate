@@ -1045,9 +1045,6 @@ function LibraryPage() {
                               zIndex: 100,
                               marginRight: '8px',
                               filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.2))',
-                              maxHeight: '80vh',
-                              overflowY: 'auto',
-                              borderRadius: '8px',
                             }}
                           >
                             <CardCatalogView book={book} displayFields={displayFields} />
@@ -1121,9 +1118,7 @@ function LibraryPage() {
                           top: 'calc(100% + 6px)',
                           zIndex: 100,
                           filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.2))',
-                          maxHeight: '80vh',
-                          overflowY: 'auto',
-                          borderRadius: '8px',
+                          borderRadius: '4px',
                         }}
                       >
                         <CardCatalogView book={book} displayFields={displayFields} />

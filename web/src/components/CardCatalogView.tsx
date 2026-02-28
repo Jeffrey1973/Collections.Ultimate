@@ -11,18 +11,20 @@ type CardType = 'author' | 'title' | 'subject'
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const cardBase: React.CSSProperties = {
-  width: '100%',
-  maxWidth: '550px',
+  width: '500px',
+  minHeight: '300px',
+  maxHeight: '340px',
+  overflowY: 'auto',
   backgroundColor: '#f5f1e8',
   border: '2px solid #8b7355',
   borderTop: 'none',
   borderRadius: '0 0 4px 4px',
   boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
   fontFamily: '"Courier New", monospace',
-  padding: '1.5rem 1.5rem 1.25rem',
+  padding: '1.25rem 1.25rem 1rem',
   position: 'relative',
-  fontSize: '0.85rem',
-  lineHeight: 1.5,
+  fontSize: '0.78rem',
+  lineHeight: 1.45,
   color: '#2c2417',
 }
 
@@ -481,7 +483,7 @@ function CardCatalogView({ book, displayFields }: CardCatalogViewProps) {
   })
 
   return (
-    <div style={{ width: '100%', maxWidth: '550px', margin: '0 auto' }}>
+    <div style={{ width: '500px', margin: '0 auto' }}>
       {/* Card type tabs */}
       <div style={{
         display: 'flex',
