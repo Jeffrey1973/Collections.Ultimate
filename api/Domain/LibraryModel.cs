@@ -111,7 +111,7 @@ public sealed class LibraryItem
     public string? Notes { get; init; }
 
     public string? Barcode { get; init; }
-    public string? Location { get; init; }
+    public Guid? LocationId { get; init; }
     public string? Status { get; init; }
     public string? Condition { get; init; }
     public DateOnly? AcquiredOn { get; init; }
@@ -204,7 +204,8 @@ public sealed class ItemFullResponse
     public string? Authors { get; init; }
     public string? Notes { get; init; }
     public string? Barcode { get; init; }
-    public string? Location { get; init; }
+    public Guid? LocationId { get; init; }
+    public string? LocationName { get; init; }
     public string? Status { get; init; }
     public string? Condition { get; init; }
     public DateOnly? AcquiredOn { get; init; }
@@ -311,7 +312,7 @@ public sealed class ItemPatchRequest
     public string? Subtitle { get; init; }
     public string? Notes { get; init; }
     public string? Barcode { get; init; }
-    public string? Location { get; init; }
+    public Guid? LocationId { get; init; }
     public string? Status { get; init; }
     public string? Condition { get; init; }
     public DateOnly? AcquiredOn { get; init; }

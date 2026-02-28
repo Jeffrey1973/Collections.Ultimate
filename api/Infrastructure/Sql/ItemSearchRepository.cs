@@ -20,7 +20,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         string? subject,
         string? barcode,
         string? status,
-        string? location,
+        Guid? locationId,
         bool? verified,
         bool? enriched,
         int take,
@@ -42,7 +42,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         parameters.Add("SubjectNorm", subjectNorm);
         parameters.Add("Barcode", string.IsNullOrWhiteSpace(barcode) ? null : barcode.Trim());
         parameters.Add("Status", string.IsNullOrWhiteSpace(status) ? null : status.Trim());
-        parameters.Add("Location", string.IsNullOrWhiteSpace(location) ? null : location.Trim());
+        parameters.Add("Location", locationId);
         parameters.Add("Verified", verified.HasValue ? (verified.Value ? 1 : 0) : (int?)null);
         parameters.Add("Enriched", enriched.HasValue ? (enriched.Value ? 1 : 0) : (int?)null);
         parameters.Add("Take", take);
@@ -61,7 +61,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
                  or i.Barcode like {paramName}
                  or i.Subtitle like {paramName}
                  or i.Notes like {paramName}
-                 or i.Location like {paramName}
+                 or hl.Name like {paramName}
                  or i.Status like {paramName}
                  or i.Condition like {paramName}
                  or i.ReadStatus like {paramName}
@@ -123,7 +123,8 @@ public sealed class ItemSearchRepository : IItemSearchRepository
                 i.Title,
                 i.Subtitle,
                 i.Barcode,
-                i.Location,
+                i.LocationId,
+                hl.Name as LocationName,
                 i.Status,
                 i.Condition,
                 i.AcquiredOn,
@@ -162,12 +163,13 @@ public sealed class ItemSearchRepository : IItemSearchRepository
             inner join dbo.Work w on w.Id = i.WorkId
             left join Authors a on a.WorkId = i.WorkId
             left join dbo.Edition e on e.Id = i.EditionId
+            left join dbo.HouseholdLocation hl on hl.Id = i.LocationId
             left join dbo.WorkSeries ws3 on ws3.WorkId = i.WorkId
             left join dbo.Series s on s.Id = ws3.SeriesId
             where i.HouseholdId = @HouseholdId
               and (@Barcode is null or i.Barcode = @Barcode)
               and (@Status is null or i.Status = @Status)
-              and (@Location is null or i.Location = @Location)
+              and (@Location is null or i.LocationId = @Location)
               and (@Verified is null
                    or (@Verified = 1 and i.MetadataJson like N'%inventoryVerifiedDate%')
                    or (@Verified = 0 and (i.MetadataJson is null or i.MetadataJson not like N'%inventoryVerifiedDate%')))
@@ -236,7 +238,8 @@ public sealed class ItemSearchRepository : IItemSearchRepository
                 i.Title,
                 i.Subtitle,
                 i.Barcode,
-                i.Location,
+                i.LocationId,
+                hl.Name as LocationName,
                 i.Status,
                 i.Condition,
                 i.AcquiredOn,
@@ -275,6 +278,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
             inner join dbo.Work w on w.Id = i.WorkId
             left join Authors a on a.WorkId = i.WorkId
             left join dbo.Edition e on e.Id = i.EditionId
+            left join dbo.HouseholdLocation hl on hl.Id = i.LocationId
             left join dbo.WorkSeries ws3 on ws3.WorkId = i.WorkId
             left join dbo.Series s on s.Id = ws3.SeriesId
             where i.HouseholdId = @HouseholdId
@@ -304,7 +308,8 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         r.Title,
         r.Subtitle,
         r.Barcode,
-        r.Location,
+        r.LocationId,
+        r.LocationName,
         r.Status,
         r.Condition,
         r.AcquiredOn is null ? null : DateOnly.FromDateTime(r.AcquiredOn.Value),
@@ -349,7 +354,8 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         string Title,
         string? Subtitle,
         string? Barcode,
-        string? Location,
+        Guid? LocationId,
+        string? LocationName,
         string? Status,
         string? Condition,
         DateTime? AcquiredOn,
@@ -420,7 +426,8 @@ public sealed class ItemSearchRepository : IItemSearchRepository
                 i.Title,
                 i.Subtitle,
                 i.Barcode,
-                i.Location,
+                i.LocationId,
+                hl2.Name as LocationName,
                 i.Status,
                 i.Condition,
                 i.Notes,
@@ -449,6 +456,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
                 and ((dk.Author is null and ia.Author is null) or dk.Author = ia.Author)
             inner join dbo.LibraryItem i on i.Id = ia.ItemId
             left join dbo.Edition e on e.Id = i.EditionId
+            left join dbo.HouseholdLocation hl2 on hl2.Id = i.LocationId
             order by dk.Title, dk.Author, i.CreatedUtc;
             """;
 
@@ -482,7 +490,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
                 continue;
             currentItems.Add(new DuplicateItem(
                 row.ItemId, row.WorkId, row.EditionId,
-                row.Title, row.Subtitle, row.Barcode, row.Location, row.Status, row.Condition, row.Notes,
+                row.Title, row.Subtitle, row.Barcode, row.LocationId, row.LocationName, row.Status, row.Condition, row.Notes,
                 row.Author, row.Publisher, row.PublishedYear, row.PageCount, row.CoverImageUrl, row.Format,
                 row.UserRating, row.ReadStatus, row.CreatedUtc,
                 row.Identifiers, row.Tags, row.Subjects));
@@ -500,7 +508,8 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         string Title,
         string? Subtitle,
         string? Barcode,
-        string? Location,
+        Guid? LocationId,
+        string? LocationName,
         string? Status,
         string? Condition,
         string? Notes,

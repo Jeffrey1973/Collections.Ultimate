@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useHousehold } from '../context/HouseholdContext'
-import { createBook, mapBookToIngestRequest, getDedupIndex, normalizeTitle } from '../api/backend'
+import { createBook, mapBookToIngestRequest, getDedupIndex, normalizeTitle, getAllHouseholdLocations } from '../api/backend'
 import type { DedupIndex } from '../api/backend'
 import { lookupBookByISBN, searchBookMultiple } from '../api/books'
 import type { Book } from '../api/books'
@@ -503,9 +503,15 @@ export default function ImportBooksPage() {
 
     // Fetch dedup index from backend (existing barcodes, titles, identifiers)
     let dedupIndex: DedupIndex = { barcodes: [], normalizedTitles: [], identifiers: [] }
+    let locationMap: Map<string, string> = new Map() // lowercased name → id
     try {
       setImportProgress({ current: 0, total, phase: 'Loading existing library for dedup check\u2026' })
-      dedupIndex = await getDedupIndex(selectedHousehold.id)
+      const [idx, locs] = await Promise.all([
+        getDedupIndex(selectedHousehold.id),
+        getAllHouseholdLocations(selectedHousehold.id)
+      ])
+      dedupIndex = idx
+      for (const loc of locs) locationMap.set(loc.name.toLowerCase(), loc.id)
     } catch (err) {
       console.warn('Could not fetch dedup index, proceeding without dedup:', err)
     }
@@ -690,8 +696,9 @@ export default function ImportBooksPage() {
         if ((mapped as any).signed) metadata.signed = (mapped as any).signed
         if ((mapped as any).loanedTo) metadata.loanedTo = (mapped as any).loanedTo
 
-        // Set location from physicalLocation or location field
-        const location = mapped.physicalLocation || (mapped as any).location || (mapped as any).pln
+        // Set location from physicalLocation or location field, resolve to LocationId
+        const locationStr = mapped.physicalLocation || (mapped as any).location || (mapped as any).pln
+        const resolvedLocationId = locationStr ? locationMap.get(locationStr.toLowerCase()) : undefined
 
         // Build the final book data for ingest
         const bookForSave: any = {
@@ -701,7 +708,7 @@ export default function ImportBooksPage() {
           dateAdded: (mapped as any).dateAdded || new Date().toISOString(),
         }
 
-        if (location) bookForSave.location = location
+        if (resolvedLocationId) bookForSave.locationId = resolvedLocationId
         if ((mapped as any).libraryOrder) bookForSave.libraryOrder = (mapped as any).libraryOrder
         if (Object.keys(metadata).length > 0) {
           bookForSave.metadata = metadata
@@ -718,7 +725,7 @@ export default function ImportBooksPage() {
         const ingestRequest = mapBookToIngestRequest(bookForSave)
 
         // Add location to item
-        if (location) ingestRequest.item.location = location
+        if (resolvedLocationId) ingestRequest.item.locationId = resolvedLocationId
         // Add extra metadata to item
         if (Object.keys(metadata).length > 0) {
           const existing = ingestRequest.item.metadataJson ? JSON.parse(ingestRequest.item.metadataJson) : {}

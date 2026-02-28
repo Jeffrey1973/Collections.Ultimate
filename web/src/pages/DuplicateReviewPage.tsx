@@ -583,7 +583,7 @@ function ItemCard({ item, index, isKept, canToggle, onToggle }: {
           {identifiers.isbn13 && <MetaRow label="ISBN-13" value={identifiers.isbn13} />}
           {identifiers.isbn10 && <MetaRow label="ISBN-10" value={identifiers.isbn10} />}
           {item.barcode && <MetaRow label="Barcode" value={item.barcode} />}
-          {item.location && <MetaRow label="Location" value={item.location} />}
+          {item.locationName && <MetaRow label="Location" value={item.locationName} />}
           {item.condition && <MetaRow label="Condition" value={item.condition} />}
           {item.readStatus && <MetaRow label="Read" value={item.readStatus} />}
           {item.userRating != null && item.userRating > 0 && <MetaRow label="Rating" value={`${item.userRating}`} />}

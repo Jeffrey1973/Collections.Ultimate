@@ -50,18 +50,17 @@ export async function getDedupIndex(householdId: string): Promise<DedupIndex> {
   return resp.json()
 }
 
-/** Fetch distinct physical locations used in a household's library. */
-export async function getHouseholdLocations(householdId: string): Promise<string[]> {
+/** Fetch locations for a household (id + name objects). */
+export async function getHouseholdLocations(householdId: string): Promise<{id: string, name: string}[]> {
   const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/locations`)
   if (!resp.ok) throw new Error('Failed to fetch locations')
   return resp.json()
 }
 
 /**
- * Get all known locations for a household: user-defined locations + locations already
- * in use on items. The API merges and deduplicates both sets.
+ * Get all known locations for a household (id + name objects).
  */
-export async function getAllHouseholdLocations(householdId: string): Promise<string[]> {
+export async function getAllHouseholdLocations(householdId: string): Promise<{id: string, name: string}[]> {
   return getHouseholdLocations(householdId)
 }
 
@@ -112,7 +111,7 @@ export interface CreateBookIngestRequest {
     subtitle?: string
     notes?: string
     barcode?: string
-    location?: string
+    locationId?: string
     status?: string
     condition?: string
     acquiredOn?: string
@@ -153,7 +152,8 @@ export interface ItemResponse {
   workId: string
   kind: ItemKind
   barcode?: string
-  location?: string
+  locationId?: string
+  locationName?: string
   status?: string
   condition?: string
   acquiredOn?: string
@@ -188,7 +188,8 @@ export interface ItemSearchResponse {
   title: string
   subtitle?: string
   barcode?: string
-  location?: string
+  locationId?: string
+  locationName?: string
   status?: string
   condition?: string
   acquiredOn?: string
@@ -714,7 +715,7 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
       subtitle: book.subtitle,
       notes: book.notes,
       barcode: book.isbn || book.isbn13 || book.isbn10,
-      location: book.location,
+      locationId: book.locationId,
       status: book.status,
       condition: book.condition,
       acquiredOn: toDateOnly(book.acquiredDate || book.dateAdded),
@@ -840,7 +841,7 @@ export async function getItems(
     subject?: string
     barcode?: string
     status?: string
-    location?: string
+    locationId?: string
     verified?: string
     enriched?: string
     take?: number
@@ -853,7 +854,7 @@ export async function getItems(
   if (params?.subject) queryParams.append('subject', params.subject)
   if (params?.barcode) queryParams.append('barcode', params.barcode)
   if (params?.status) queryParams.append('status', params.status)
-  if (params?.location) queryParams.append('location', params.location)
+  if (params?.locationId) queryParams.append('locationId', params.locationId)
   if (params?.verified) queryParams.append('verified', params.verified)
   if (params?.enriched) queryParams.append('enriched', params.enriched)
   if (params?.take !== undefined) queryParams.append('take', params.take.toString())
@@ -986,7 +987,7 @@ export async function updateItem(
   data: {
     // Item-level fields
     barcode?: string
-    location?: string
+    locationId?: string
     status?: string
     condition?: string
     acquiredOn?: string
@@ -1110,7 +1111,7 @@ export async function moveItemToHousehold(
       subtitle: raw.subtitle,
       notes: raw.notes,
       barcode: raw.barcode,
-      location: raw.location,
+      locationId: raw.locationId,
       // Don't copy status — item starts fresh in new household
       condition: raw.condition,
       acquiredOn: raw.acquiredOn,
@@ -1192,7 +1193,8 @@ export interface DuplicateItem {
   title: string
   subtitle: string | null
   barcode: string | null
-  location: string | null
+  locationId: string | null
+  locationName: string | null
   status: string | null
   condition: string | null
   notes: string | null
@@ -1372,7 +1374,8 @@ export function mapSearchResultToBook(item: ItemSearchResponse): any {
 
     // Item fields
     barcode: item.barcode,
-    location: item.location || itemMetadata.pln,
+    location: item.locationName || itemMetadata.pln,
+    locationId: item.locationId,
     readStatus: item.readStatus || itemMetadata.readStatus,
     completedDate: item.completedDate || itemMetadata.completedDate,
     dateStarted: item.dateStarted || itemMetadata.dateStarted,
@@ -1823,7 +1826,8 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     webReaderLink: editionMetadata.webReaderLink,
     
     // User-Specific
-    location: item.location || itemMetadata.pln,
+    location: item.locationName || itemMetadata.pln,
+    locationId: item.locationId,
     readStatus: item.readStatus || itemMetadata.readStatus,
     completedDate: item.completedDate || itemMetadata.completedDate,
     dateStarted: item.dateStarted || itemMetadata.dateStarted,

@@ -30,7 +30,7 @@ function AddBookPage() {
   const [searchInput, setSearchInput] = useState('')
   const [searchProgress, setSearchProgress] = useState<{ current: number; total: number; apiName: string } | null>(null)
   const [showRefinements, setShowRefinements] = useState(false)
-  const [knownLocations, setKnownLocations] = useState<string[]>([])
+  const [knownLocations, setKnownLocations] = useState<{id: string, name: string}[]>([])
   
   // Expanded categories state
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(
@@ -336,14 +336,19 @@ function AddBookPage() {
         ) : fieldConfig.key === 'location' && knownLocations.length > 0 ? (
           <select
             className="search-input"
-            value={value as string || ''}
-            onChange={(e) => handleInputChange(fieldConfig.key, e.target.value)}
+            value={formData.locationId as string || ''}
+            onChange={(e) => {
+              const locId = e.target.value
+              const locName = knownLocations.find(l => l.id === locId)?.name || ''
+              handleInputChange('locationId', locId)
+              handleInputChange('location', locName)
+            }}
             style={{ fontSize: '0.9rem' }}
             required={isRequired}
           >
             <option value="">— Select Location —</option>
             {knownLocations.map(loc => (
-              <option key={loc} value={loc}>{loc}</option>
+              <option key={loc.id} value={loc.id}>{loc.name}</option>
             ))}
           </select>
         ) : (

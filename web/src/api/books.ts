@@ -237,6 +237,10 @@ export interface Book {
   awards?: string[]
   barcode?: string
 
+  // Location
+  location?: string // Display name of physical location
+  locationId?: string // FK GUID to HouseholdLocation
+
   // Reading status
   readStatus?: string // e.g., 'Read', 'Unread', 'Reading', 'DNF'
   completedDate?: string // Date finished reading

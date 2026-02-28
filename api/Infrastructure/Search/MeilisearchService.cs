@@ -152,7 +152,7 @@ public sealed class MeilisearchService : IMeilisearchService
         Publisher = r.Publisher,
         PublishedYear = r.PublishedYear,
         Barcode = r.Barcode,
-        Location = r.Location,
+        Location = r.LocationName,
         Status = r.Status,
         Condition = r.Condition,
         ReadStatus = r.ReadStatus,

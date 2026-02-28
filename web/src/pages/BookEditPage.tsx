@@ -17,7 +17,7 @@ function BookEditPage() {
     new Set(['basic']) // Start with basic expanded
   )
   const [newCategory, setNewCategory] = useState('')
-  const [knownLocations, setKnownLocations] = useState<string[]>([])
+  const [knownLocations, setKnownLocations] = useState<{id: string, name: string}[]>([])
 
   useEffect(() => {
     if (id) {
@@ -214,7 +214,7 @@ function BookEditPage() {
       await updateItem(id, {
         // Item-level fields
         notes: d.notes,
-        location: d.location,
+        locationId: d.locationId,
         status: d.status,
         condition: d.condition,
         acquiredOn: d.acquiredDate,
@@ -527,8 +527,13 @@ function BookEditPage() {
           </select>
         ) : fieldConfig.key === 'location' && knownLocations.length > 0 ? (
           <select
-            value={value as string || ''}
-            onChange={(e) => handleFieldChange(fieldConfig.key, e.target.value)}
+            value={(formData as any).locationId as string || ''}
+            onChange={(e) => {
+              const locId = e.target.value
+              const locName = knownLocations.find(l => l.id === locId)?.name || ''
+              handleFieldChange('locationId', locId)
+              handleFieldChange('location', locName)
+            }}
             style={{
               width: '100%',
               padding: '0.5rem',
@@ -540,7 +545,7 @@ function BookEditPage() {
           >
             <option value="">— Select Location —</option>
             {knownLocations.map(loc => (
-              <option key={loc} value={loc}>{loc}</option>
+              <option key={loc.id} value={loc.id}>{loc.name}</option>
             ))}
           </select>
         ) : (

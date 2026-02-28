@@ -304,7 +304,7 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
     string? subject,
     string? barcode,
     string? status,
-    string? location,
+    Guid? locationId,
     string? verified,
     string? enriched,
     int? take,
@@ -319,7 +319,7 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
     bool? verifiedFilter = verified?.ToLowerInvariant() switch { "true" => true, "false" => false, _ => null };
     bool? enrichedFilter = enriched?.ToLowerInvariant() switch { "true" => true, "false" => false, _ => null };
     var hasFilters = tag is not null || subject is not null || barcode is not null
-                  || status is not null || location is not null
+                  || status is not null || locationId is not null
                   || verifiedFilter is not null || enrichedFilter is not null;
 
     // Use Meilisearch for free-text queries (it has typo tolerance),
@@ -347,7 +347,7 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
         subject,
         barcode,
         status,
-        location,
+        locationId,
         verifiedFilter,
         enrichedFilter,
         actualTake,
@@ -357,24 +357,19 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
     return Results.Ok(new { sqlPaged.TotalCount, Items = sqlPaged.Items });
 }).RequireAuthorization();
 
-// Distinct locations used across a household's library + user-defined locations
+// All locations for a household (id + name)
 app.MapGet("/api/households/{householdId:guid}/locations", async (
     Guid householdId,
     SqlConnectionFactory dbFactory,
     CancellationToken ct) =>
 {
     using var db = dbFactory.Create();
-    // Merge in-use locations with user-defined locations, deduplicated
-    var locations = await Dapper.SqlMapper.QueryAsync<string>(db,
+    var locations = await Dapper.SqlMapper.QueryAsync<LocationListItem>(db,
         """
-        SELECT Name FROM (
-            SELECT DISTINCT Location AS Name FROM dbo.LibraryItem
-            WHERE HouseholdId = @HouseholdId AND Location IS NOT NULL AND Location <> ''
-            UNION
-            SELECT Name FROM dbo.HouseholdLocation
-            WHERE HouseholdId = @HouseholdId
-        ) AS AllLocations
-        ORDER BY Name
+        SELECT Id, Name
+        FROM dbo.HouseholdLocation
+        WHERE HouseholdId = @HouseholdId
+        ORDER BY SortOrder, Name
         """,
         new { HouseholdId = householdId });
     return Results.Ok(locations);
@@ -443,10 +438,17 @@ app.MapDelete("/api/households/{householdId:guid}/locations/{locationId:guid}", 
     CancellationToken ct) =>
 {
     using var db = dbFactory.Create();
-    var affected = await Dapper.SqlMapper.ExecuteAsync(db,
-        "DELETE FROM dbo.HouseholdLocation WHERE Id = @Id AND HouseholdId = @HouseholdId",
-        new { Id = locationId, HouseholdId = householdId });
-    return affected > 0 ? Results.NoContent() : Results.NotFound();
+    try
+    {
+        var affected = await Dapper.SqlMapper.ExecuteAsync(db,
+            "DELETE FROM dbo.HouseholdLocation WHERE Id = @Id AND HouseholdId = @HouseholdId",
+            new { Id = locationId, HouseholdId = householdId });
+        return affected > 0 ? Results.NoContent() : Results.NotFound();
+    }
+    catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 547) // FK violation
+    {
+        return Results.Conflict(new { message = "Cannot delete this location because it is assigned to one or more items. Remove items from this location first." });
+    }
 }).RequireAuthorization();
 
 // Duplicate detection
@@ -860,7 +862,7 @@ app.MapPost("/api/households/{householdId:guid}/items", async (
         Subtitle = request.Subtitle,
         Notes = request.Notes,
         Barcode = request.Barcode,
-        Location = request.Location,
+        LocationId = request.LocationId,
         Status = request.Status,
         Condition = request.Condition,
         AcquiredOn = request.AcquiredOn,
@@ -971,7 +973,7 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
         Subtitle = request.Item.Subtitle ?? work.Subtitle,
         Notes = request.Item.Notes,
         Barcode = request.Item.Barcode,
-        Location = request.Item.Location,
+        LocationId = request.Item.LocationId,
         Status = request.Item.Status,
         Condition = request.Item.Condition,
         AcquiredOn = request.Item.AcquiredOn,
@@ -1193,6 +1195,7 @@ app.MapPatch("/api/items/{itemId:guid}", async (
     IMeilisearchService meili,
     IItemSearchRepository searchRepo,
     IItemEventRepository eventRepo,
+    SqlConnectionFactory dbFactory,
     CancellationToken ct) =>
 {
     // Get item first to have access to WorkId and HouseholdId for tags
@@ -1202,7 +1205,7 @@ app.MapPatch("/api/items/{itemId:guid}", async (
 
     var patch = new ItemInventoryPatch(
         Barcode: ToPatchString(request.Barcode),
-        Location: ToPatchString(request.Location),
+        LocationId: ToPatchGuid(request.LocationId),
         Status: ToPatchString(request.Status),
         Condition: ToPatchString(request.Condition),
         AcquiredOn: ToPatchDateOnly(request.AcquiredOn),
@@ -1240,13 +1243,27 @@ app.MapPatch("/api/items/{itemId:guid}", async (
             }
 
             // Location changed (shelf move)
-            if (patch.Location is { IsSpecified: true } patchLoc && patchLoc.Value != item.Location)
+            if (patch.LocationId is { IsSpecified: true } patchLocId && patchLocId.Value != item.LocationId)
             {
+                // Resolve location names for readable event note
+                string oldName = "unset", newName = "unset";
+                try
+                {
+                    using var locDb = dbFactory.Create();
+                    var ids = new[] { item.LocationId, patchLocId.Value }.Where(x => x.HasValue).Select(x => x!.Value).Distinct();
+                    var names = (await Dapper.SqlMapper.QueryAsync<(Guid Id, string Name)>(locDb,
+                        "SELECT Id, Name FROM dbo.HouseholdLocation WHERE Id IN (SELECT value FROM STRING_SPLIT(@Ids, ','))",
+                        new { Ids = string.Join(',', ids) })).ToDictionary(x => x.Id, x => x.Name);
+                    if (item.LocationId.HasValue && names.TryGetValue(item.LocationId.Value, out var on)) oldName = on;
+                    if (patchLocId.Value.HasValue && names.TryGetValue(patchLocId.Value.Value, out var nn)) newName = nn;
+                }
+                catch { /* best-effort name resolution */ }
+
                 await eventRepo.CreateAsync(new ItemEvent
                 {
                     ItemId = new ItemId(itemId),
                     EventTypeId = 3, // Moved
-                    Notes = $"Moved from \"{item.Location ?? "unset"}\" to \"{patchLoc.Value ?? "unset"}\""
+                    Notes = $"Moved from \"{oldName}\" to \"{newName}\""
                 }, CancellationToken.None);
             }
 
@@ -1509,6 +1526,17 @@ static List<string>? ParseTagNames(JsonElement el)
             .ToList();
 
     return null;
+}
+
+static PatchField<Guid?> ToPatchGuid(JsonElement? el)
+{
+    if (el is null) return PatchField<Guid?>.Unspecified;
+    if (el.Value.ValueKind == JsonValueKind.Null) return PatchField<Guid?>.From(null);
+
+    if (el.Value.ValueKind == JsonValueKind.String && Guid.TryParse(el.Value.GetString(), out var g))
+        return PatchField<Guid?>.From(g);
+
+    throw new InvalidOperationException("Invalid GUID format for locationId.");
 }
 
 static PatchField<string> ToPatchString(JsonElement? el)
@@ -1798,6 +1826,7 @@ public sealed record CreateHouseholdRequest(string Name);
 public sealed record CreateAccountRequest(string DisplayName, string? Email);
 public sealed record CreateLocationRequest(string Name, string? Description, string? LocationType, int? SortOrder);
 public sealed record DefinedLocationResponse(Guid Id, Guid HouseholdId, string Name, string? Description, string? LocationType, int SortOrder, DateTimeOffset CreatedUtc);
+public sealed record LocationListItem(Guid Id, string Name);
 public sealed record MergeDuplicatesRequest(Guid KeepItemId, Guid[] DeleteItemIds);
 
 /// <summary>
@@ -1845,7 +1874,7 @@ string Title,
 string? Subtitle,
 string? Notes,
 string? Barcode,
-string? Location,
+Guid? LocationId,
 string? Status,
 string? Condition,
 DateOnly? AcquiredOn,
@@ -1899,7 +1928,7 @@ string? Title,
 string? Subtitle,
 string? Notes,
 string? Barcode,
-string? Location,
+Guid? LocationId,
 string? Status,
 string? Condition,
 DateOnly? AcquiredOn,
@@ -1978,7 +2007,7 @@ public sealed record PatchSeries(string Name, string? VolumeNumber = null, int? 
 public sealed record PatchItemRequest(
     // Item-level fields
     JsonElement? Barcode,
-    JsonElement? Location,
+    JsonElement? LocationId,
     JsonElement? Status,
     JsonElement? Condition,
     JsonElement? AcquiredOn,
