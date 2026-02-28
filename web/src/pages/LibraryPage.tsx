@@ -170,9 +170,11 @@ function LibraryPage() {
     }
   }, [selectedHousehold])
 
-  // Debounced search: fires 300ms after the user stops typing
+  // Debounced search: fires 300ms after the user stops typing (skip initial mount)
+  const searchMountSkipped = useRef(false)
   useEffect(() => {
     if (!selectedHousehold || !initialLoadDone.current) return
+    if (!searchMountSkipped.current) { searchMountSkipped.current = true; return }
     if (debounceRef.current) clearTimeout(debounceRef.current)
     setIsSearching(true)
     debounceRef.current = setTimeout(() => {
@@ -181,8 +183,10 @@ function LibraryPage() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [searchQuery])
 
-  // Reload when server-side filters change
+  // Reload when server-side filters change (skip initial mount)
+  const filtersMountSkipped = useRef(false)
   useEffect(() => {
+    if (!filtersMountSkipped.current) { filtersMountSkipped.current = true; return }
     if (selectedHousehold && initialLoadDone.current) loadBooks()
   }, [enrichmentFilter, verifiedFilter, locationFilter, statusFilter])
 
@@ -918,7 +922,7 @@ function LibraryPage() {
         </div>
       )}
 
-      {isLoading && (
+      {isLoading && books.length === 0 && (
         <div className="loading">
           Loading books...
         </div>
@@ -934,7 +938,7 @@ function LibraryPage() {
         </div>
       )}
 
-      {!isLoading && !error && displayedBooks.length === 0 && (
+      {!isLoading && !error && books.length > 0 && displayedBooks.length === 0 && (
         <div className="empty-state">
           <div className="empty-state-icon">📚</div>
           {showPreviouslyOwned 
@@ -946,7 +950,7 @@ function LibraryPage() {
         </div>
       )}
 
-      {!isLoading && !error && displayedBooks.length > 0 && (
+      {!error && displayedBooks.length > 0 && (
         <>
           {viewMode === 'list' && (() => {
             // Build grid template: cover + title + each display field + catalog icon + delete button
