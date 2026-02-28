@@ -44,7 +44,9 @@ function LibraryPage() {
   const [isSearching, setIsSearching] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'list' | 'grid' | 'catalog'>('list')
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
+  const [catalogPopoverId, setCatalogPopoverId] = useState<string | null>(null)
+  const catalogTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showPreviouslyOwned, setShowPreviouslyOwned] = useState(false)
@@ -276,13 +278,9 @@ function LibraryPage() {
         <button 
           type="button" 
           className="btn btn-secondary"
-          onClick={() => {
-            if (viewMode === 'list') setViewMode('grid')
-            else if (viewMode === 'grid') setViewMode('catalog')
-            else setViewMode('list')
-          }}
+          onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
         >
-          {viewMode === 'list' ? '📋 List' : viewMode === 'grid' ? '📚 Grid' : '📇 Catalog'}
+          {viewMode === 'list' ? '📋 List' : '📚 Grid'}
         </button>
         <button 
           type="button" 
@@ -890,9 +888,9 @@ function LibraryPage() {
       {!isLoading && !error && displayedBooks.length > 0 && (
         <>
           {viewMode === 'list' && (() => {
-            // Build grid template: cover + title + each display field + delete button
-            const colCount = 2 + displayFields.length + 1 // cover, title, ...fields, delete
-            const gridCols = `50px minmax(200px, 2fr) ${displayFields.map(() => 'minmax(100px, 1fr)').join(' ')} 36px`
+            // Build grid template: cover + title + each display field + catalog icon + delete button
+            const colCount = 2 + displayFields.length + 2 // cover, title, ...fields, catalog, delete
+            const gridCols = `50px minmax(200px, 2fr) ${displayFields.map(() => 'minmax(100px, 1fr)').join(' ')} 32px 36px`
             
             // Helper to format a field value for display
             const formatValue = (value: any): string => {
@@ -928,6 +926,7 @@ function LibraryPage() {
                         </div>
                       )
                     })}
+                    <div style={{ padding: '0.5rem 0.25rem', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1 }} />
                     <div style={{ padding: '0.5rem 0.75rem', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1 }} />
                   </div>
 
@@ -1011,6 +1010,51 @@ function LibraryPage() {
                         </div>
                       ))}
 
+                      {/* Catalog card icon */}
+                      <div style={{ padding: '0.5rem 0.15rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white', position: 'relative' }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setCatalogPopoverId(catalogPopoverId === book.id ? null : book.id) }}
+                          onMouseEnter={(e) => {
+                            e.stopPropagation()
+                            if (catalogTimeoutRef.current) clearTimeout(catalogTimeoutRef.current)
+                            setCatalogPopoverId(book.id)
+                          }}
+                          onMouseLeave={() => {
+                            catalogTimeoutRef.current = setTimeout(() => setCatalogPopoverId(null), 300)
+                          }}
+                          title="View catalog card"
+                          style={{
+                            width: '26px', height: '26px', borderRadius: '6px',
+                            border: 'none', background: 'transparent', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.75rem', opacity: catalogPopoverId === book.id ? 1 : 0.35, transition: 'opacity 0.15s',
+                          }}
+                        >
+                          📇
+                        </button>
+                        {catalogPopoverId === book.id && (
+                          <div
+                            onMouseEnter={() => { if (catalogTimeoutRef.current) clearTimeout(catalogTimeoutRef.current) }}
+                            onMouseLeave={() => { catalogTimeoutRef.current = setTimeout(() => setCatalogPopoverId(null), 300) }}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              position: 'absolute',
+                              right: '100%',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              zIndex: 100,
+                              marginRight: '8px',
+                              filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.2))',
+                              maxHeight: '80vh',
+                              overflowY: 'auto',
+                              borderRadius: '8px',
+                            }}
+                          >
+                            <CardCatalogView book={book} displayFields={displayFields} />
+                          </div>
+                        )}
+                      </div>
+
                       {/* Delete button */}
                       <div style={{ padding: '0.5rem 0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
                         <button
@@ -1038,23 +1082,54 @@ function LibraryPage() {
           {viewMode === 'grid' && (
             <div className="book-grid">
               {displayedBooks.map((book) => (
-                <div key={book.id} onClick={() => navigate(`/book/${book.id}`)} style={{ cursor: 'pointer' }}>
-                  <BookCard book={book} displayFields={displayFields} />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {viewMode === 'catalog' && (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '2rem',
-              alignItems: 'center',
-            }}>
-              {displayedBooks.map((book) => (
-                <div key={book.id} onClick={() => navigate(`/book/${book.id}`)} style={{ cursor: 'pointer' }}>
-                  <CardCatalogView book={book} displayFields={displayFields} />
+                <div key={book.id} style={{ cursor: 'pointer', position: 'relative' }}>
+                  <div onClick={() => navigate(`/book/${book.id}`)}>
+                    <BookCard book={book} displayFields={displayFields} />
+                  </div>
+                  {/* Catalog card icon overlay */}
+                  <div style={{ position: 'absolute', top: '6px', right: '6px', zIndex: 10 }}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setCatalogPopoverId(catalogPopoverId === book.id ? null : book.id) }}
+                      onMouseEnter={(e) => {
+                        e.stopPropagation()
+                        if (catalogTimeoutRef.current) clearTimeout(catalogTimeoutRef.current)
+                        setCatalogPopoverId(book.id)
+                      }}
+                      onMouseLeave={() => {
+                        catalogTimeoutRef.current = setTimeout(() => setCatalogPopoverId(null), 300)
+                      }}
+                      title="View catalog card"
+                      style={{
+                        width: '28px', height: '28px', borderRadius: '6px',
+                        border: 'none', background: catalogPopoverId === book.id ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.7)',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '0.8rem', opacity: catalogPopoverId === book.id ? 1 : 0.5,
+                        transition: 'opacity 0.15s, background 0.15s',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+                      }}
+                    >
+                      📇
+                    </button>
+                    {catalogPopoverId === book.id && (
+                      <div
+                        onMouseEnter={() => { if (catalogTimeoutRef.current) clearTimeout(catalogTimeoutRef.current) }}
+                        onMouseLeave={() => { catalogTimeoutRef.current = setTimeout(() => setCatalogPopoverId(null), 300) }}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          position: 'absolute',
+                          right: 0,
+                          top: 'calc(100% + 6px)',
+                          zIndex: 100,
+                          filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.2))',
+                          maxHeight: '80vh',
+                          overflowY: 'auto',
+                          borderRadius: '8px',
+                        }}
+                      >
+                        <CardCatalogView book={book} displayFields={displayFields} />
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
