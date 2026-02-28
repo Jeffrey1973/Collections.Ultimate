@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import BookCard from '../components/BookCard.tsx'
 import CardCatalogView from '../components/CardCatalogView.tsx'
 import { Book } from '../api/books'
-import { getItems, mapSearchResultToBook, softDeleteItem, hardDeleteItem } from '../api/backend'
+import { getItems, getHouseholdLocations, mapSearchResultToBook, softDeleteItem, hardDeleteItem } from '../api/backend'
 import { useHousehold } from '../context/HouseholdContext'
 import { FIELD_DEFINITIONS, FIELD_CATEGORIES, type CategoryKey } from '../config/field-config'
 
@@ -55,6 +55,24 @@ function LibraryPage() {
   const [fieldSearch, setFieldSearch] = useState('')
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
 
+  // Filter panel state
+  const [showFilters, setShowFilters] = useState(false)
+  const [locationFilter, setLocationFilter] = useState<string>('')
+  const [statusFilter, setStatusFilter] = useState<string>('')
+  const [tagFilter, setTagFilter] = useState<string>('')
+  const [subjectFilter, setSubjectFilter] = useState<string>('')
+  const [locations, setLocations] = useState<{ id: string; name: string }[]>([])
+
+  // Count active filters for badge
+  const activeFilterCount = [
+    enrichmentFilter !== 'all',
+    verifiedFilter !== 'all',
+    locationFilter !== '',
+    statusFilter !== '',
+    tagFilter.trim() !== '',
+    subjectFilter.trim() !== '',
+  ].filter(Boolean).length
+
   // Tools dropdown
   const [showToolsMenu, setShowToolsMenu] = useState(false)
   const toolsMenuRef = useRef<HTMLDivElement>(null)
@@ -83,6 +101,10 @@ function LibraryPage() {
     if (selectedHousehold) {
       initialLoadDone.current = true
       loadBooks()
+      // Load locations for filter dropdown
+      getHouseholdLocations(selectedHousehold.id)
+        .then(setLocations)
+        .catch(() => setLocations([]))
     }
   }, [selectedHousehold])
 
@@ -100,7 +122,7 @@ function LibraryPage() {
   // Reload when server-side filters change
   useEffect(() => {
     if (selectedHousehold && initialLoadDone.current) loadBooks()
-  }, [enrichmentFilter, verifiedFilter])
+  }, [enrichmentFilter, verifiedFilter, locationFilter, statusFilter])
 
   async function loadBooks() {
     if (!selectedHousehold) return
@@ -116,6 +138,10 @@ function LibraryPage() {
         q: searchQuery || undefined,
         verified,
         enriched,
+        locationId: locationFilter || undefined,
+        status: statusFilter || undefined,
+        tag: tagFilter.trim() || undefined,
+        subject: subjectFilter.trim() || undefined,
         take: 500,
       })
       
@@ -197,6 +223,11 @@ function LibraryPage() {
             : totalCount > activeBooks.length
               ? `Showing ${activeBooks.length} of ${totalCount.toLocaleString()} book${totalCount !== 1 ? 's' : ''} in your collection`
               : `${totalCount.toLocaleString()} book${totalCount !== 1 ? 's' : ''} in your collection`}
+          {activeFilterCount > 0 && (
+            <span style={{ marginLeft: '0.5rem', fontSize: '0.8rem', color: '#2563eb', fontWeight: 500 }}>
+              ({activeFilterCount} filter{activeFilterCount !== 1 ? 's' : ''} active)
+            </span>
+          )}
           {previouslyOwned.length > 0 && (
             <button
               onClick={() => setShowPreviouslyOwned(!showPreviouslyOwned)}
@@ -208,36 +239,6 @@ function LibraryPage() {
               }}
             >
               📦 {previouslyOwned.length} previously owned {showPreviouslyOwned ? '(showing)' : ''}
-            </button>
-          )}
-          {enrichmentFilter !== 'all' && (
-            <button
-              onClick={() => setEnrichmentFilter('all')}
-              style={{
-                marginLeft: '0.5rem', padding: '0.2rem 0.6rem', borderRadius: '12px',
-                border: '1px solid #d1d5db', fontSize: '0.8rem', cursor: 'pointer',
-                backgroundColor: enrichmentFilter === 'enriched' ? '#dcfce7' : '#fef2f2',
-                color: enrichmentFilter === 'enriched' ? '#16a34a' : '#dc2626',
-                fontWeight: 500,
-              }}
-              title="Click to clear filter"
-            >
-              ✦ {enrichmentFilter === 'enriched' ? 'Enriched' : 'Unenriched'} ✕
-            </button>
-          )}
-          {verifiedFilter !== 'all' && (
-            <button
-              onClick={() => setVerifiedFilter('all')}
-              style={{
-                marginLeft: '0.5rem', padding: '0.2rem 0.6rem', borderRadius: '12px',
-                border: '1px solid #d1d5db', fontSize: '0.8rem', cursor: 'pointer',
-                backgroundColor: verifiedFilter === 'verified' ? '#dbeafe' : '#fef2f2',
-                color: verifiedFilter === 'verified' ? '#2563eb' : '#dc2626',
-                fontWeight: 500,
-              }}
-              title="Click to clear filter"
-            >
-              ✓ {verifiedFilter === 'verified' ? 'Verified' : 'Unverified'} ✕
             </button>
           )}
         </p>
@@ -289,6 +290,27 @@ function LibraryPage() {
           onClick={() => setShowSettings(!showSettings)}
         >
           ⚙️ Display
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => setShowFilters(!showFilters)}
+          style={{
+            position: 'relative',
+            backgroundColor: activeFilterCount > 0 ? '#eff6ff' : undefined,
+            borderColor: activeFilterCount > 0 ? '#93c5fd' : undefined,
+            color: activeFilterCount > 0 ? '#2563eb' : undefined,
+          }}
+        >
+          🔍 Filters{activeFilterCount > 0 && (
+            <span style={{
+              position: 'absolute', top: '-6px', right: '-6px',
+              width: '18px', height: '18px', borderRadius: '50%',
+              backgroundColor: '#2563eb', color: 'white',
+              fontSize: '0.65rem', fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>{activeFilterCount}</span>
+          )}
         </button>
           <div ref={toolsMenuRef} style={{ position: 'relative' }}>
             <button
@@ -377,6 +399,275 @@ function LibraryPage() {
             )}
           </div>
       </form>
+
+      {/* Filter Panel */}
+      {showFilters && (
+        <div style={{
+          backgroundColor: 'white',
+          padding: '1.25rem',
+          borderRadius: '8px',
+          marginBottom: '1rem',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+          border: '1px solid #e2e8f0',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: '#334155', margin: 0 }}>
+              🔍 Search Filters
+            </h3>
+            {activeFilterCount > 0 && (
+              <button
+                onClick={() => {
+                  setEnrichmentFilter('all')
+                  setVerifiedFilter('all')
+                  setLocationFilter('')
+                  setStatusFilter('')
+                  setTagFilter('')
+                  setSubjectFilter('')
+                }}
+                style={{
+                  padding: '0.3rem 0.75rem', borderRadius: '6px',
+                  border: '1px solid #fca5a5', backgroundColor: '#fef2f2',
+                  color: '#dc2626', fontSize: '0.8rem', fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                Clear All Filters
+              </button>
+            )}
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+            gap: '0.75rem',
+          }}>
+            {/* Location filter */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                📍 Location
+              </label>
+              <select
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                style={{
+                  width: '100%', padding: '0.5rem 0.6rem', borderRadius: '6px',
+                  border: `1px solid ${locationFilter ? '#93c5fd' : '#e2e8f0'}`,
+                  fontSize: '0.85rem', backgroundColor: locationFilter ? '#eff6ff' : 'white',
+                  color: '#334155', outline: 'none', cursor: 'pointer',
+                }}
+              >
+                <option value="">All Locations</option>
+                {locations.map(loc => (
+                  <option key={loc.id} value={loc.id}>{loc.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Status filter */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                📋 Status
+              </label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                style={{
+                  width: '100%', padding: '0.5rem 0.6rem', borderRadius: '6px',
+                  border: `1px solid ${statusFilter ? '#93c5fd' : '#e2e8f0'}`,
+                  fontSize: '0.85rem', backgroundColor: statusFilter ? '#eff6ff' : 'white',
+                  color: '#334155', outline: 'none', cursor: 'pointer',
+                }}
+              >
+                <option value="">All Statuses</option>
+                <option value="Owned">Owned</option>
+                <option value="Previously Owned">Previously Owned</option>
+                <option value="Wishlist">Wishlist</option>
+                <option value="On Loan">On Loan</option>
+                <option value="Borrowed">Borrowed</option>
+              </select>
+            </div>
+
+            {/* Enrichment filter */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                ✦ Enrichment
+              </label>
+              <select
+                value={enrichmentFilter}
+                onChange={(e) => setEnrichmentFilter(e.target.value as any)}
+                style={{
+                  width: '100%', padding: '0.5rem 0.6rem', borderRadius: '6px',
+                  border: `1px solid ${enrichmentFilter !== 'all' ? '#93c5fd' : '#e2e8f0'}`,
+                  fontSize: '0.85rem', backgroundColor: enrichmentFilter !== 'all' ? '#eff6ff' : 'white',
+                  color: '#334155', outline: 'none', cursor: 'pointer',
+                }}
+              >
+                <option value="all">All</option>
+                <option value="enriched">Enriched Only</option>
+                <option value="unenriched">Unenriched Only</option>
+              </select>
+            </div>
+
+            {/* Verification filter */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                ✓ Verification
+              </label>
+              <select
+                value={verifiedFilter}
+                onChange={(e) => setVerifiedFilter(e.target.value as any)}
+                style={{
+                  width: '100%', padding: '0.5rem 0.6rem', borderRadius: '6px',
+                  border: `1px solid ${verifiedFilter !== 'all' ? '#93c5fd' : '#e2e8f0'}`,
+                  fontSize: '0.85rem', backgroundColor: verifiedFilter !== 'all' ? '#eff6ff' : 'white',
+                  color: '#334155', outline: 'none', cursor: 'pointer',
+                }}
+              >
+                <option value="all">All</option>
+                <option value="verified">Verified Only</option>
+                <option value="unverified">Unverified Only</option>
+              </select>
+            </div>
+
+            {/* Tag filter */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                🏷️ Tag
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder="e.g. fiction, classic..."
+                  value={tagFilter}
+                  onChange={(e) => setTagFilter(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      loadBooks()
+                    }
+                  }}
+                  style={{
+                    width: '100%', padding: '0.5rem 0.6rem', borderRadius: '6px',
+                    border: `1px solid ${tagFilter.trim() ? '#93c5fd' : '#e2e8f0'}`,
+                    fontSize: '0.85rem', backgroundColor: tagFilter.trim() ? '#eff6ff' : 'white',
+                    color: '#334155', outline: 'none', boxSizing: 'border-box',
+                  }}
+                />
+                {tagFilter && (
+                  <button
+                    type="button"
+                    onClick={() => { setTagFilter(''); loadBooks() }}
+                    style={{
+                      position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      fontSize: '0.85rem', color: '#94a3b8', padding: 0,
+                    }}
+                  >✕</button>
+                )}
+              </div>
+            </div>
+
+            {/* Subject filter */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                📚 Subject
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder="e.g. history, science..."
+                  value={subjectFilter}
+                  onChange={(e) => setSubjectFilter(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      loadBooks()
+                    }
+                  }}
+                  style={{
+                    width: '100%', padding: '0.5rem 0.6rem', borderRadius: '6px',
+                    border: `1px solid ${subjectFilter.trim() ? '#93c5fd' : '#e2e8f0'}`,
+                    fontSize: '0.85rem', backgroundColor: subjectFilter.trim() ? '#eff6ff' : 'white',
+                    color: '#334155', outline: 'none', boxSizing: 'border-box',
+                  }}
+                />
+                {subjectFilter && (
+                  <button
+                    type="button"
+                    onClick={() => { setSubjectFilter(''); loadBooks() }}
+                    style={{
+                      position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      fontSize: '0.85rem', color: '#94a3b8', padding: 0,
+                    }}
+                  >✕</button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <p style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: '#94a3b8', margin: '0.75rem 0 0 0' }}>
+            💡 Tip: Add filters to narrow results. Dropdowns apply instantly; press Enter for tag/subject text filters.
+          </p>
+        </div>
+      )}
+
+      {/* Active Filter Chips */}
+      {activeFilterCount > 0 && !showFilters && (
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.75rem', alignItems: 'center',
+        }}>
+          <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 500 }}>Filters:</span>
+          {locationFilter && (
+            <button onClick={() => setLocationFilter('')} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.2rem 0.5rem', borderRadius: '12px', border: '1px solid #93c5fd', backgroundColor: '#eff6ff', color: '#2563eb', fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer' }}>
+              📍 {locations.find(l => l.id === locationFilter)?.name || 'Location'} ✕
+            </button>
+          )}
+          {statusFilter && (
+            <button onClick={() => setStatusFilter('')} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.2rem 0.5rem', borderRadius: '12px', border: '1px solid #93c5fd', backgroundColor: '#eff6ff', color: '#2563eb', fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer' }}>
+              📋 {statusFilter} ✕
+            </button>
+          )}
+          {enrichmentFilter !== 'all' && (
+            <button onClick={() => setEnrichmentFilter('all')} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.2rem 0.5rem', borderRadius: '12px', border: '1px solid #93c5fd', backgroundColor: enrichmentFilter === 'enriched' ? '#dcfce7' : '#fef2f2', color: enrichmentFilter === 'enriched' ? '#16a34a' : '#dc2626', fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer' }}>
+              ✦ {enrichmentFilter === 'enriched' ? 'Enriched' : 'Unenriched'} ✕
+            </button>
+          )}
+          {verifiedFilter !== 'all' && (
+            <button onClick={() => setVerifiedFilter('all')} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.2rem 0.5rem', borderRadius: '12px', border: '1px solid #93c5fd', backgroundColor: verifiedFilter === 'verified' ? '#dbeafe' : '#fef2f2', color: verifiedFilter === 'verified' ? '#2563eb' : '#dc2626', fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer' }}>
+              ✓ {verifiedFilter === 'verified' ? 'Verified' : 'Unverified'} ✕
+            </button>
+          )}
+          {tagFilter.trim() && (
+            <button onClick={() => { setTagFilter(''); loadBooks() }} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.2rem 0.5rem', borderRadius: '12px', border: '1px solid #93c5fd', backgroundColor: '#eff6ff', color: '#2563eb', fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer' }}>
+              🏷️ {tagFilter} ✕
+            </button>
+          )}
+          {subjectFilter.trim() && (
+            <button onClick={() => { setSubjectFilter(''); loadBooks() }} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.2rem 0.5rem', borderRadius: '12px', border: '1px solid #93c5fd', backgroundColor: '#eff6ff', color: '#2563eb', fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer' }}>
+              📚 {subjectFilter} ✕
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setEnrichmentFilter('all')
+              setVerifiedFilter('all')
+              setLocationFilter('')
+              setStatusFilter('')
+              setTagFilter('')
+              setSubjectFilter('')
+            }}
+            style={{
+              padding: '0.2rem 0.5rem', borderRadius: '12px',
+              border: '1px solid #fca5a5', backgroundColor: '#fef2f2',
+              color: '#dc2626', fontSize: '0.75rem', fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            Clear All
+          </button>
+        </div>
+      )}
 
       {/* Display Settings */}
       {showSettings && (
