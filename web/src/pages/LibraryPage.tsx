@@ -26,7 +26,7 @@ const ALL_DISPLAY_FIELDS: { key: string; label: string; category: CategoryKey }[
 
 const STORAGE_KEY = 'library_display_fields'
 const FILTERS_STORAGE_KEY = 'library_filters'
-const SCROLL_STORAGE_KEY = 'library_scroll_pos'
+const SCROLL_BOOK_KEY = 'library_scroll_book_id'
 
 interface SavedFilters {
   enrichment?: 'all' | 'enriched' | 'unenriched'
@@ -141,31 +141,21 @@ function LibraryPage() {
   const initialLoadDone = useRef(false)
   const pendingScrollRestore = useRef(true)
 
-  // Save scroll position on scroll
-  useEffect(() => {
-    const saveScroll = () => sessionStorage.setItem(SCROLL_STORAGE_KEY, String(window.scrollY))
-    window.addEventListener('scroll', saveScroll, { passive: true })
-    return () => {
-      saveScroll()
-      window.removeEventListener('scroll', saveScroll)
-    }
-  }, [])
-
-  // Restore scroll position once after initial book load renders
+  // Restore scroll to last-viewed book once after initial book load renders
   useLayoutEffect(() => {
     if (!pendingScrollRestore.current || books.length === 0) return
     pendingScrollRestore.current = false
-    const saved = sessionStorage.getItem(SCROLL_STORAGE_KEY)
-    if (saved) {
-      const y = parseInt(saved, 10)
-      if (!isNaN(y) && y > 0) {
-        // Double rAF ensures React has committed the DOM and the browser has painted
+    const bookId = sessionStorage.getItem(SCROLL_BOOK_KEY)
+    if (bookId) {
+      // Wait for DOM to settle then scroll to the book's row
+      requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            window.scrollTo(0, y)
-          })
+          const el = document.querySelector(`[data-book-id="${bookId}"]`)
+          if (el) {
+            el.scrollIntoView({ block: 'center', behavior: 'instant' })
+          }
         })
-      }
+      })
     }
   }, [books])
 
@@ -1007,10 +997,13 @@ function LibraryPage() {
                       key={book.id}
                       className="library-list-row"
                       style={{ display: 'contents', cursor: 'pointer' }}
-                      onClick={() => navigate(`/book/${book.id}`)}
+                      onClick={() => {
+                        sessionStorage.setItem(SCROLL_BOOK_KEY, book.id)
+                        navigate(`/book/${book.id}`)
+                      }}
                     >
                       {/* Cover */}
-                      <div style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
+                      <div data-book-id={book.id} style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
                         {book.coverImageUrl ? (
                           <img
                             src={book.coverImageUrl}
@@ -1136,8 +1129,11 @@ function LibraryPage() {
           {viewMode === 'grid' && (
             <div className="book-grid">
               {displayedBooks.map((book) => (
-                <div key={book.id} style={{ cursor: 'pointer', position: 'relative' }}>
-                  <div onClick={() => navigate(`/book/${book.id}`)}>
+                <div key={book.id} style={{ cursor: 'pointer', position: 'relative' }} data-book-id={book.id}>
+                  <div onClick={() => {
+                    sessionStorage.setItem(SCROLL_BOOK_KEY, book.id)
+                    navigate(`/book/${book.id}`)
+                  }}>
                     <BookCard book={book} displayFields={displayFields} />
                   </div>
                   {/* Catalog card icon overlay */}
