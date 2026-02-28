@@ -45,7 +45,7 @@ function LibraryPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
-  const [catalogPopoverId, setCatalogPopoverId] = useState<string | null>(null)
+  const [catalogPopover, setCatalogPopover] = useState<{ bookId: string; rect: DOMRect } | null>(null)
   const catalogTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -172,6 +172,7 @@ function LibraryPage() {
   const activeBooks = books.filter(b => (b as any).status !== 'Previously Owned' && (b as any).status !== 'Deleted')
   const previouslyOwned = books.filter(b => (b as any).status === 'Previously Owned')
   const displayedBooks = showPreviouslyOwned ? previouslyOwned : activeBooks
+  const catalogPopoverBook = catalogPopover ? displayedBooks.find(b => b.id === catalogPopover.bookId) ?? books.find(b => b.id === catalogPopover.bookId) : null
 
   async function handleSoftDelete(bookId: string) {
     try {
@@ -1011,45 +1012,31 @@ function LibraryPage() {
                       ))}
 
                       {/* Catalog card icon */}
-                      <div style={{ padding: '0.5rem 0.15rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white', position: 'relative' }}>
+                      <div style={{ padding: '0.5rem 0.15rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
                         <button
-                          onClick={(e) => { e.stopPropagation(); setCatalogPopoverId(catalogPopoverId === book.id ? null : book.id) }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (catalogPopover?.bookId === book.id) { setCatalogPopover(null) }
+                            else { setCatalogPopover({ bookId: book.id, rect: e.currentTarget.getBoundingClientRect() }) }
+                          }}
                           onMouseEnter={(e) => {
                             e.stopPropagation()
                             if (catalogTimeoutRef.current) clearTimeout(catalogTimeoutRef.current)
-                            setCatalogPopoverId(book.id)
+                            setCatalogPopover({ bookId: book.id, rect: e.currentTarget.getBoundingClientRect() })
                           }}
                           onMouseLeave={() => {
-                            catalogTimeoutRef.current = setTimeout(() => setCatalogPopoverId(null), 300)
+                            catalogTimeoutRef.current = setTimeout(() => setCatalogPopover(null), 300)
                           }}
                           title="View catalog card"
                           style={{
                             width: '26px', height: '26px', borderRadius: '6px',
                             border: 'none', background: 'transparent', cursor: 'pointer',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.75rem', opacity: catalogPopoverId === book.id ? 1 : 0.35, transition: 'opacity 0.15s',
+                            fontSize: '0.75rem', opacity: catalogPopover?.bookId === book.id ? 1 : 0.35, transition: 'opacity 0.15s',
                           }}
                         >
                           📇
                         </button>
-                        {catalogPopoverId === book.id && (
-                          <div
-                            onMouseEnter={() => { if (catalogTimeoutRef.current) clearTimeout(catalogTimeoutRef.current) }}
-                            onMouseLeave={() => { catalogTimeoutRef.current = setTimeout(() => setCatalogPopoverId(null), 300) }}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                              position: 'absolute',
-                              right: '100%',
-                              top: '50%',
-                              transform: 'translateY(-50%)',
-                              zIndex: 100,
-                              marginRight: '8px',
-                              filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.2))',
-                            }}
-                          >
-                            <CardCatalogView book={book} displayFields={displayFields} />
-                          </div>
-                        )}
                       </div>
 
                       {/* Delete button */}
@@ -1086,44 +1073,31 @@ function LibraryPage() {
                   {/* Catalog card icon overlay */}
                   <div style={{ position: 'absolute', top: '6px', right: '6px', zIndex: 10 }}>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setCatalogPopoverId(catalogPopoverId === book.id ? null : book.id) }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (catalogPopover?.bookId === book.id) { setCatalogPopover(null) }
+                        else { setCatalogPopover({ bookId: book.id, rect: e.currentTarget.getBoundingClientRect() }) }
+                      }}
                       onMouseEnter={(e) => {
                         e.stopPropagation()
                         if (catalogTimeoutRef.current) clearTimeout(catalogTimeoutRef.current)
-                        setCatalogPopoverId(book.id)
+                        setCatalogPopover({ bookId: book.id, rect: e.currentTarget.getBoundingClientRect() })
                       }}
                       onMouseLeave={() => {
-                        catalogTimeoutRef.current = setTimeout(() => setCatalogPopoverId(null), 300)
+                        catalogTimeoutRef.current = setTimeout(() => setCatalogPopover(null), 300)
                       }}
                       title="View catalog card"
                       style={{
                         width: '28px', height: '28px', borderRadius: '6px',
-                        border: 'none', background: catalogPopoverId === book.id ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.7)',
+                        border: 'none', background: catalogPopover?.bookId === book.id ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.7)',
                         cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '0.8rem', opacity: catalogPopoverId === book.id ? 1 : 0.5,
+                        fontSize: '0.8rem', opacity: catalogPopover?.bookId === book.id ? 1 : 0.5,
                         transition: 'opacity 0.15s, background 0.15s',
                         boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
                       }}
                     >
                       📇
                     </button>
-                    {catalogPopoverId === book.id && (
-                      <div
-                        onMouseEnter={() => { if (catalogTimeoutRef.current) clearTimeout(catalogTimeoutRef.current) }}
-                        onMouseLeave={() => { catalogTimeoutRef.current = setTimeout(() => setCatalogPopoverId(null), 300) }}
-                        onClick={(e) => e.stopPropagation()}
-                        style={{
-                          position: 'absolute',
-                          right: 0,
-                          top: 'calc(100% + 6px)',
-                          zIndex: 100,
-                          filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.2))',
-                          borderRadius: '4px',
-                        }}
-                      >
-                        <CardCatalogView book={book} displayFields={displayFields} />
-                      </div>
-                    )}
                   </div>
                 </div>
               ))}
@@ -1131,6 +1105,36 @@ function LibraryPage() {
           )}
         </>
       )}
+
+      {/* Catalog Card Popover (fixed position to avoid overflow clipping) */}
+      {catalogPopover && catalogPopoverBook && (() => {
+        const r = catalogPopover.rect
+        const cardW = 500
+        const cardH = 340
+        // Try to position to the left of the button; if not enough room, go right
+        let left = r.left - cardW - 12
+        if (left < 8) left = r.right + 12
+        // Vertically center on the button, but clamp to viewport
+        let top = r.top + r.height / 2 - cardH / 2
+        if (top < 8) top = 8
+        if (top + cardH > window.innerHeight - 8) top = window.innerHeight - cardH - 8
+        return (
+          <div
+            onMouseEnter={() => { if (catalogTimeoutRef.current) clearTimeout(catalogTimeoutRef.current) }}
+            onMouseLeave={() => { catalogTimeoutRef.current = setTimeout(() => setCatalogPopover(null), 300) }}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              left,
+              top,
+              zIndex: 999,
+              filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.25))',
+            }}
+          >
+            <CardCatalogView book={catalogPopoverBook} displayFields={displayFields} />
+          </div>
+        )
+      })()}
 
       {/* Delete Confirmation Modal */}
       {deleteTarget && (
