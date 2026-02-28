@@ -428,6 +428,7 @@ function BookDetailPage() {
           />
           {book.coverImageUrl ? (
             <img
+              key={book.coverImageUrl}
               src={book.coverImageUrl}
               alt={book.title}
               data-fallbacks={JSON.stringify(book.coverImageFallbacks || [])}
