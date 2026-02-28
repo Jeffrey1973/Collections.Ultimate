@@ -12,4 +12,6 @@ public sealed record ItemInventoryPatch(
     PatchField<string> CompletedDate,
     PatchField<string> DateStarted,
     PatchField<decimal?> UserRating,
-    PatchField<int?> LibraryOrder);
+    PatchField<int?> LibraryOrder,
+    PatchField<string> Title = default,
+    PatchField<string> Subtitle = default);

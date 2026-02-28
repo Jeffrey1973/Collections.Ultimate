@@ -30,7 +30,9 @@ public sealed class ItemUpdateRepository : IItemUpdateRepository
                 CompletedDate = case when @CompletedDate_IsSpecified = 1 then @CompletedDate else CompletedDate end,
                 DateStarted = case when @DateStarted_IsSpecified = 1 then @DateStarted else DateStarted end,
                 UserRating = case when @UserRating_IsSpecified = 1 then @UserRating else UserRating end,
-                LibraryOrder = case when @LibraryOrder_IsSpecified = 1 then @LibraryOrder else LibraryOrder end
+                LibraryOrder = case when @LibraryOrder_IsSpecified = 1 then @LibraryOrder else LibraryOrder end,
+                Title = case when @Title_IsSpecified = 1 then @Title else Title end,
+                Subtitle = case when @Subtitle_IsSpecified = 1 then @Subtitle else Subtitle end
             where Id = @Id;
             """;
 
@@ -75,7 +77,13 @@ public sealed class ItemUpdateRepository : IItemUpdateRepository
                 UserRating = patch.UserRating.Value,
 
                 LibraryOrder_IsSpecified = patch.LibraryOrder.IsSpecified ? 1 : 0,
-                LibraryOrder = patch.LibraryOrder.Value
+                LibraryOrder = patch.LibraryOrder.Value,
+
+                Title_IsSpecified = patch.Title.IsSpecified ? 1 : 0,
+                Title = NormalizeNullable(patch.Title.Value),
+
+                Subtitle_IsSpecified = patch.Subtitle.IsSpecified ? 1 : 0,
+                Subtitle = NormalizeNullable(patch.Subtitle.Value)
             }, cancellationToken: ct));
 
             return affected > 0;

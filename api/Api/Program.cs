@@ -1240,6 +1240,10 @@ app.MapPatch("/api/items/{itemId:guid}", async (
     if (item is null)
         return Results.NotFound();
 
+    // Sync Title/Subtitle from Work into the denormalized LibraryItem columns
+    var titlePatch = request.Work is not null ? ToPatchString(request.Work.Title) : PatchField<string>.Unspecified;
+    var subtitlePatch = request.Work is not null ? ToPatchString(request.Work.Subtitle) : PatchField<string>.Unspecified;
+
     var patch = new ItemInventoryPatch(
         Barcode: ToPatchString(request.Barcode),
         LocationId: ToPatchGuid(request.LocationId),
@@ -1252,7 +1256,9 @@ app.MapPatch("/api/items/{itemId:guid}", async (
         CompletedDate: ToPatchString(request.CompletedDate),
         DateStarted: ToPatchString(request.DateStarted),
         UserRating: ToPatchDecimal(request.UserRating),
-        LibraryOrder: ToPatchInt(request.LibraryOrder));
+        LibraryOrder: ToPatchInt(request.LibraryOrder),
+        Title: titlePatch,
+        Subtitle: subtitlePatch);
 
     try
     {
