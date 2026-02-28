@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import BookCard from '../components/BookCard.tsx'
 import CardCatalogView from '../components/CardCatalogView.tsx'
@@ -141,17 +141,33 @@ function LibraryPage() {
   const initialLoadDone = useRef(false)
   const pendingScrollRestore = useRef(true)
 
-  // Save scroll position on scroll and before unload
+  // Save scroll position on scroll
   useEffect(() => {
     const saveScroll = () => sessionStorage.setItem(SCROLL_STORAGE_KEY, String(window.scrollY))
     window.addEventListener('scroll', saveScroll, { passive: true })
-    window.addEventListener('beforeunload', saveScroll)
     return () => {
       saveScroll()
       window.removeEventListener('scroll', saveScroll)
-      window.removeEventListener('beforeunload', saveScroll)
     }
   }, [])
+
+  // Restore scroll position once after initial book load renders
+  useLayoutEffect(() => {
+    if (!pendingScrollRestore.current || books.length === 0) return
+    pendingScrollRestore.current = false
+    const saved = sessionStorage.getItem(SCROLL_STORAGE_KEY)
+    if (saved) {
+      const y = parseInt(saved, 10)
+      if (!isNaN(y) && y > 0) {
+        // Double rAF ensures React has committed the DOM and the browser has painted
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            window.scrollTo(0, y)
+          })
+        })
+      }
+    }
+  }, [books])
 
   useEffect(() => {
     if (selectedHousehold) {
@@ -212,18 +228,6 @@ function LibraryPage() {
     } finally {
       setIsLoading(false)
       setIsSearching(false)
-
-      // Restore scroll position after initial load
-      if (pendingScrollRestore.current) {
-        pendingScrollRestore.current = false
-        requestAnimationFrame(() => {
-          const saved = sessionStorage.getItem(SCROLL_STORAGE_KEY)
-          if (saved) {
-            const y = parseInt(saved, 10)
-            if (!isNaN(y) && y > 0) window.scrollTo(0, y)
-          }
-        })
-      }
     }
   }
 
