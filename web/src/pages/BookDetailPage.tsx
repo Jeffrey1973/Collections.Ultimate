@@ -17,7 +17,7 @@ function BookDetailPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-    new Set(['basic', 'identifiers']) // Start with basic and identifiers expanded
+    new Set(['identifiers']) // Start with identifiers expanded
   )
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -569,6 +569,14 @@ function BookDetailPage() {
                 <div style={{ fontSize: '0.875rem', color: '#1e293b' }}>📍 {book.location}</div>
               </div>
             )}
+            {book.language && (
+              <div>
+                <div style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
+                  Language
+                </div>
+                <div style={{ fontSize: '0.875rem', color: '#1e293b' }}>{book.language}</div>
+              </div>
+            )}
           </div>
 
           {/* Description */}
@@ -587,7 +595,7 @@ function BookDetailPage() {
 
       {/* Collapsible Field Categories */}
       <div style={{ marginBottom: '2rem' }}>
-        {FIELD_CATEGORIES.map((category) => {
+        {FIELD_CATEGORIES.filter(c => c.key !== 'basic').map((category) => {
           const fields = FIELD_DEFINITIONS.filter(f => f.category === category.key)
           const hasData = fields.some(field => {
             const value = (book as any)[field.key]
