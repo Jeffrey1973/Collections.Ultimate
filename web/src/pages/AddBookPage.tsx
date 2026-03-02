@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import BarcodeScanner from '../components/BarcodeScanner'
 import BookSelectionModal from '../components/BookSelectionModal'
 import { searchBook, searchBookMultiple, Book, type SearchHints } from '../api/books'
@@ -22,6 +22,7 @@ const SEARCH_HINT_FIELD_KEYS: string[] = [
 
 function AddBookPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { selectedHousehold, isLoading: isLoadingHousehold } = useHousehold()
   const [showScanner, setShowScanner] = useState(false)
   const [showBookSelection, setShowBookSelection] = useState(false)
@@ -65,6 +66,26 @@ function AddBookPage() {
 
   // Derived: whether a book has been populated from search results
   const isBookPopulated = !!(formData.title && (formData.title as string).trim())
+
+  // Pre-populate form when duplicating from an existing book
+  useEffect(() => {
+    const state = location.state as { duplicateFrom?: Partial<Book> } | null
+    if (state?.duplicateFrom) {
+      const src = state.duplicateFrom
+      setFormData(prev => ({
+        ...prev,
+        ...src,
+        // Clear title prefix to signal this is a copy
+        title: src.title ? `${src.title} (Copy)` : prev.title,
+      }))
+      // Also populate custom fields if present
+      if (src.customFields && typeof src.customFields === 'object') {
+        setCustomFields(src.customFields as Record<string, any>)
+      }
+      // Clear the state so refreshing doesn't re-duplicate
+      window.history.replaceState({}, '')
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (selectedHousehold) {

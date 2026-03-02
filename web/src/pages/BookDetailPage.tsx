@@ -301,6 +301,22 @@ function BookDetailPage() {
             ✏️ Edit
           </button>
           <button
+            onClick={() => {
+              // Copy all book data but strip unique identifiers so it becomes a new entry
+              const { id: _id, householdId: _hid, dateAdded: _da, lastUpdated: _lu,
+                      enrichedAt: _ea, inventoryVerifiedDate: _iv, etag: _et,
+                      selfLink: _sl, ...copyData } = book as any
+              navigate('/add-book', { state: { duplicateFrom: copyData } })
+            }}
+            style={{
+              padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid #f59e0b',
+              background: '#fffbeb', color: '#d97706', fontWeight: 600, cursor: 'pointer',
+              fontSize: '0.85rem',
+            }}
+          >
+            📋 Duplicate
+          </button>
+          <button
             onClick={handleVerifyToggle}
             disabled={isVerifying}
             style={{
