@@ -488,6 +488,84 @@ app.MapDelete("/api/households/{householdId:guid}/locations/{locationId:guid}", 
     }
 }).RequireAuthorization();
 
+// ─── User Preferences ────────────────────────────────────────────────────────
+
+// Get a preference value by key for the current user
+app.MapGet("/api/me/preferences/{key}", async (
+    string key,
+    HttpContext http,
+    IAccountRepository accountRepo,
+    System.Data.IDbConnection db,
+    CancellationToken ct) =>
+{
+    var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
+           ?? http.User.FindFirstValue("sub");
+    if (string.IsNullOrEmpty(sub)) return Results.Unauthorized();
+    var account = await accountRepo.GetByAuth0SubAsync(sub, ct);
+    if (account is null) return Results.Unauthorized();
+
+    var value = await Dapper.SqlMapper.QuerySingleOrDefaultAsync<string>(db,
+        "SELECT Value FROM dbo.UserPreference WHERE AccountId = @AccountId AND [Key] = @Key",
+        new { AccountId = account.Id.Value, Key = key });
+
+    if (value is null) return Results.NotFound();
+    // Return raw JSON stored in Value
+    return Results.Content(value, "application/json");
+}).RequireAuthorization();
+
+// Get all preferences for the current user (returns { key: value } dictionary)
+app.MapGet("/api/me/preferences", async (
+    HttpContext http,
+    IAccountRepository accountRepo,
+    System.Data.IDbConnection db,
+    CancellationToken ct) =>
+{
+    var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
+           ?? http.User.FindFirstValue("sub");
+    if (string.IsNullOrEmpty(sub)) return Results.Unauthorized();
+    var account = await accountRepo.GetByAuth0SubAsync(sub, ct);
+    if (account is null) return Results.Unauthorized();
+
+    var rows = await Dapper.SqlMapper.QueryAsync<(string Key, string Value)>(db,
+        "SELECT [Key], Value FROM dbo.UserPreference WHERE AccountId = @AccountId",
+        new { AccountId = account.Id.Value });
+
+    var dict = new Dictionary<string, System.Text.Json.JsonElement>();
+    foreach (var row in rows)
+    {
+        try { dict[row.Key] = System.Text.Json.JsonDocument.Parse(row.Value).RootElement.Clone(); }
+        catch { /* skip malformed */ }
+    }
+    return Results.Ok(dict);
+}).RequireAuthorization();
+
+// Upsert a preference value by key for the current user
+app.MapPut("/api/me/preferences/{key}", async (
+    string key,
+    System.Text.Json.JsonElement body,
+    HttpContext http,
+    IAccountRepository accountRepo,
+    System.Data.IDbConnection db,
+    CancellationToken ct) =>
+{
+    var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
+           ?? http.User.FindFirstValue("sub");
+    if (string.IsNullOrEmpty(sub)) return Results.Unauthorized();
+    var account = await accountRepo.GetByAuth0SubAsync(sub, ct);
+    if (account is null) return Results.Unauthorized();
+
+    var json = body.GetRawText();
+    await Dapper.SqlMapper.ExecuteAsync(db, """
+        MERGE dbo.UserPreference AS tgt
+        USING (SELECT @AccountId AS AccountId, @Key AS [Key]) AS src
+            ON tgt.AccountId = src.AccountId AND tgt.[Key] = src.[Key]
+        WHEN MATCHED THEN UPDATE SET Value = @Value, UpdatedUtc = SYSUTCDATETIME()
+        WHEN NOT MATCHED THEN INSERT (AccountId, [Key], Value) VALUES (@AccountId, @Key, @Value);
+    """, new { AccountId = account.Id.Value, Key = key, Value = json });
+
+    return Results.Ok(new { key, saved = true });
+}).RequireAuthorization();
+
 // ─── Household Categories (user-defined master list) ─────────────────────────
 
 // List all defined categories for a household

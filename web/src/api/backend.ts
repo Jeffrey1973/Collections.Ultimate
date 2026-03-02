@@ -74,6 +74,25 @@ export async function getAllHouseholdCategories(householdId: string): Promise<st
   return resp.json()
 }
 
+// ─── User Preferences ──────────────────────────────────────────────────────
+
+/** Get a single preference by key. Returns parsed JSON or null if not found. */
+export async function getUserPreference<T = any>(key: string): Promise<T | null> {
+  const resp = await authFetch(`${API_BASE_URL}/api/me/preferences/${encodeURIComponent(key)}`)
+  if (resp.status === 404) return null
+  if (!resp.ok) throw new Error('Failed to fetch preference')
+  return resp.json()
+}
+
+/** Save a preference by key (upsert). Value is serialized as JSON. */
+export async function setUserPreference(key: string, value: any): Promise<void> {
+  await authFetch(`${API_BASE_URL}/api/me/preferences/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(value)
+  })
+}
+
 /**
  * Create a new category in the household's master list.
  * Returns the created category's id, or null if it already exists (409).

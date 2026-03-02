@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import BookCard from '../components/BookCard.tsx'
 import CardCatalogView from '../components/CardCatalogView.tsx'
 import { Book } from '../api/books'
-import { getItems, getHouseholdLocations, mapSearchResultToBook, softDeleteItem, hardDeleteItem } from '../api/backend'
+import { getItems, getHouseholdLocations, mapSearchResultToBook, softDeleteItem, hardDeleteItem, getUserPreference, setUserPreference } from '../api/backend'
 import { useHousehold } from '../context/HouseholdContext'
 import { FIELD_DEFINITIONS, FIELD_CATEGORIES, type CategoryKey } from '../config/field-config'
 
@@ -117,12 +117,34 @@ function LibraryPage() {
     }
   }, [showToolsMenu])
 
-  // Persist display field choices
+  // Persist display field choices (localStorage = fast, API = durable)
+  const saveFieldsTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fieldsLoadedFromApi = useRef(false)
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(displayFields))
+    // Debounce API save (skip initial load from API to avoid writing back what we just read)
+    if (fieldsLoadedFromApi.current) {
+      if (saveFieldsTimer.current) clearTimeout(saveFieldsTimer.current)
+      saveFieldsTimer.current = setTimeout(() => {
+        setUserPreference('library_display_fields', displayFields).catch(() => {})
+      }, 1000)
+    }
   }, [displayFields])
 
-  // Persist filter choices
+  // Load display fields from API on mount (overrides localStorage)
+  useEffect(() => {
+    getUserPreference<string[]>('library_display_fields').then(saved => {
+      if (saved && Array.isArray(saved)) {
+        setDisplayFields(saved)
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(saved))
+      }
+      fieldsLoadedFromApi.current = true
+    }).catch(() => { fieldsLoadedFromApi.current = true })
+  }, [])
+
+  // Persist filter choices (localStorage = fast, API = durable)
+  const saveFiltersTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const filtersLoadedFromApi = useRef(false)
   useEffect(() => {
     const filters: SavedFilters = {
       enrichment: enrichmentFilter !== 'all' ? enrichmentFilter : undefined,
@@ -140,7 +162,35 @@ function LibraryPage() {
     } else {
       localStorage.removeItem(FILTERS_STORAGE_KEY)
     }
+    // Debounce API save
+    if (filtersLoadedFromApi.current) {
+      if (saveFiltersTimer.current) clearTimeout(saveFiltersTimer.current)
+      saveFiltersTimer.current = setTimeout(() => {
+        if (hasAny) {
+          setUserPreference('library_filters', filters).catch(() => {})
+        } else {
+          setUserPreference('library_filters', null).catch(() => {})
+        }
+      }, 1000)
+    }
   }, [enrichmentFilter, verifiedFilter, locationFilter, statusFilter, tagFilter, subjectFilter, searchQuery])
+
+  // Load filter preferences from API on mount
+  useEffect(() => {
+    getUserPreference<SavedFilters>('library_filters').then(saved => {
+      if (saved && typeof saved === 'object') {
+        if (saved.enrichment) setEnrichmentFilter(saved.enrichment)
+        if (saved.verified) setVerifiedFilter(saved.verified)
+        if (saved.location) setLocationFilter(saved.location)
+        if (saved.status) setStatusFilter(saved.status)
+        if (saved.tag) setTagFilter(saved.tag)
+        if (saved.subject) setSubjectFilter(saved.subject)
+        if (saved.search) setSearchQuery(saved.search)
+        localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(saved))
+      }
+      filtersLoadedFromApi.current = true
+    }).catch(() => { filtersLoadedFromApi.current = true })
+  }, [])
 
   const initialLoadDone = useRef(false)
   const pendingScrollRestore = useRef(true)
