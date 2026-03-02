@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import BookCard from '../components/BookCard.tsx'
 import CardCatalogView from '../components/CardCatalogView.tsx'
 import { Book } from '../api/books'
@@ -213,6 +213,9 @@ function LibraryPage() {
     }
   }, [books])
 
+  // Re-load whenever the household changes OR when we navigate back to this page
+  // (location.key changes on each navigation, ensuring fresh data after add/edit)
+  const location = useLocation()
   useEffect(() => {
     if (selectedHousehold) {
       initialLoadDone.current = true
@@ -222,7 +225,7 @@ function LibraryPage() {
         .then(setLocations)
         .catch(() => setLocations([]))
     }
-  }, [selectedHousehold])
+  }, [selectedHousehold, location.key])
 
   // Debounced search: fires 300ms after the user stops typing (skip initial mount)
   const searchMountSkipped = useRef(false)
