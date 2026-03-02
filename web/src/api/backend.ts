@@ -74,6 +74,21 @@ export async function getAllHouseholdCategories(householdId: string): Promise<st
   return resp.json()
 }
 
+/**
+ * Create a new category in the household's master list.
+ * Returns the created category's id, or null if it already exists (409).
+ */
+export async function createHouseholdCategory(householdId: string, name: string): Promise<{ id: string; name: string } | null> {
+  const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/categories`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  })
+  if (resp.status === 409) return null // already exists
+  if (!resp.ok) throw new Error('Failed to create category')
+  return resp.json()
+}
+
 /** Normalize a title the same way the backend does (uppercase, collapse whitespace). */
 export function normalizeTitle(title: string): string {
   return title.trim().replace(/\s+/g, ' ').toUpperCase()

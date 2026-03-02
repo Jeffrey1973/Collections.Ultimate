@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getItem, updateItem, mapItemResponseToBook, getAllHouseholdLocations, getAllHouseholdCategories, ContributorRole } from '../api/backend'
+import { getItem, updateItem, mapItemResponseToBook, getAllHouseholdLocations, getAllHouseholdCategories, createHouseholdCategory, ContributorRole } from '../api/backend'
 import { Book } from '../api/books'
 import { FIELD_CATEGORIES, FIELD_DEFINITIONS, type FieldConfig } from '../config/field-config'
 import { useHousehold } from '../context/HouseholdContext'
@@ -349,13 +349,19 @@ function BookEditPage() {
   }
 
   function addCategory() {
-    if (!newCategory.trim()) return
+    const trimmed = newCategory.trim()
+    if (!trimmed) return
     const currentCategories = Array.isArray(formData.categories) ? formData.categories : []
-    if (!currentCategories.includes(newCategory.trim())) {
+    if (!currentCategories.includes(trimmed)) {
       setFormData({ 
         ...formData, 
-        categories: [...currentCategories, newCategory.trim()] 
+        categories: [...currentCategories, trimmed] 
       })
+    }
+    // If this is a brand-new category not in the known list, persist it to the master list
+    if (!knownCategories.some(c => c.toLowerCase() === trimmed.toLowerCase()) && selectedHousehold) {
+      setKnownCategories(prev => [...prev, trimmed].sort((a, b) => a.localeCompare(b)))
+      createHouseholdCategory(selectedHousehold.id, trimmed).catch(() => {}) // best-effort
     }
     setNewCategory('')
   }
