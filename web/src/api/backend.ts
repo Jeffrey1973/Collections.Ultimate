@@ -661,28 +661,39 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
     })
   }
 
-  // Detailed contributors array
+  // Detailed contributors array — only add entries that weren't already
+  // covered by the flat author/translator/illustrator/editor/narrator fields
+  // to avoid duplicates when duplicating a book.
   if (book.contributors?.length > 0) {
+    const roleMap: Record<string, number> = {
+      'author': ContributorRole.Author,
+      'editor': ContributorRole.Editor,
+      'translator': ContributorRole.Translator,
+      'illustrator': ContributorRole.Illustrator,
+      'narrator': ContributorRole.Narrator,
+      'introduction': ContributorRole.Introduction,
+      'foreword': ContributorRole.Foreword,
+      'afterword': ContributorRole.Afterword,
+    }
+    
+    // Build a set of "name|roleId" keys already present from flat fields
+    const existing = new Set(
+      contributors.map(c => `${c.displayName.toLowerCase()}|${c.roleId}`)
+    )
+
     book.contributors.forEach((contrib: any) => {
-      const roleMap: Record<string, number> = {
-        'author': ContributorRole.Author,
-        'editor': ContributorRole.Editor,
-        'translator': ContributorRole.Translator,
-        'illustrator': ContributorRole.Illustrator,
-        'narrator': ContributorRole.Narrator,
-        'introduction': ContributorRole.Introduction,
-        'foreword': ContributorRole.Foreword,
-        'afterword': ContributorRole.Afterword,
-      }
-      
       const roleId = roleMap[contrib.role?.toLowerCase()] || ContributorRole.Contributor
+      const key = `${(contrib.name || '').toLowerCase()}|${roleId}`
       
-      contributors.push({
-        displayName: contrib.name,
-        roleId,
-        ordinal: contrib.ordinal || contributors.length + 1,
-        sortName: contrib.name
-      })
+      if (!existing.has(key)) {
+        contributors.push({
+          displayName: contrib.name,
+          roleId,
+          ordinal: contrib.ordinal || contributors.length + 1,
+          sortName: contrib.name
+        })
+        existing.add(key)
+      }
     })
   }
 
