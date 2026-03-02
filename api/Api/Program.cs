@@ -495,7 +495,7 @@ app.MapGet("/api/me/preferences/{key}", async (
     string key,
     HttpContext http,
     IAccountRepository accountRepo,
-    System.Data.IDbConnection db,
+    SqlConnectionFactory dbFactory,
     CancellationToken ct) =>
 {
     var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
@@ -504,6 +504,7 @@ app.MapGet("/api/me/preferences/{key}", async (
     var account = await accountRepo.GetByAuth0SubAsync(sub, ct);
     if (account is null) return Results.Unauthorized();
 
+    using var db = dbFactory.Create();
     var value = await Dapper.SqlMapper.QuerySingleOrDefaultAsync<string>(db,
         "SELECT Value FROM dbo.UserPreference WHERE AccountId = @AccountId AND [Key] = @Key",
         new { AccountId = account.Id.Value, Key = key });
@@ -517,7 +518,7 @@ app.MapGet("/api/me/preferences/{key}", async (
 app.MapGet("/api/me/preferences", async (
     HttpContext http,
     IAccountRepository accountRepo,
-    System.Data.IDbConnection db,
+    SqlConnectionFactory dbFactory,
     CancellationToken ct) =>
 {
     var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
@@ -526,6 +527,7 @@ app.MapGet("/api/me/preferences", async (
     var account = await accountRepo.GetByAuth0SubAsync(sub, ct);
     if (account is null) return Results.Unauthorized();
 
+    using var db = dbFactory.Create();
     var rows = await Dapper.SqlMapper.QueryAsync<(string Key, string Value)>(db,
         "SELECT [Key], Value FROM dbo.UserPreference WHERE AccountId = @AccountId",
         new { AccountId = account.Id.Value });
@@ -545,7 +547,7 @@ app.MapPut("/api/me/preferences/{key}", async (
     System.Text.Json.JsonElement body,
     HttpContext http,
     IAccountRepository accountRepo,
-    System.Data.IDbConnection db,
+    SqlConnectionFactory dbFactory,
     CancellationToken ct) =>
 {
     var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
@@ -554,6 +556,7 @@ app.MapPut("/api/me/preferences/{key}", async (
     var account = await accountRepo.GetByAuth0SubAsync(sub, ct);
     if (account is null) return Results.Unauthorized();
 
+    using var db = dbFactory.Create();
     var json = body.GetRawText();
     await Dapper.SqlMapper.ExecuteAsync(db, """
         MERGE dbo.UserPreference AS tgt
