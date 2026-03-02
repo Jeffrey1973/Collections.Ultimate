@@ -8,7 +8,7 @@ import { useHousehold } from '../context/HouseholdContext'
 import { FIELD_DEFINITIONS, FIELD_CATEGORIES, type CategoryKey } from '../config/field-config'
 
 // Default fields shown in list/grid/catalog views
-const DEFAULT_DISPLAY_FIELDS = ['author', 'publisher', 'publishedDate', 'isbn']
+const DEFAULT_DISPLAY_FIELDS = ['coverImage', 'author', 'publisher', 'publishedDate', 'isbn']
 
 // Fields that don't make sense to show as columns (images, large text, internal IDs)
 const EXCLUDED_DISPLAY_KEYS = new Set([
@@ -20,9 +20,13 @@ const EXCLUDED_DISPLAY_KEYS = new Set([
 ])
 
 // All choosable fields, grouped by category
-const ALL_DISPLAY_FIELDS: { key: string; label: string; category: CategoryKey }[] = FIELD_DEFINITIONS
-  .filter(f => !EXCLUDED_DISPLAY_KEYS.has(f.key as string))
-  .map(f => ({ key: f.key as string, label: f.label, category: f.category }))
+const ALL_DISPLAY_FIELDS: { key: string; label: string; category: CategoryKey }[] = [
+  // Special pseudo-field for cover image (not a raw URL column)
+  { key: 'coverImage', label: 'Cover Image', category: 'images' },
+  ...FIELD_DEFINITIONS
+    .filter(f => !EXCLUDED_DISPLAY_KEYS.has(f.key as string))
+    .map(f => ({ key: f.key as string, label: f.label, category: f.category }))
+]
 
 const STORAGE_KEY = 'library_display_fields'
 const FILTERS_STORAGE_KEY = 'library_filters'
@@ -953,9 +957,11 @@ function LibraryPage() {
       {!error && displayedBooks.length > 0 && (
         <>
           {viewMode === 'list' && (() => {
-            // Build grid template: cover + title + each display field + catalog icon + delete button
-            const colCount = 2 + displayFields.length + 2 // cover, title, ...fields, catalog, delete
-            const gridCols = `50px minmax(200px, 2fr) ${displayFields.map(() => 'minmax(100px, 1fr)').join(' ')} 32px 36px`
+            const showCover = displayFields.includes('coverImage')
+            const dataFields = displayFields.filter(f => f !== 'coverImage')
+            // Build grid template: optional cover + title + each display field + catalog icon + delete button
+            const colCount = (showCover ? 1 : 0) + 1 + dataFields.length + 2
+            const gridCols = `${showCover ? '50px ' : ''}minmax(200px, 2fr) ${dataFields.map(() => 'minmax(100px, 1fr)').join(' ')} 32px 36px`
             
             // Helper to format a field value for display
             const formatValue = (value: any): string => {
@@ -978,12 +984,10 @@ function LibraryPage() {
                   minWidth: `${colCount * 120}px`,
                 }}>
                   {/* Header row */}
-                  <div style={{
-                    display: 'contents',
-                  }}>
-                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1 }} />
+                  <div style={{ display: 'contents' }}>
+                    {showCover && <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1 }} />}
                     <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1 }}>Title</div>
-                    {displayFields.map(fieldKey => {
+                    {dataFields.map(fieldKey => {
                       const fieldDef = ALL_DISPLAY_FIELDS.find(f => f.key === fieldKey)
                       return (
                         <div key={fieldKey} style={{ padding: '0.5rem 0.75rem', fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1 }}>
@@ -1007,6 +1011,7 @@ function LibraryPage() {
                       }}
                     >
                       {/* Cover */}
+                      {showCover && (
                       <div data-book-id={book.id} style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
                         {book.coverImageUrl ? (
                           <img
@@ -1042,6 +1047,7 @@ function LibraryPage() {
                           }}>No Cover</div>
                         )}
                       </div>
+                      )}
 
                       {/* Title + badges */}
                       <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white', minWidth: 0 }}>
@@ -1060,7 +1066,7 @@ function LibraryPage() {
                       </div>
 
                       {/* Display fields — always render every column for alignment */}
-                      {displayFields.map(fieldKey => (
+                      {dataFields.map(fieldKey => (
                         <div
                           key={fieldKey}
                           style={{

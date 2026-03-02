@@ -18,11 +18,12 @@ function formatFieldValue(value: any): string | null {
 
 function BookCard({ book, displayFields }: BookCardProps) {
   // Use displayFields if provided, otherwise fall back to defaults
-  const fieldsToShow = displayFields ?? ['author', 'isbn']
+  const fieldsToShow = (displayFields ?? ['author', 'isbn']).filter(f => f !== 'coverImage')
+  const showCover = displayFields ? displayFields.includes('coverImage') : true
 
   return (
     <div className="card">
-      {book.coverImageUrl && (
+      {showCover && book.coverImageUrl && (
         <img
           src={book.coverImageUrl}
           alt={book.title}
