@@ -201,11 +201,11 @@ function BookDetailPage() {
     try {
       if (book.inventoryVerifiedDate) {
         await unverifyItem(id)
-        setBook(prev => prev ? { ...prev, inventoryVerifiedDate: undefined } : prev)
       } else {
-        const result = await verifyItem(id)
-        setBook(prev => prev ? { ...prev, inventoryVerifiedDate: result.inventoryVerifiedDate } : prev)
+        await verifyItem(id)
       }
+      // Re-fetch the full item to ensure all fields (including MetadataJson) are fresh
+      await loadBook(id)
     } catch (err) {
       console.error('Failed to toggle verification:', err)
       alert('Failed to update verification status')

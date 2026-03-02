@@ -75,8 +75,8 @@ function AddBookPage() {
       setFormData(prev => ({
         ...prev,
         ...src,
-        // Clear title prefix to signal this is a copy
-        title: src.title ? `${src.title} (Copy)` : prev.title,
+        // Keep the original title as-is (no suffix)
+        title: src.title || prev.title,
       }))
       // Also populate custom fields if present
       if (src.customFields && typeof src.customFields === 'object') {
