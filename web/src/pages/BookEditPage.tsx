@@ -152,21 +152,9 @@ function BookEditPage() {
         personId?: string; displayName: string; roleId: number; ordinal: number; sortName?: string
       }> = []
 
-      // Build from the detailed contributors array if present, otherwise from flat author string
-      if (Array.isArray(d.contributors) && d.contributors.length > 0) {
-        d.contributors.forEach((c: any, i: number) => {
-          if (c.name || c.displayName) {
-            contributors.push({
-              personId: c.personId,
-              displayName: c.name || c.displayName,
-              roleId: roleMap[c.role?.toLowerCase()] || ContributorRole.Contributor,
-              ordinal: c.ordinal ?? i,
-              sortName: c.sortName,
-            })
-          }
-        })
-      } else if (d.author) {
-        // Split flat author string into individual contributor records
+      // Always build author contributors from the flat author string (the user-editable field).
+      // The d.contributors array is stale structural data from load and doesn't reflect user edits.
+      if (d.author) {
         const names = d.author.split(/,\s*|;\s*/).filter((n: string) => n.trim())
         names.forEach((name: string, i: number) => {
           contributors.push({
@@ -177,7 +165,7 @@ function BookEditPage() {
         })
       }
 
-      // Also add translator, illustrator, editor, narrator if set as flat strings
+      // Always add translator, illustrator, editor, narrator from the flat string fields
       const extraRoles: Array<[string, number]> = [
         ['translator', ContributorRole.Translator],
         ['illustrator', ContributorRole.Illustrator],
@@ -185,7 +173,7 @@ function BookEditPage() {
         ['narrator', ContributorRole.Narrator],
       ]
       for (const [field, roleId] of extraRoles) {
-        if (d[field] && !contributors.some(c => c.roleId === roleId)) {
+        if (d[field]) {
           const names = (d[field] as string).split(/,\s*|;\s*/).filter((n: string) => n.trim())
           names.forEach((name: string, i: number) => {
             contributors.push({
