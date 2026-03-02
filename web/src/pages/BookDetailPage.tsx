@@ -577,6 +577,14 @@ function BookDetailPage() {
                 <div style={{ fontSize: '0.875rem', color: '#1e293b' }}>{book.language}</div>
               </div>
             )}
+            {(book as any).copies && Number((book as any).copies) > 1 && (
+              <div>
+                <div style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
+                  Copies
+                </div>
+                <div style={{ fontSize: '0.875rem', color: '#1e293b' }}>📚 {(book as any).copies}</div>
+              </div>
+            )}
           </div>
 
           {/* Description */}
