@@ -301,6 +301,7 @@ function BookDetailPage() {
             ✏️ Edit
           </button>
           <button
+            title="Copy this book's data into a new Add Book form"
             onClick={() => {
               // Copy all book data but strip unique identifiers so it becomes a new entry
               const { id: _id, householdId: _hid, dateAdded: _da, lastUpdated: _lu,
