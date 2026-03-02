@@ -474,48 +474,6 @@ function LibraryPage() {
                 >
                   <span>🔄</span> Review Duplicates
                 </button>
-                <div style={{ borderTop: '1px solid #e2e8f0', margin: '0.25rem 0' }} />
-                <div style={{ padding: '0.35rem 0.75rem', fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Filter by Enrichment
-                </div>
-                {(['all', 'unenriched', 'enriched'] as const).map((val) => (
-                  <button
-                    key={val}
-                    onClick={() => { setEnrichmentFilter(val); setShowToolsMenu(false) }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
-                      padding: '0.5rem 0.75rem', border: 'none', background: enrichmentFilter === val ? '#f0fdf4' : 'none',
-                      cursor: 'pointer', fontSize: '0.85rem', textAlign: 'left',
-                      color: enrichmentFilter === val ? '#16a34a' : '#334155',
-                      fontWeight: enrichmentFilter === val ? 600 : 400,
-                    }}
-                    onMouseEnter={(e) => { if (enrichmentFilter !== val) e.currentTarget.style.backgroundColor = '#f1f5f9' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = enrichmentFilter === val ? '#f0fdf4' : 'transparent' }}
-                  >
-                    {enrichmentFilter === val ? '●' : '○'} {val === 'all' ? 'All Books' : val === 'enriched' ? 'Enriched Only' : 'Unenriched Only'}
-                  </button>
-                ))}
-                <div style={{ borderTop: '1px solid #e2e8f0', margin: '0.25rem 0' }} />
-                <div style={{ padding: '0.35rem 0.75rem', fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Filter by Verification
-                </div>
-                {(['all', 'unverified', 'verified'] as const).map((val) => (
-                  <button
-                    key={`v-${val}`}
-                    onClick={() => { setVerifiedFilter(val); setShowToolsMenu(false) }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
-                      padding: '0.5rem 0.75rem', border: 'none', background: verifiedFilter === val ? '#eff6ff' : 'none',
-                      cursor: 'pointer', fontSize: '0.85rem', textAlign: 'left',
-                      color: verifiedFilter === val ? '#2563eb' : '#334155',
-                      fontWeight: verifiedFilter === val ? 600 : 400,
-                    }}
-                    onMouseEnter={(e) => { if (verifiedFilter !== val) e.currentTarget.style.backgroundColor = '#f1f5f9' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = verifiedFilter === val ? '#eff6ff' : 'transparent' }}
-                  >
-                    {verifiedFilter === val ? '●' : '○'} {val === 'all' ? 'All Books' : val === 'verified' ? 'Verified Only' : 'Unverified Only'}
-                  </button>
-                ))}
               </div>
             )}
           </div>
