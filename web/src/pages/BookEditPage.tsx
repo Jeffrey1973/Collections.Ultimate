@@ -65,6 +65,7 @@ function BookEditPage() {
   const [knownLocations, setKnownLocations] = useState<{id: string, name: string}[]>([])
   const [knownCategories, setKnownCategories] = useState<string[]>([])
   const [showCategorySuggestions, setShowCategorySuggestions] = useState(false)
+  const [categoryHighlight, setCategoryHighlight] = useState(-1)
   const categoryInputRef = useRef<HTMLInputElement>(null)
   const categoryDropdownRef = useRef<HTMLDivElement>(null)
 
@@ -453,15 +454,58 @@ function BookEditPage() {
                 onChange={(e) => {
                   setNewCategory(e.target.value)
                   setShowCategorySuggestions(true)
+                  setCategoryHighlight(-1)
                 }}
                 onFocus={() => setShowCategorySuggestions(true)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
+                  // Compute filtered list inline so arrow/enter work correctly
+                  const currentCats = Array.isArray(formData.categories) ? formData.categories.map((c: any) => typeof c === 'string' ? c : c?.name || '') : []
+                  const filtered = knownCategories.filter(cat =>
+                    !currentCats.includes(cat) &&
+                    (newCategory.trim() === '' || cat.toLowerCase().includes(newCategory.trim().toLowerCase()))
+                  )
+
+                  if (e.key === 'ArrowDown') {
                     e.preventDefault()
-                    addCategory()
-                    setShowCategorySuggestions(false)
+                    if (!showCategorySuggestions) setShowCategorySuggestions(true)
+                    setCategoryHighlight(prev => {
+                      const next = prev < filtered.length - 1 ? prev + 1 : 0
+                      // scroll into view
+                      setTimeout(() => {
+                        categoryDropdownRef.current?.children[next]?.scrollIntoView({ block: 'nearest' })
+                      }, 0)
+                      return next
+                    })
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    setCategoryHighlight(prev => {
+                      const next = prev > 0 ? prev - 1 : filtered.length - 1
+                      setTimeout(() => {
+                        categoryDropdownRef.current?.children[next]?.scrollIntoView({ block: 'nearest' })
+                      }, 0)
+                      return next
+                    })
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault()
+                    if (categoryHighlight >= 0 && categoryHighlight < filtered.length && showCategorySuggestions) {
+                      // Select the highlighted suggestion
+                      const selected = filtered[categoryHighlight]
+                      const cur = Array.isArray(formData.categories) ? formData.categories : []
+                      if (!cur.includes(selected)) {
+                        setFormData({ ...formData, categories: [...cur, selected] })
+                      }
+                      setNewCategory('')
+                      setShowCategorySuggestions(false)
+                      setCategoryHighlight(-1)
+                      categoryInputRef.current?.focus()
+                    } else {
+                      addCategory()
+                      setShowCategorySuggestions(false)
+                      setCategoryHighlight(-1)
+                    }
                   } else if (e.key === 'Escape') {
                     setShowCategorySuggestions(false)
+                    setCategoryHighlight(-1)
                   }
                 }}
                 placeholder="Type to search categories or add new…"
@@ -517,7 +561,7 @@ function BookEditPage() {
                     zIndex: 50
                   }}
                 >
-                  {filtered.map(cat => (
+                  {filtered.map((cat, idx) => (
                     <div
                       key={cat}
                       onClick={() => {
@@ -527,16 +571,18 @@ function BookEditPage() {
                         }
                         setNewCategory('')
                         setShowCategorySuggestions(false)
+                        setCategoryHighlight(-1)
                         categoryInputRef.current?.focus()
                       }}
                       style={{
                         padding: '0.5rem 0.75rem',
                         cursor: 'pointer',
                         fontSize: '0.875rem',
-                        borderBottom: '1px solid #f1f5f9'
+                        borderBottom: '1px solid #f1f5f9',
+                        backgroundColor: idx === categoryHighlight ? '#e0f2fe' : '#fff'
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f0f9ff')}
-                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#fff')}
+                      onMouseEnter={() => setCategoryHighlight(idx)}
+                      onMouseLeave={() => setCategoryHighlight(-1)}
                     >
                       {cat}
                     </div>
