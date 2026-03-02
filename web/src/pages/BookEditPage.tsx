@@ -14,23 +14,28 @@ function computeChangedFields(original: Partial<Book>, current: Partial<Book>): 
     'Title/Subtitle': ['title', 'subtitle', 'originalTitle'],
     'Author': ['author'],
     'Description': ['description'],
-    'Publisher/Date': ['publisher', 'publishedDate'],
+    'Publisher/Date': ['publisher', 'publishedDate', 'originalPublicationDate', 'copyright', 'printingHistory', 'printRun', 'colophon'],
     'Pages': ['pageCount'],
-    'Language': ['language'],
+    'Language': ['language', 'originalLanguage', 'translatedFrom'],
     'Location': ['location', 'locationId'],
     'Status': ['status'],
     'Condition': ['condition'],
-    'Read Status': ['readStatus', 'dateStarted', 'completedDate'],
-    'Rating': ['userRating'],
+    'Read Status': ['readStatus', 'dateStarted', 'completedDate', 'readCount'],
+    'Rating': ['userRating', 'userReviewText'],
     'Notes': ['notes'],
-    'Format/Binding': ['format', 'binding', 'editionStatement'],
-    'Categories': ['categories'],
-    'Identifiers': ['isbn', 'isbn13', 'isbn10', 'asin', 'lccn', 'oclcNumber', 'doi', 'issn', 'googleBooksId', 'goodreadsId', 'libraryThingId', 'olid'],
-    'Series': ['series', 'volumeNumber'],
+    'Format/Binding': ['format', 'binding', 'editionStatement', 'edition', 'printType'],
+    'Categories': ['categories', 'mainCategory'],
+    'Identifiers': ['isbn', 'isbn13', 'isbn10', 'asin', 'lccn', 'oclcNumber', 'oclcWorkId', 'doi', 'issn', 'googleBooksId', 'goodreadsId', 'libraryThingId', 'olid', 'dnbId', 'bnfId', 'nlaId', 'ndlId', 'lacId', 'blId'],
+    'Series': ['series', 'volumeNumber', 'numberOfVolumes'],
     'Contributors': ['translator', 'illustrator', 'editor', 'narrator'],
     'Price': ['purchasePrice', 'price'],
     'Barcode': ['barcode'],
     'Cover Image': ['coverImageUrl'],
+    'Classification': ['deweyDecimal', 'deweyEdition', 'lcc', 'lccEdition', 'callNumber', 'bisacCodes', 'thema', 'fastSubjects'],
+    'Physical': ['dimensions', 'weight', 'pagination', 'physicalDescription'],
+    'Content': ['tableOfContents', 'firstSentence', 'excerpt', 'byStatement', 'bibliography', 'quotes', 'trivia'],
+    'Historical': ['churchHistoryPeriod', 'dateWritten', 'religiousTradition'],
+    'Subjects': ['subjects'],
   }
 
   for (const [groupName, keys] of Object.entries(fieldGroups)) {
@@ -139,15 +144,6 @@ function BookEditPage() {
         : []
 
       // --- Build contributors from form data ---
-      const roleMap: Record<string, number> = {
-        author: ContributorRole.Author,
-        editor: ContributorRole.Editor,
-        translator: ContributorRole.Translator,
-        illustrator: ContributorRole.Illustrator,
-        narrator: ContributorRole.Narrator,
-        contributor: ContributorRole.Contributor,
-      }
-
       const contributors: Array<{
         personId?: string; displayName: string; roleId: number; ordinal: number; sortName?: string
       }> = []
@@ -200,6 +196,13 @@ function BookEditPage() {
         ['goodreadsId', IdentifierType.GoodreadsId],
         ['libraryThingId', IdentifierType.LibraryThingId],
         ['olid', IdentifierType.OpenLibraryId],
+        ['oclcWorkId', IdentifierType.OCLCWorkId],
+        ['dnbId', IdentifierType.DNB],
+        ['bnfId', IdentifierType.BNF],
+        ['nlaId', IdentifierType.NLA],
+        ['ndlId', IdentifierType.NDL],
+        ['lacId', IdentifierType.LAC],
+        ['blId', IdentifierType.BL],
       ]
       for (const [field, typeId, isPrimary] of idFields) {
         if (d[field]) {
@@ -241,6 +244,10 @@ function BookEditPage() {
         'readingAge', 'lexileScore', 'arLevel',
         'averageRating', 'ratingsCount', 'communityRating',
         'numberOfVolumes',
+        // Content & community fields
+        'byStatement', 'bibliography', 'originalLanguage',
+        'quotes', 'trivia', 'reviewsTextCount', 'fiveStarPercent',
+        'popularShelves', 'similarBooks',
       ]
       for (const key of workMetaFields) {
         if (d[key] !== undefined && d[key] !== null && d[key] !== '') {
@@ -259,6 +266,18 @@ function BookEditPage() {
         'coverImageUrl', 'coverImageSmallThumbnail', 'coverImageThumbnail',
         'coverImageSmall', 'coverImageMedium', 'coverImageLarge', 'coverImageExtraLarge',
         'maturityRating', 'textSnippet',
+        // Publication extras
+        'edition', 'printRun', 'colophon', 'translatedFrom',
+        // Access & availability
+        'viewability', 'embeddable', 'publicDomain', 'textToSpeechPermission',
+        'epubAvailable', 'epubDownloadLink', 'pdfAvailable', 'pdfDownloadLink',
+        'webReaderLink', 'quoteSharingAllowed',
+        // Sales
+        'saleability', 'isEbook', 'saleCountry', 'onSaleDate',
+        'listPriceAmount', 'listPriceCurrency', 'retailPriceAmount', 'retailPriceCurrency',
+        'buyLink',
+        // Links
+        'previewLink', 'infoLink', 'canonicalVolumeLink',
       ]
       for (const key of editionMetaFields) {
         if (d[key] !== undefined && d[key] !== null && d[key] !== '') {
@@ -267,6 +286,27 @@ function BookEditPage() {
       }
       const editionMetadataJson = Object.keys(editionMeta).length > 0
         ? JSON.stringify(editionMeta) : undefined
+
+      // --- Build Item MetadataJson (user-specific and commercial fields) ---
+      const itemMeta: Record<string, any> = {}
+      const itemMetaFields = [
+        'userReviewText', 'readCount', 'isPurchased', 'isPreordered',
+        'currentPrice', 'discount', 'usedPrices', 'availability',
+        'bestsellerRank', 'librariesOwning', 'nearbyLibraries',
+        'dataSources', 'lastUpdated', 'enrichedAt', 'enrichmentSources',
+        'acquisitionSource', 'fromWhere', 'purchasePrice', 'bookValue',
+        'copies', 'privateNotes', 'collections',
+        'lendingPatron', 'lendingStatus', 'lendingStart', 'lendingEnd',
+        'ltBookId', 'ltWorkId', 'deweyWording',
+        'customFields', 'inventoryVerifiedDate',
+      ]
+      for (const key of itemMetaFields) {
+        if (d[key] !== undefined && d[key] !== null && d[key] !== '') {
+          itemMeta[key] = d[key]
+        }
+      }
+      const itemMetadataJson = Object.keys(itemMeta).length > 0
+        ? JSON.stringify(itemMeta) : undefined
 
       // --- Send full PATCH ---
       await updateItem(id, {
@@ -304,6 +344,8 @@ function BookEditPage() {
           language: d.language || null,
           metadataJson: editionMetadataJson ?? null,
         },
+        // Item-level metadata
+        itemMetadataJson: itemMetadataJson ?? undefined,
         // Related entities
         contributors: contributors.length > 0 ? contributors : undefined,
         subjects: subjects.length > 0 ? subjects : undefined,

@@ -1822,6 +1822,22 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     dateWritten: workMetadata.dateWritten,
     religiousTradition: workMetadata.religiousTradition,
     
+    // Enhanced content fields
+    byStatement: workMetadata.byStatement,
+    bibliography: workMetadata.bibliography,
+    originalLanguage: workMetadata.originalLanguage,
+    quotes: workMetadata.quotes,
+    trivia: workMetadata.trivia,
+    reviewsTextCount: workMetadata.reviewsTextCount,
+    fiveStarPercent: workMetadata.fiveStarPercent,
+    popularShelves: workMetadata.popularShelves,
+    similarBooks: workMetadata.similarBooks,
+
+    // Publication extras
+    printRun: editionMetadata.printRun,
+    colophon: editionMetadata.colophon,
+    translatedFrom: editionMetadata.translatedFrom,
+    
     // Google Books Specific
     etag: editionMetadata.etag,
     selfLink: editionMetadata.selfLink,
@@ -1870,8 +1886,13 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     publicDomain: editionMetadata.publicDomain,
     textToSpeechPermission: editionMetadata.textToSpeechPermission,
     epubAvailable: editionMetadata.epubAvailable,
+    epubDownloadLink: editionMetadata.epubDownloadLink,
     pdfAvailable: editionMetadata.pdfAvailable,
+    pdfDownloadLink: editionMetadata.pdfDownloadLink,
     webReaderLink: editionMetadata.webReaderLink,
+    quoteSharingAllowed: editionMetadata.quoteSharingAllowed,
+    previewLink: editionMetadata.previewLink,
+    infoLink: editionMetadata.infoLink,
     
     // User-Specific
     location: item.locationName || itemMetadata.pln,
@@ -1880,6 +1901,9 @@ export function mapItemResponseToBook(item: ItemResponse): any {
     completedDate: item.completedDate || itemMetadata.completedDate,
     dateStarted: item.dateStarted || itemMetadata.dateStarted,
     readCount: itemMetadata.readCount,
+    isPurchased: itemMetadata.isPurchased,
+    isPreordered: itemMetadata.isPreordered,
+    userReviewText: itemMetadata.userReviewText,
     userRating: item.userRating,
     status: item.status,
     condition: item.condition || itemMetadata.condition,
