@@ -217,6 +217,15 @@ export const FIELD_DEFINITIONS: FieldConfig[] = [
     category: 'basic',
     source: 'google-books',
   },
+  {
+    key: 'copies' as keyof Book,
+    label: 'Number of Copies',
+    type: 'number',
+    category: 'basic',
+    description: 'How many identical copies you own (leave blank or 1 for a single copy)',
+    placeholder: '1',
+    source: 'user',
+  },
 
   // ===== HISTORICAL & THEOLOGICAL =====
   {
