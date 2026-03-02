@@ -2020,6 +2020,8 @@ export interface ItemEventEntry {
   notes: string | null
   detailJson: string | null
   createdUtc: string
+  accountId: string | null
+  accountName: string | null
 }
 
 export interface CreateItemEventRequest {

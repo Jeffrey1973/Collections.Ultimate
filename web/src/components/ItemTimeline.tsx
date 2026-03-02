@@ -275,6 +275,11 @@ export default function ItemTimeline({ itemId }: ItemTimelineProps) {
                     <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: '#94a3b8' }}>
                       {formatDate(evt.occurredUtc)}
                     </span>
+                    {evt.accountName && (
+                      <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic' }}>
+                        by {evt.accountName}
+                      </span>
+                    )}
                   </div>
                   <button
                     onClick={() => handleDeleteEvent(evt.id)}

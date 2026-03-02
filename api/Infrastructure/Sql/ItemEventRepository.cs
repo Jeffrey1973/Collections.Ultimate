@@ -25,8 +25,8 @@ public sealed class ItemEventRepository : IItemEventRepository
     public async Task CreateAsync(ItemEvent evt, CancellationToken ct)
     {
         const string sql = """
-            INSERT INTO dbo.ItemEvent (Id, ItemId, EventTypeId, OccurredUtc, Notes, DetailJson, CreatedUtc)
-            VALUES (@Id, @ItemId, @EventTypeId, @OccurredUtc, @Notes, @DetailJson, @CreatedUtc)
+            INSERT INTO dbo.ItemEvent (Id, ItemId, EventTypeId, OccurredUtc, Notes, DetailJson, CreatedUtc, AccountId)
+            VALUES (@Id, @ItemId, @EventTypeId, @OccurredUtc, @Notes, @DetailJson, @CreatedUtc, @AccountId)
             """;
 
         using var conn = _connectionFactory.Create();
@@ -38,7 +38,8 @@ public sealed class ItemEventRepository : IItemEventRepository
             evt.OccurredUtc,
             evt.Notes,
             evt.DetailJson,
-            evt.CreatedUtc
+            evt.CreatedUtc,
+            evt.AccountId
         });
     }
 
@@ -55,9 +56,12 @@ public sealed class ItemEventRepository : IItemEventRepository
                 e.OccurredUtc,
                 e.Notes,
                 e.DetailJson,
-                e.CreatedUtc
+                e.CreatedUtc,
+                e.AccountId,
+                a.DisplayName AS AccountName
             FROM dbo.ItemEvent e
             INNER JOIN dbo.ItemEventType t ON t.Id = e.EventTypeId
+            LEFT JOIN dbo.Account a ON a.Id = e.AccountId
             WHERE e.ItemId = @ItemId
             ORDER BY e.OccurredUtc DESC
             """;

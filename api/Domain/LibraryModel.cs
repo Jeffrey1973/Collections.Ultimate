@@ -353,6 +353,8 @@ public sealed class ItemEvent
     /// <summary>Structured context as JSON (e.g. {"shelf":"A3"}, {"lentTo":"John"}).</summary>
     public string? DetailJson { get; init; }
     public DateTimeOffset CreatedUtc { get; init; } = DateTimeOffset.UtcNow;
+    /// <summary>The account that performed this action (nullable for legacy rows).</summary>
+    public Guid? AccountId { get; init; }
 }
 
 /// <summary>
@@ -370,4 +372,6 @@ public sealed class ItemEventEntry
     public string? Notes { get; init; }
     public string? DetailJson { get; init; }
     public DateTimeOffset CreatedUtc { get; init; }
+    public Guid? AccountId { get; init; }
+    public string? AccountName { get; init; }
 }

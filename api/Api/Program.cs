@@ -1379,6 +1379,8 @@ app.MapPost("/api/items/{itemId:guid}/events", async (
     CreateItemEventRequest request,
     IItemEventRepository repo,
     ILibraryItemRepository itemRepo,
+    IAccountRepository accountRepo,
+    HttpContext http,
     CancellationToken ct) =>
 {
     // Verify item exists
@@ -1386,13 +1388,24 @@ app.MapPost("/api/items/{itemId:guid}/events", async (
     if (item is null)
         return Results.NotFound();
 
+    // Resolve current user
+    Guid? accountId = null;
+    var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
+           ?? http.User.FindFirstValue("sub");
+    if (!string.IsNullOrEmpty(sub))
+    {
+        var account = await accountRepo.GetByAuth0SubAsync(sub, ct);
+        accountId = account?.Id.Value;
+    }
+
     var evt = new ItemEvent
     {
         ItemId = new ItemId(itemId),
         EventTypeId = request.EventTypeId,
         OccurredUtc = request.OccurredUtc ?? DateTimeOffset.UtcNow,
         Notes = request.Notes,
-        DetailJson = request.DetailJson
+        DetailJson = request.DetailJson,
+        AccountId = accountId
     };
 
     await repo.CreateAsync(evt, ct);
