@@ -78,12 +78,12 @@ public sealed class WorkRepository : IWorkRepository
         const string sql = """
             update dbo.Work
             set Title = @Title,
-                Subtitle = coalesce(@Subtitle, Subtitle),
-                SortTitle = coalesce(@SortTitle, SortTitle),
-                Description = coalesce(@Description, Description),
-                OriginalTitle = coalesce(@OriginalTitle, OriginalTitle),
-                Language = coalesce(@Language, Language),
-                MetadataJson = coalesce(@MetadataJson, MetadataJson),
+                Subtitle = @Subtitle,
+                SortTitle = @SortTitle,
+                Description = @Description,
+                OriginalTitle = @OriginalTitle,
+                Language = @Language,
+                MetadataJson = @MetadataJson,
                 NormalizedTitle = @NormalizedTitle
             where Id = @Id;
             """;

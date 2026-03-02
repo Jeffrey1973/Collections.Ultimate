@@ -141,16 +141,16 @@ public sealed class EditionRepository : IEditionRepository
     {
         const string sql = """
             update dbo.Edition
-            set Publisher = coalesce(@Publisher, Publisher),
-                PublishedYear = coalesce(@PublishedYear, PublishedYear),
-                PageCount = coalesce(@PageCount, PageCount),
-                Description = coalesce(@Description, Description),
-                Format = coalesce(@Format, Format),
-                Binding = coalesce(@Binding, Binding),
-                EditionStatement = coalesce(@EditionStatement, EditionStatement),
-                PlaceOfPublication = coalesce(@PlaceOfPublication, PlaceOfPublication),
-                Language = coalesce(@Language, Language),
-                MetadataJson = coalesce(@MetadataJson, MetadataJson)
+            set Publisher = @Publisher,
+                PublishedYear = @PublishedYear,
+                PageCount = @PageCount,
+                Description = @Description,
+                Format = @Format,
+                Binding = @Binding,
+                EditionStatement = @EditionStatement,
+                PlaceOfPublication = @PlaceOfPublication,
+                Language = @Language,
+                MetadataJson = @MetadataJson
             where Id = @Id;
             """;
 

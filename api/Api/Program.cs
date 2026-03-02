@@ -1685,41 +1685,54 @@ app.MapPatch("/api/items/{itemId:guid}", async (
     try
     {
     // --- Update Work fields ---
+    // Fetch current Work so we can fall back to existing values for unspecified fields
+    // (direct assignment in SQL means null = clear, so unspecified must get current value)
     if (request.Work is not null)
     {
         var w = request.Work;
-        var title = ToPatchString(w.Title);
-        // Only call update if at least the title is resolvable
-        var resolvedTitle = title.IsSpecified ? title.Value : null;
-        // We always send all fields; unspecified means "leave as-is" handled by coalesce
+        var currentWork = await workRepo.GetByIdAsync(item.WorkId, ct);
+
+        static T Resolve<T>(PatchField<T> patch, T currentValue) =>
+            patch.IsSpecified ? patch.Value! : currentValue;
+        static T? ResolveNullable<T>(PatchField<T> patch, T? currentValue) where T : class =>
+            patch.IsSpecified ? patch.Value : currentValue;
+
         await workRepo.UpdateAsync(
             item.WorkId,
-            resolvedTitle ?? item.Title, // fallback to current title
-            ToPatchString(w.Subtitle) is { IsSpecified: true } sub ? sub.Value : null,
-            ToPatchString(w.SortTitle) is { IsSpecified: true } st ? st.Value : null,
-            ToPatchString(w.Description) is { IsSpecified: true } desc ? desc.Value : null,
-            ToPatchString(w.OriginalTitle) is { IsSpecified: true } ot ? ot.Value : null,
-            ToPatchString(w.Language) is { IsSpecified: true } lng ? lng.Value : null,
-            ToPatchString(w.MetadataJson) is { IsSpecified: true } wmj ? wmj.Value : null,
+            Resolve(ToPatchString(w.Title), currentWork?.Title ?? item.Title),
+            ResolveNullable(ToPatchString(w.Subtitle), currentWork?.Subtitle),
+            ResolveNullable(ToPatchString(w.SortTitle), currentWork?.SortTitle),
+            ResolveNullable(ToPatchString(w.Description), currentWork?.Description),
+            ResolveNullable(ToPatchString(w.OriginalTitle), currentWork?.OriginalTitle),
+            ResolveNullable(ToPatchString(w.Language), currentWork?.Language),
+            ResolveNullable(ToPatchString(w.MetadataJson), currentWork?.MetadataJson),
             ct);
     }
 
     // --- Update Edition fields ---
+    // Same approach: fetch current Edition for fallback values
     if (request.Edition is not null && item.EditionId is { } editionId)
     {
         var e = request.Edition;
+        var currentEdition = await editionRepo.GetByIdAsync(editionId, ct);
+
+        static T? ResolveNullable2<T>(PatchField<T> patch, T? currentValue) where T : class =>
+            patch.IsSpecified ? patch.Value : currentValue;
+        static T? ResolveNullableStruct<T>(PatchField<T?> patch, T? currentValue) where T : struct =>
+            patch.IsSpecified ? patch.Value : currentValue;
+
         await editionRepo.UpdateAsync(
             editionId,
-            ToPatchString(e.Publisher) is { IsSpecified: true } pub ? pub.Value : null,
-            ToPatchInt(e.PublishedYear) is { IsSpecified: true } py ? (int?)py.Value : null,
-            ToPatchInt(e.PageCount) is { IsSpecified: true } pc ? (int?)pc.Value : null,
-            ToPatchString(e.Description) is { IsSpecified: true } edesc ? edesc.Value : null,
-            ToPatchString(e.Format) is { IsSpecified: true } fmt ? fmt.Value : null,
-            ToPatchString(e.Binding) is { IsSpecified: true } bnd ? bnd.Value : null,
-            ToPatchString(e.EditionStatement) is { IsSpecified: true } es ? es.Value : null,
-            ToPatchString(e.PlaceOfPublication) is { IsSpecified: true } pop ? pop.Value : null,
-            ToPatchString(e.Language) is { IsSpecified: true } elng ? elng.Value : null,
-            ToPatchString(e.MetadataJson) is { IsSpecified: true } emj ? emj.Value : null,
+            ResolveNullable2(ToPatchString(e.Publisher), currentEdition?.Publisher),
+            ResolveNullableStruct(ToPatchInt(e.PublishedYear), currentEdition?.PublishedYear),
+            ResolveNullableStruct(ToPatchInt(e.PageCount), currentEdition?.PageCount),
+            ResolveNullable2(ToPatchString(e.Description), currentEdition?.Description),
+            ResolveNullable2(ToPatchString(e.Format), currentEdition?.Format),
+            ResolveNullable2(ToPatchString(e.Binding), currentEdition?.Binding),
+            ResolveNullable2(ToPatchString(e.EditionStatement), currentEdition?.EditionStatement),
+            ResolveNullable2(ToPatchString(e.PlaceOfPublication), currentEdition?.PlaceOfPublication),
+            ResolveNullable2(ToPatchString(e.Language), currentEdition?.Language),
+            ResolveNullable2(ToPatchString(e.MetadataJson), currentEdition?.MetadataJson),
             ct);
     }
 
