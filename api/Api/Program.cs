@@ -1088,10 +1088,12 @@ app.MapPost("/api/works/{workId:guid}/editions", async (Guid workId, CreateEditi
 }).RequireAuthorization();
 
 app.MapPost("/api/households/{householdId:guid}/items", async (
+    HttpContext http,
     Guid householdId,
     CreateItemRequest request,
     ILibraryItemRepository repo,
     IItemEventRepository eventRepo,
+    IAccountRepository accountRepo,
     CancellationToken ct) =>
 {
     var item = new LibraryItem
@@ -1119,6 +1121,7 @@ app.MapPost("/api/households/{householdId:guid}/items", async (
     await repo.CreateAsync(item, ct);
 
     // Auto-record "Acquired" event
+    var acctId = await ResolveAccountIdAsync(http, accountRepo);
     await eventRepo.CreateAsync(new ItemEvent
     {
         ItemId = item.Id,
@@ -1126,7 +1129,8 @@ app.MapPost("/api/households/{householdId:guid}/items", async (
         OccurredUtc = item.AcquiredOn.HasValue
             ? new DateTimeOffset(item.AcquiredOn.Value, TimeOnly.MinValue, TimeSpan.Zero)
             : DateTimeOffset.UtcNow,
-        Notes = "Added to library"
+        Notes = "Added to library",
+        AccountId = acctId
     }, ct);
 
     return Results.Created($"/api/items/{item.Id.Value}", item);
@@ -1159,6 +1163,7 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
     IMeilisearchService meili,
     IItemSearchRepository searchRepo,
     IItemEventRepository eventRepo,
+    IAccountRepository accountRepo,
     CancellationToken ct) =>
 {
     var work = new Work
@@ -1230,8 +1235,11 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
 
     await itemRepo.CreateAsync(item, ct);
 
+    // Resolve current user for event attribution
+    var acctId = await ResolveAccountIdAsync(http, accountRepo);
+
     // Auto-record "Acquired" event
-    _ = Task.Run(() => RecordAcquiredEventAsync(eventRepo, item.Id, request.Item.AcquiredOn));
+    _ = Task.Run(() => RecordAcquiredEventAsync(eventRepo, item.Id, request.Item.AcquiredOn, acctId));
 
     // Record source-specific event (Imported vs manual add)
     var source = http.Request.Query["source"].FirstOrDefault();
@@ -1245,7 +1253,8 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
                 {
                     ItemId = item.Id,
                     EventTypeId = 21, // Imported
-                    Notes = "Imported from file"
+                    Notes = "Imported from file",
+                    AccountId = acctId
                 }, CancellationToken.None);
             }
             catch { /* best-effort */ }
@@ -1306,8 +1315,17 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
     return Results.Created($"/api/items/{item.Id.Value}", response);
 }).RequireAuthorization();
 
-// Fire-and-forget: record the "Acquired" event for the newly created book
-static async Task RecordAcquiredEventAsync(IItemEventRepository eventRepo, ItemId itemId, DateOnly? acquiredOn)
+// ── Helpers: resolve current user + record "Acquired" event ──────────
+static async Task<Guid?> ResolveAccountIdAsync(HttpContext http, IAccountRepository accountRepo)
+{
+    var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
+           ?? http.User.FindFirstValue("sub");
+    if (string.IsNullOrEmpty(sub)) return null;
+    var account = await accountRepo.GetByAuth0SubAsync(sub, CancellationToken.None);
+    return account?.Id.Value;
+}
+
+static async Task RecordAcquiredEventAsync(IItemEventRepository eventRepo, ItemId itemId, DateOnly? acquiredOn, Guid? accountId = null)
 {
     try
     {
@@ -1318,7 +1336,8 @@ static async Task RecordAcquiredEventAsync(IItemEventRepository eventRepo, ItemI
             OccurredUtc = acquiredOn.HasValue
                 ? new DateTimeOffset(acquiredOn.Value, TimeOnly.MinValue, TimeSpan.Zero)
                 : DateTimeOffset.UtcNow,
-            Notes = "Added to library"
+            Notes = "Added to library",
+            AccountId = accountId
         }, CancellationToken.None);
     }
     catch { /* best-effort */ }
@@ -1450,6 +1469,7 @@ app.MapPatch("/api/items/{itemId:guid}", async (
     IMeilisearchService meili,
     IItemSearchRepository searchRepo,
     IItemEventRepository eventRepo,
+    IAccountRepository accountRepo,
     SqlConnectionFactory dbFactory,
     CancellationToken ct) =>
 {
@@ -1487,6 +1507,9 @@ app.MapPatch("/api/items/{itemId:guid}", async (
         return Results.Conflict(new { message = ex.Message });
     }
 
+    // Resolve current user for event attribution (before entering fire-and-forget)
+    var acctId = await ResolveAccountIdAsync(http, accountRepo);
+
     // Auto-record events for meaningful field changes (best-effort, fire-and-forget)
     _ = Task.Run(async () =>
     {
@@ -1499,7 +1522,8 @@ app.MapPatch("/api/items/{itemId:guid}", async (
                 {
                     ItemId = new ItemId(itemId),
                     EventTypeId = 19, // StatusChanged
-                    Notes = $"Status changed from \"{item.Status ?? "none"}\" to \"{patchStatus.Value ?? "none"}\""
+                    Notes = $"Status changed from \"{item.Status ?? "none"}\" to \"{patchStatus.Value ?? "none"}\"",
+                    AccountId = acctId
                 }, CancellationToken.None);
             }
 
@@ -1524,7 +1548,8 @@ app.MapPatch("/api/items/{itemId:guid}", async (
                 {
                     ItemId = new ItemId(itemId),
                     EventTypeId = 3, // Moved
-                    Notes = $"Moved from \"{oldName}\" to \"{newName}\""
+                    Notes = $"Moved from \"{oldName}\" to \"{newName}\"",
+                    AccountId = acctId
                 }, CancellationToken.None);
             }
 
@@ -1536,7 +1561,8 @@ app.MapPatch("/api/items/{itemId:guid}", async (
                     await eventRepo.CreateAsync(new ItemEvent
                     {
                         ItemId = new ItemId(itemId),
-                        EventTypeId = 4 // StartedReading
+                        EventTypeId = 4, // StartedReading
+                        AccountId = acctId
                     }, CancellationToken.None);
                 }
                 else if (patchRead.Value == "Read" && item.ReadStatus != "Read")
@@ -1544,7 +1570,8 @@ app.MapPatch("/api/items/{itemId:guid}", async (
                     await eventRepo.CreateAsync(new ItemEvent
                     {
                         ItemId = new ItemId(itemId),
-                        EventTypeId = 5 // FinishedReading
+                        EventTypeId = 5, // FinishedReading
+                        AccountId = acctId
                     }, CancellationToken.None);
                 }
             }
@@ -1556,7 +1583,8 @@ app.MapPatch("/api/items/{itemId:guid}", async (
                 {
                     ItemId = new ItemId(itemId),
                     EventTypeId = 14, // Rated
-                    Notes = $"Rated {patchRating.Value}"
+                    Notes = $"Rated {patchRating.Value}",
+                    AccountId = acctId
                 }, CancellationToken.None);
             }
         }
@@ -1577,7 +1605,8 @@ app.MapPatch("/api/items/{itemId:guid}", async (
                     {
                         ItemId = new ItemId(itemId),
                         EventTypeId = 22, // Enriched
-                        Notes = "Enriched from external API"
+                        Notes = "Enriched from external API",
+                        AccountId = acctId
                     }, CancellationToken.None);
                 }
                 else if (string.Equals(patchSource, "edit", StringComparison.OrdinalIgnoreCase))
@@ -1591,7 +1620,8 @@ app.MapPatch("/api/items/{itemId:guid}", async (
                     {
                         ItemId = new ItemId(itemId),
                         EventTypeId = 23, // Edited
-                        Notes = notes
+                        Notes = notes,
+                        AccountId = acctId
                     }, CancellationToken.None);
                 }
             }
@@ -1940,11 +1970,13 @@ app.MapDelete("/api/editions/{editionId:guid}/cover", async (
 // ─── Item custom cover (user-uploaded photo of actual book) ─────────────
 
 app.MapPost("/api/items/{itemId:guid}/cover", async (
+    HttpContext http,
     Guid itemId,
     IFormFile file,
     IBlobStorageService blobService,
     ILibraryItemRepository itemRepo,
     IItemEventRepository eventRepo,
+    IAccountRepository accountRepo,
     CancellationToken ct) =>
 {
     if (file.Length == 0)
@@ -1992,6 +2024,7 @@ app.MapPost("/api/items/{itemId:guid}/cover", async (
     await itemRepo.UpdateCustomCoverUrlAsync(new ItemId(itemId), url, ct);
 
     // Record cover-uploaded event (best-effort)
+    var acctId = await ResolveAccountIdAsync(http, accountRepo);
     _ = Task.Run(async () =>
     {
         try
@@ -2000,7 +2033,8 @@ app.MapPost("/api/items/{itemId:guid}/cover", async (
             {
                 ItemId = new ItemId(itemId),
                 EventTypeId = 16, // CoverUploaded
-                Notes = "Custom cover photo uploaded"
+                Notes = "Custom cover photo uploaded",
+                AccountId = acctId
             }, CancellationToken.None);
         }
         catch { /* best-effort */ }
@@ -2012,10 +2046,12 @@ app.MapPost("/api/items/{itemId:guid}/cover", async (
 .RequireAuthorization();
 
 app.MapDelete("/api/items/{itemId:guid}/cover", async (
+    HttpContext http,
     Guid itemId,
     IBlobStorageService blobService,
     ILibraryItemRepository itemRepo,
     IItemEventRepository eventRepo,
+    IAccountRepository accountRepo,
     CancellationToken ct) =>
 {
     var item = await itemRepo.GetByIdAsync(new ItemId(itemId), ct);
@@ -2035,6 +2071,7 @@ app.MapDelete("/api/items/{itemId:guid}/cover", async (
     await itemRepo.UpdateCustomCoverUrlAsync(new ItemId(itemId), null, ct);
 
     // Record cover-removed event (best-effort)
+    var acctId = await ResolveAccountIdAsync(http, accountRepo);
     _ = Task.Run(async () =>
     {
         try
@@ -2043,7 +2080,8 @@ app.MapDelete("/api/items/{itemId:guid}/cover", async (
             {
                 ItemId = new ItemId(itemId),
                 EventTypeId = 16, // CoverUploaded (cover change)
-                Notes = "Custom cover photo removed"
+                Notes = "Custom cover photo removed",
+                AccountId = acctId
             }, CancellationToken.None);
         }
         catch { /* best-effort */ }
@@ -2054,10 +2092,12 @@ app.MapDelete("/api/items/{itemId:guid}/cover", async (
 
 // ─── Inventory verification (mark a book as physically checked) ─────────
 app.MapPost("/api/items/{itemId:guid}/verify", async (
+    HttpContext http,
     Guid itemId,
     ILibraryItemRepository itemRepo,
     IItemUpdateRepository updateRepo,
     IItemEventRepository eventRepo,
+    IAccountRepository accountRepo,
     CancellationToken ct) =>
 {
     var item = await itemRepo.GetByIdAsync(new ItemId(itemId), ct);
@@ -2076,22 +2116,26 @@ app.MapPost("/api/items/{itemId:guid}/verify", async (
     await updateRepo.UpdateMetadataJsonAsync(new ItemId(itemId), newJson, ct);
 
     // Record event
+    var acctId = await ResolveAccountIdAsync(http, accountRepo);
     await eventRepo.CreateAsync(new ItemEvent
     {
         ItemId = new ItemId(itemId),
         EventTypeId = 24, // InventoryVerified
         OccurredUtc = verifiedDate,
-        Notes = "Inventory verified"
+        Notes = "Inventory verified",
+        AccountId = acctId
     }, ct);
 
     return Results.Ok(new { inventoryVerifiedDate = meta["inventoryVerifiedDate"] });
 }).RequireAuthorization();
 
 app.MapDelete("/api/items/{itemId:guid}/verify", async (
+    HttpContext http,
     Guid itemId,
     ILibraryItemRepository itemRepo,
     IItemUpdateRepository updateRepo,
     IItemEventRepository eventRepo,
+    IAccountRepository accountRepo,
     CancellationToken ct) =>
 {
     var item = await itemRepo.GetByIdAsync(new ItemId(itemId), ct);
@@ -2108,12 +2152,14 @@ app.MapDelete("/api/items/{itemId:guid}/verify", async (
     await updateRepo.UpdateMetadataJsonAsync(new ItemId(itemId), newJson, ct);
 
     // Record un-verify event
+    var acctId = await ResolveAccountIdAsync(http, accountRepo);
     await eventRepo.CreateAsync(new ItemEvent
     {
         ItemId = new ItemId(itemId),
         EventTypeId = 24, // InventoryVerified
         OccurredUtc = DateTimeOffset.UtcNow,
-        Notes = "Inventory verification removed"
+        Notes = "Inventory verification removed",
+        AccountId = acctId
     }, ct);
 
     return Results.NoContent();
