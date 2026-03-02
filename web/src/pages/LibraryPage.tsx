@@ -214,8 +214,9 @@ function LibraryPage() {
   }, [books])
 
   // Re-load whenever the household changes OR when we navigate back to this page
-  // (location.key changes on each navigation, ensuring fresh data after add/edit)
+  // (location.state?.refreshTs changes when AddBookPage/EditPage explicitly ask for a reload)
   const location = useLocation()
+  const refreshTs = (location.state as any)?.refreshTs
   useEffect(() => {
     if (selectedHousehold) {
       initialLoadDone.current = true
@@ -225,7 +226,7 @@ function LibraryPage() {
         .then(setLocations)
         .catch(() => setLocations([]))
     }
-  }, [selectedHousehold, location.key])
+  }, [selectedHousehold, refreshTs])
 
   // Debounced search: fires 300ms after the user stops typing (skip initial mount)
   const searchMountSkipped = useRef(false)

@@ -225,7 +225,7 @@ function AddBookPage() {
       }
       const bookRequest = mapBookToIngestRequest(finalData)
       await createBook(bookRequest, selectedHousehold.id)
-      navigate('/library')
+      navigate('/library', { state: { refreshTs: Date.now() } })
     } catch (err) {
       setError('Failed to add book. Is the backend API running on port 5259?')
       console.error('Failed to add book:', err)
