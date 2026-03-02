@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useHousehold } from '../context/HouseholdContext'
-import { createBook, mapBookToIngestRequest, getDedupIndex, normalizeTitle, getAllHouseholdLocations } from '../api/backend'
+import { createBook, mapBookToIngestRequest, getDedupIndex, normalizeTitle, getAllHouseholdLocations, createHouseholdLocation } from '../api/backend'
 import type { DedupIndex } from '../api/backend'
 import { lookupBookByISBN, searchBookMultiple } from '../api/books'
 import type { Book } from '../api/books'
@@ -698,7 +698,18 @@ export default function ImportBooksPage() {
 
         // Set location from physicalLocation or location field, resolve to LocationId
         const locationStr = mapped.physicalLocation || (mapped as any).location || (mapped as any).pln
-        const resolvedLocationId = locationStr ? locationMap.get(locationStr.toLowerCase()) : undefined
+        let resolvedLocationId = locationStr ? locationMap.get(locationStr.toLowerCase()) : undefined
+
+        // Auto-create the location if it doesn't exist yet
+        if (locationStr && !resolvedLocationId) {
+          try {
+            const created = await createHouseholdLocation(selectedHousehold.id, locationStr.trim())
+            resolvedLocationId = created.id
+            locationMap.set(locationStr.toLowerCase(), created.id)
+          } catch (locErr) {
+            console.warn(`Could not create location "${locationStr}":`, locErr)
+          }
+        }
 
         // Build the final book data for ingest
         const bookForSave: any = {

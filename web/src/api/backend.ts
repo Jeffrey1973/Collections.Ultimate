@@ -65,6 +65,22 @@ export async function getAllHouseholdLocations(householdId: string): Promise<{id
 }
 
 /**
+ * Create a new location in a household. Returns the created { id, name }.
+ */
+export async function createHouseholdLocation(
+  householdId: string,
+  name: string
+): Promise<{ id: string; name: string }> {
+  const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/locations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  if (!resp.ok) throw new Error('Failed to create location')
+  return resp.json()
+}
+
+/**
  * Get the union of user-defined household categories and tags already applied to books.
  * Returns sorted, deduplicated category name strings.
  */
