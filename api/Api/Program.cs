@@ -304,7 +304,7 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
     string? subject,
     string? barcode,
     string? status,
-    Guid? locationId,
+    string? locationId,
     string? verified,
     string? enriched,
     int? take,
@@ -315,6 +315,9 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
 {
     var actualTake = Math.Clamp(take ?? 500, 1, 10000);
     var actualSkip = Math.Max(skip ?? 0, 0);
+    // Parse locationId: "none" = no location assigned, valid GUID = specific location, null = no filter
+    var noLocation = string.Equals(locationId, "none", StringComparison.OrdinalIgnoreCase);
+    Guid? parsedLocationId = !noLocation && Guid.TryParse(locationId, out var locGuid) ? locGuid : null;
     // Parse verified/enriched tri-state: "true" | "false" | null (no filter)
     bool? verifiedFilter = verified?.ToLowerInvariant() switch { "true" => true, "false" => false, _ => null };
     bool? enrichedFilter = enriched?.ToLowerInvariant() switch { "true" => true, "false" => false, _ => null };
@@ -347,7 +350,8 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
         subject,
         barcode,
         status,
-        locationId,
+        parsedLocationId,
+        noLocation,
         verifiedFilter,
         enrichedFilter,
         actualTake,

@@ -21,6 +21,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         string? barcode,
         string? status,
         Guid? locationId,
+        bool noLocation,
         bool? verified,
         bool? enriched,
         int take,
@@ -43,6 +44,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         parameters.Add("Barcode", string.IsNullOrWhiteSpace(barcode) ? null : barcode.Trim());
         parameters.Add("Status", string.IsNullOrWhiteSpace(status) ? null : status.Trim());
         parameters.Add("Location", locationId);
+        parameters.Add("NoLocation", noLocation ? 1 : 0);
         parameters.Add("Verified", verified.HasValue ? (verified.Value ? 1 : 0) : (int?)null);
         parameters.Add("Enriched", enriched.HasValue ? (enriched.Value ? 1 : 0) : (int?)null);
         parameters.Add("Take", take);
@@ -169,6 +171,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
             where i.HouseholdId = @HouseholdId
               and (@Barcode is null or i.Barcode = @Barcode)
               and (@Status is null or i.Status = @Status)
+              and (@NoLocation = 0 or i.LocationId is null)
               and (@Location is null or i.LocationId = @Location)
               and (@Verified is null
                    or (@Verified = 1 and i.MetadataJson like N'%inventoryVerifiedDate%')

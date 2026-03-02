@@ -578,6 +578,7 @@ function LibraryPage() {
                 }}
               >
                 <option value="">All Locations</option>
+                <option value="none">No Location</option>
                 {locations.map(loc => (
                   <option key={loc.id} value={loc.id}>{loc.name}</option>
                 ))}
@@ -741,7 +742,7 @@ function LibraryPage() {
           <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 500 }}>Filters:</span>
           {locationFilter && (
             <button onClick={() => setLocationFilter('')} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.2rem 0.5rem', borderRadius: '12px', border: '1px solid #93c5fd', backgroundColor: '#eff6ff', color: '#2563eb', fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer' }}>
-              📍 {locations.find(l => l.id === locationFilter)?.name || 'Location'} ✕
+              📍 {locationFilter === 'none' ? 'No Location' : (locations.find(l => l.id === locationFilter)?.name || 'Location')} ✕
             </button>
           )}
           {statusFilter && (

@@ -12,6 +12,7 @@ public interface IItemSearchRepository
         string? barcode,
         string? status,
         Guid? locationId,
+        bool noLocation,
         bool? verified,
         bool? enriched,
         int take,
