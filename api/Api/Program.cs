@@ -488,6 +488,130 @@ app.MapDelete("/api/households/{householdId:guid}/locations/{locationId:guid}", 
     }
 }).RequireAuthorization();
 
+// ─── Household Categories (user-defined master list) ─────────────────────────
+
+// List all defined categories for a household
+app.MapGet("/api/households/{householdId:guid}/categories", async (
+    Guid householdId,
+    SqlConnectionFactory dbFactory,
+    CancellationToken ct) =>
+{
+    using var db = dbFactory.Create();
+    var categories = await Dapper.SqlMapper.QueryAsync<HouseholdCategoryResponse>(db,
+        """
+        SELECT Id, HouseholdId, Name, SortOrder, CreatedUtc
+        FROM dbo.HouseholdCategory
+        WHERE HouseholdId = @HouseholdId
+        ORDER BY SortOrder, Name
+        """,
+        new { HouseholdId = householdId });
+    return Results.Ok(categories);
+}).RequireAuthorization();
+
+// Get all unique tag/category names across the household (defined + in-use on books)
+app.MapGet("/api/households/{householdId:guid}/categories/all", async (
+    Guid householdId,
+    SqlConnectionFactory dbFactory,
+    CancellationToken ct) =>
+{
+    using var db = dbFactory.Create();
+    var names = await Dapper.SqlMapper.QueryAsync<string>(db,
+        """
+        SELECT DISTINCT Name FROM (
+            SELECT Name FROM dbo.HouseholdCategory WHERE HouseholdId = @HouseholdId
+            UNION
+            SELECT t.Name FROM dbo.Tag t WHERE t.HouseholdId = @HouseholdId
+        ) combined
+        ORDER BY Name
+        """,
+        new { HouseholdId = householdId });
+    return Results.Ok(names);
+}).RequireAuthorization();
+
+// Create a new category
+app.MapPost("/api/households/{householdId:guid}/categories", async (
+    Guid householdId,
+    CreateCategoryRequest req,
+    SqlConnectionFactory dbFactory,
+    CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Name))
+        return Results.BadRequest(new { message = "Name is required." });
+
+    var id = Guid.NewGuid();
+    using var db = dbFactory.Create();
+    try
+    {
+        await Dapper.SqlMapper.ExecuteAsync(db,
+            """
+            INSERT INTO dbo.HouseholdCategory (Id, HouseholdId, Name, SortOrder)
+            VALUES (@Id, @HouseholdId, @Name, @SortOrder)
+            """,
+            new
+            {
+                Id = id,
+                HouseholdId = householdId,
+                Name = req.Name.Trim(),
+                SortOrder = req.SortOrder ?? 0
+            });
+    }
+    catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 2601 || ex.Number == 2627)
+    {
+        return Results.Conflict(new { message = $"Category '{req.Name.Trim()}' already exists." });
+    }
+
+    return Results.Created($"/api/households/{householdId}/categories/{id}", new { id, name = req.Name.Trim() });
+}).RequireAuthorization();
+
+// Update a category
+app.MapPut("/api/households/{householdId:guid}/categories/{categoryId:guid}", async (
+    Guid householdId,
+    Guid categoryId,
+    CreateCategoryRequest req,
+    SqlConnectionFactory dbFactory,
+    CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Name))
+        return Results.BadRequest(new { message = "Name is required." });
+
+    using var db = dbFactory.Create();
+    try
+    {
+        var affected = await Dapper.SqlMapper.ExecuteAsync(db,
+            """
+            UPDATE dbo.HouseholdCategory
+            SET Name = @Name, SortOrder = @SortOrder
+            WHERE Id = @Id AND HouseholdId = @HouseholdId
+            """,
+            new
+            {
+                Id = categoryId,
+                HouseholdId = householdId,
+                Name = req.Name.Trim(),
+                SortOrder = req.SortOrder ?? 0
+            });
+        return affected > 0 ? Results.Ok(new { id = categoryId, name = req.Name.Trim() }) : Results.NotFound();
+    }
+    catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number is 2601 or 2627)
+    {
+        return Results.Conflict(new { message = $"Category '{req.Name.Trim()}' already exists." });
+    }
+}).RequireAuthorization();
+
+// Delete a category
+app.MapDelete("/api/households/{householdId:guid}/categories/{categoryId:guid}", async (
+    Guid householdId,
+    Guid categoryId,
+    SqlConnectionFactory dbFactory,
+    CancellationToken ct) =>
+{
+    using var db = dbFactory.Create();
+    var affected = await Dapper.SqlMapper.ExecuteAsync(db,
+        "DELETE FROM dbo.HouseholdCategory WHERE Id = @Id AND HouseholdId = @HouseholdId",
+        new { Id = categoryId, HouseholdId = householdId });
+    return affected > 0 ? Results.NoContent() : Results.NotFound();
+}).RequireAuthorization();
+
 // Duplicate detection
 app.MapGet("/api/households/{householdId:guid}/items/duplicates", async (
     Guid householdId,
@@ -1908,6 +2032,8 @@ public sealed record CreateAccountRequest(string DisplayName, string? Email);
 public sealed record CreateLocationRequest(string Name, string? Description, string? LocationType, int? SortOrder);
 public sealed record DefinedLocationResponse(Guid Id, Guid HouseholdId, string Name, string? Description, string? LocationType, int SortOrder, DateTimeOffset CreatedUtc);
 public sealed record LocationListItem(Guid Id, string Name);
+public sealed record CreateCategoryRequest(string Name, int? SortOrder);
+public sealed record HouseholdCategoryResponse(Guid Id, Guid HouseholdId, string Name, int SortOrder, DateTimeOffset CreatedUtc);
 public sealed record MergeDuplicatesRequest(Guid KeepItemId, Guid[] DeleteItemIds);
 
 /// <summary>

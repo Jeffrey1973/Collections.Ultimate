@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getItem, updateItem, mapItemResponseToBook, getAllHouseholdLocations, ContributorRole } from '../api/backend'
+import { getItem, updateItem, mapItemResponseToBook, getAllHouseholdLocations, getAllHouseholdCategories, ContributorRole } from '../api/backend'
 import { Book } from '../api/books'
 import { FIELD_CATEGORIES, FIELD_DEFINITIONS, type FieldConfig } from '../config/field-config'
 import { useHousehold } from '../context/HouseholdContext'
@@ -63,6 +63,10 @@ function BookEditPage() {
   )
   const [newCategory, setNewCategory] = useState('')
   const [knownLocations, setKnownLocations] = useState<{id: string, name: string}[]>([])
+  const [knownCategories, setKnownCategories] = useState<string[]>([])
+  const [showCategorySuggestions, setShowCategorySuggestions] = useState(false)
+  const categoryInputRef = useRef<HTMLInputElement>(null)
+  const categoryDropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (id) {
@@ -75,8 +79,27 @@ function BookEditPage() {
       getAllHouseholdLocations(selectedHousehold.id)
         .then(setKnownLocations)
         .catch(() => {}) // best-effort
+      getAllHouseholdCategories(selectedHousehold.id)
+        .then(setKnownCategories)
+        .catch(() => {}) // best-effort
     }
   }, [selectedHousehold])
+
+  // Close category dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        categoryDropdownRef.current &&
+        !categoryDropdownRef.current.contains(e.target as Node) &&
+        categoryInputRef.current &&
+        !categoryInputRef.current.contains(e.target as Node)
+      ) {
+        setShowCategorySuggestions(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   async function loadBook(itemId: string) {
     try {
@@ -414,38 +437,107 @@ function BookEditPage() {
           </div>
           )}
           
-          {/* Input to add new category */}
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <input
-              type="text"
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addCategory())}
-              placeholder="Add custom category (e.g., Cycling)"
-              style={{
-                flex: 1,
-                padding: '0.5rem',
-                borderRadius: '4px',
-                border: '1px solid #cbd5e1',
-                fontSize: '0.875rem'
-              }}
-            />
-            <button
-              type="button"
-              onClick={addCategory}
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                fontSize: '0.875rem',
-                fontWeight: 500,
-                cursor: 'pointer'
-              }}
-            >
-              Add
-            </button>
+          {/* Autocomplete input to add category */}
+          <div style={{ position: 'relative' }}>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                ref={categoryInputRef}
+                type="text"
+                value={newCategory}
+                onChange={(e) => {
+                  setNewCategory(e.target.value)
+                  setShowCategorySuggestions(true)
+                }}
+                onFocus={() => setShowCategorySuggestions(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    addCategory()
+                    setShowCategorySuggestions(false)
+                  } else if (e.key === 'Escape') {
+                    setShowCategorySuggestions(false)
+                  }
+                }}
+                placeholder="Type to search categories or add new…"
+                style={{
+                  flex: 1,
+                  padding: '0.5rem',
+                  borderRadius: '4px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.875rem'
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => { addCategory(); setShowCategorySuggestions(false) }}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  cursor: 'pointer'
+                }}
+              >
+                Add
+              </button>
+            </div>
+
+            {/* Suggestions dropdown */}
+            {showCategorySuggestions && (() => {
+              const currentCategories = Array.isArray(formData.categories) ? formData.categories.map((c: any) => typeof c === 'string' ? c : c?.name || '') : []
+              const filtered = knownCategories.filter(cat =>
+                !currentCategories.includes(cat) &&
+                (newCategory.trim() === '' || cat.toLowerCase().includes(newCategory.trim().toLowerCase()))
+              )
+              if (filtered.length === 0) return null
+              return (
+                <div
+                  ref={categoryDropdownRef}
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    marginTop: '2px',
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    backgroundColor: '#fff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '4px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+                    zIndex: 50
+                  }}
+                >
+                  {filtered.map(cat => (
+                    <div
+                      key={cat}
+                      onClick={() => {
+                        const cur = Array.isArray(formData.categories) ? formData.categories : []
+                        if (!cur.includes(cat)) {
+                          setFormData({ ...formData, categories: [...cur, cat] })
+                        }
+                        setNewCategory('')
+                        setShowCategorySuggestions(false)
+                        categoryInputRef.current?.focus()
+                      }}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        cursor: 'pointer',
+                        fontSize: '0.875rem',
+                        borderBottom: '1px solid #f1f5f9'
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f0f9ff')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#fff')}
+                    >
+                      {cat}
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
           </div>
         </div>
       )

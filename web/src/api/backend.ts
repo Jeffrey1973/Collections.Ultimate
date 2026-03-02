@@ -64,6 +64,16 @@ export async function getAllHouseholdLocations(householdId: string): Promise<{id
   return getHouseholdLocations(householdId)
 }
 
+/**
+ * Get the union of user-defined household categories and tags already applied to books.
+ * Returns sorted, deduplicated category name strings.
+ */
+export async function getAllHouseholdCategories(householdId: string): Promise<string[]> {
+  const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/categories/all`)
+  if (!resp.ok) throw new Error('Failed to fetch categories')
+  return resp.json()
+}
+
 /** Normalize a title the same way the backend does (uppercase, collapse whitespace). */
 export function normalizeTitle(title: string): string {
   return title.trim().replace(/\s+/g, ' ').toUpperCase()

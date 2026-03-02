@@ -164,6 +164,57 @@ async function apiRemoveMember(householdId: string, accountId: string): Promise<
   if (!response.ok) throw new Error('Failed to remove member')
 }
 
+// ── Category API calls ──
+
+interface DefinedCategory {
+  id: string
+  householdId: string
+  name: string
+  sortOrder: number
+  createdUtc: string
+}
+
+async function apiGetDefinedCategories(householdId: string): Promise<DefinedCategory[]> {
+  const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/categories`)
+  if (!resp.ok) throw new Error('Failed to fetch defined categories')
+  return resp.json()
+}
+
+async function apiCreateCategory(householdId: string, data: { name: string; sortOrder?: number }): Promise<{ id: string; name: string }> {
+  const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/categories`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (resp.status === 409) {
+    const err = await resp.json()
+    throw new Error(err.message || 'Category already exists')
+  }
+  if (!resp.ok) throw new Error('Failed to create category')
+  return resp.json()
+}
+
+async function apiDeleteCategory(householdId: string, categoryId: string): Promise<void> {
+  const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/categories/${categoryId}`, {
+    method: 'DELETE',
+  })
+  if (!resp.ok && resp.status !== 404) throw new Error('Failed to delete category')
+}
+
+async function apiUpdateCategory(householdId: string, categoryId: string, data: { name: string; sortOrder?: number }): Promise<{ id: string; name: string }> {
+  const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/categories/${categoryId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (resp.status === 409) {
+    const err = await resp.json()
+    throw new Error(err.message || 'Category name already exists')
+  }
+  if (!resp.ok) throw new Error('Failed to update category')
+  return resp.json()
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const LOCATION_TYPES: { value: ShelfLocation['locationType']; label: string; icon: string }[] = [
@@ -736,7 +787,7 @@ function AddMemberForm({
 
 // ─── Main Page Component ─────────────────────────────────────────────────────
 
-type ActiveTab = 'households' | 'shelves' | 'digital' | 'members'
+type ActiveTab = 'households' | 'shelves' | 'digital' | 'members' | 'categories'
 
 export default function HouseholdManagementPage() {
   const {
@@ -759,13 +810,21 @@ export default function HouseholdManagementPage() {
   const [editingShelf, setEditingShelf] = useState<ShelfLocation | null>(null)
   const [showDigitalForm, setShowDigitalForm] = useState(false)
   const [editingDigital, setEditingDigital] = useState<DigitalLocation | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<{ type: 'household' | 'shelf' | 'digital' | 'member'; id: string; name: string } | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'household' | 'shelf' | 'digital' | 'member' | 'category'; id: string; name: string } | null>(null)
 
   // Members state
   const [members, setMembers] = useState<HouseholdMember[]>([])
   const [showMemberForm, setShowMemberForm] = useState(false)
   const [memberError, setMemberError] = useState<string | null>(null)
   const [membersLoading, setMembersLoading] = useState(false)
+
+  // Categories state
+  const [categories, setCategories] = useState<DefinedCategory[]>([])
+  const [categoriesLoading, setCategoriesLoading] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [editingCategory, setEditingCategory] = useState<{ id: string; name: string } | null>(null)
+  const [editCategoryName, setEditCategoryName] = useState('')
+  const [categoryError, setCategoryError] = useState<string | null>(null)
 
   // Load location data for the selected household
   const loadLocations = useCallback(async () => {
@@ -843,6 +902,26 @@ export default function HouseholdManagementPage() {
   useEffect(() => {
     if (activeTab === 'members') loadMembers()
   }, [activeTab, loadMembers])
+
+  // Load categories when household or tab changes
+  const loadCategories = useCallback(async () => {
+    if (!selectedHousehold) return
+    setCategoriesLoading(true)
+    setCategoryError(null)
+    try {
+      const list = await apiGetDefinedCategories(selectedHousehold.id)
+      setCategories(list)
+    } catch (err) {
+      console.error('Failed to load categories:', err)
+      setCategoryError('Failed to load categories')
+    } finally {
+      setCategoriesLoading(false)
+    }
+  }, [selectedHousehold])
+
+  useEffect(() => {
+    if (activeTab === 'categories') loadCategories()
+  }, [activeTab, loadCategories])
 
   // ── Household CRUD ──
   async function handleCreateHousehold(name: string) {
@@ -1003,6 +1082,44 @@ export default function HouseholdManagementPage() {
     }
   }
 
+  // ── Category CRUD ──
+  async function handleAddCategory() {
+    if (!selectedHousehold || !newCategoryName.trim()) return
+    setCategoryError(null)
+    try {
+      await apiCreateCategory(selectedHousehold.id, { name: newCategoryName.trim() })
+      setNewCategoryName('')
+      await loadCategories()
+    } catch (err: any) {
+      setCategoryError(err.message || 'Failed to add category')
+    }
+  }
+
+  async function handleUpdateCategory() {
+    if (!selectedHousehold || !editingCategory || !editCategoryName.trim()) return
+    setCategoryError(null)
+    try {
+      await apiUpdateCategory(selectedHousehold.id, editingCategory.id, { name: editCategoryName.trim() })
+      setEditingCategory(null)
+      setEditCategoryName('')
+      await loadCategories()
+    } catch (err: any) {
+      setCategoryError(err.message || 'Failed to update category')
+    }
+  }
+
+  async function handleDeleteCategory() {
+    if (!selectedHousehold || !deleteTarget || deleteTarget.type !== 'category') return
+    setCategoryError(null)
+    try {
+      await apiDeleteCategory(selectedHousehold.id, deleteTarget.id)
+      await loadCategories()
+    } catch (err: any) {
+      setCategoryError(err.message || 'Failed to delete category')
+    }
+    setDeleteTarget(null)
+  }
+
   // ── Build hierarchical shelf list ──
   function getShelfHierarchy(): (ShelfLocation & { depth: number })[] {
     const result: (ShelfLocation & { depth: number })[] = []
@@ -1073,6 +1190,9 @@ export default function HouseholdManagementPage() {
         </button>
         <button style={styles.tab(activeTab === 'members')} onClick={() => setActiveTab('members')}>
           👤 Members
+        </button>
+        <button style={styles.tab(activeTab === 'categories')} onClick={() => setActiveTab('categories')}>
+          🏷️ Categories
         </button>
       </div>
 
@@ -1424,6 +1544,151 @@ export default function HouseholdManagementPage() {
         </div>
       )}
 
+      {/* ─── Categories Tab ────────────────────────────────────────────── */}
+      {activeTab === 'categories' && (
+        <div>
+          {!selectedHousehold ? (
+            <div style={styles.emptyState}>
+              <div style={styles.emptyIcon}>⚠️</div>
+              <p>Select a household first from the Households tab</p>
+            </div>
+          ) : (
+            <>
+              <div style={styles.sectionHeader}>
+                <span style={styles.sectionTitle}>
+                  Categories — {selectedHousehold.name}
+                </span>
+              </div>
+
+              <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '1rem' }}>
+                Define your preferred categories/tags for organizing books. 
+                These will appear as suggestions when adding categories to books on the edit page.
+                Any categories already applied to books in your library will also appear as suggestions.
+              </p>
+
+              {categoryError && (
+                <div style={{
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: 8,
+                  padding: '0.75rem 1rem',
+                  marginBottom: '1rem',
+                  color: '#991b1b',
+                  fontSize: '0.875rem',
+                }}>
+                  {categoryError}
+                </div>
+              )}
+
+              {/* Add new category form */}
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                <input
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCategory())}
+                  placeholder="Enter new category name (e.g., Fiction, Theology, History)"
+                  style={{
+                    flex: 1,
+                    padding: '0.625rem 0.75rem',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.875rem',
+                  }}
+                />
+                <button
+                  className="btn btn-primary"
+                  onClick={handleAddCategory}
+                  disabled={!newCategoryName.trim()}
+                >
+                  + Add Category
+                </button>
+              </div>
+
+              {categoriesLoading ? (
+                <div className="loading">Loading categories...</div>
+              ) : categories.length === 0 ? (
+                <div style={styles.emptyState}>
+                  <div style={styles.emptyIcon}>🏷️</div>
+                  <p>No categories defined yet.</p>
+                  <p style={{ fontSize: '0.875rem' }}>
+                    Add categories like "Fiction", "Theology", "History", "Science", "Biography", etc.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  {categories.map((cat) => (
+                    <div
+                      key={cat.id}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        padding: '0.5rem 0.75rem',
+                        backgroundColor: editingCategory?.id === cat.id ? '#dbeafe' : 'white',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '9999px',
+                        fontSize: '0.875rem',
+                        fontWeight: 500,
+                        color: '#1e293b',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                      }}
+                    >
+                      {editingCategory?.id === cat.id ? (
+                        <>
+                          <input
+                            type="text"
+                            value={editCategoryName}
+                            onChange={(e) => setEditCategoryName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') { e.preventDefault(); handleUpdateCategory() }
+                              if (e.key === 'Escape') { setEditingCategory(null); setEditCategoryName('') }
+                            }}
+                            autoFocus
+                            style={{
+                              border: 'none',
+                              outline: 'none',
+                              background: 'transparent',
+                              fontSize: '0.875rem',
+                              fontWeight: 500,
+                              width: `${Math.max(editCategoryName.length, 6)}ch`,
+                            }}
+                          />
+                          <button
+                            onClick={handleUpdateCategory}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: '0.85rem', color: '#16a34a' }}
+                            title="Save"
+                          >✓</button>
+                          <button
+                            onClick={() => { setEditingCategory(null); setEditCategoryName('') }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: '0.85rem', color: '#94a3b8' }}
+                            title="Cancel"
+                          >✕</button>
+                        </>
+                      ) : (
+                        <>
+                          <span>🏷️ {cat.name}</span>
+                          <button
+                            onClick={() => { setEditingCategory({ id: cat.id, name: cat.name }); setEditCategoryName(cat.name) }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: '0.75rem', color: '#64748b' }}
+                            title="Edit"
+                          >✏️</button>
+                          <button
+                            onClick={() => setDeleteTarget({ type: 'category', id: cat.id, name: cat.name })}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: '0.75rem', color: '#ef4444' }}
+                            title="Delete"
+                          >✕</button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* ─── Modals ───────────────────────────────────────────────────────── */}
 
       {showHouseholdForm && (
@@ -1471,6 +1736,7 @@ export default function HouseholdManagementPage() {
             else if (deleteTarget.type === 'shelf') handleDeleteShelf()
             else if (deleteTarget.type === 'digital') handleDeleteDigital()
             else if (deleteTarget.type === 'member') handleRemoveMember()
+            else if (deleteTarget.type === 'category') handleDeleteCategory()
           }}
           onCancel={() => setDeleteTarget(null)}
         />
