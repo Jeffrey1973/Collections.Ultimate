@@ -394,8 +394,7 @@ function AddBookPage() {
             onChange={(e) => {
               const locId = e.target.value
               const locName = knownLocations.find(l => l.id === locId)?.name || ''
-              handleInputChange('locationId', locId)
-              handleInputChange('location', locName)
+              setFormData(prev => ({ ...prev, locationId: locId, location: locName }))
             }}
             style={{ fontSize: '0.9rem' }}
             required={isRequired}
