@@ -117,9 +117,10 @@ function LibraryPage() {
   const [showToolsMenu, setShowToolsMenu] = useState(false)
   const toolsMenuRef = useRef<HTMLDivElement>(null)
 
-  // Close move-location dropdown on outside click
+  // Close move-location dropdown on outside click (skip when new-location modal is open)
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
+      if (showNewLocationModal) return
       if (moveLocationRef.current && !moveLocationRef.current.contains(e.target as Node)) {
         setMoveLocationTarget(null)
         setLocationSearch('')
@@ -129,7 +130,7 @@ function LibraryPage() {
       document.addEventListener('mousedown', handleClickOutside)
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [moveLocationTarget])
+  }, [moveLocationTarget, showNewLocationModal])
 
   // Auto-focus search field when move-location dropdown opens
   useEffect(() => {
