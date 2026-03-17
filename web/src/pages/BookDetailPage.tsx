@@ -315,7 +315,7 @@ function BookDetailPage() {
               fontSize: '0.85rem',
             }}
           >
-            📋 Duplicate
+            📋 Make a Copy
           </button>
           <button
             onClick={handleVerifyToggle}

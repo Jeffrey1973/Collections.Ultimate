@@ -313,7 +313,7 @@ function AddBookPage() {
   }
 
   function handleCancel() {
-    navigate('/library')
+    navigate(-1)
   }
 
   // Render a single field based on its configuration
