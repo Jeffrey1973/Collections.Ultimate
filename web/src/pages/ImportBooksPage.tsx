@@ -536,10 +536,9 @@ export default function ImportBooksPage() {
           }
         }
 
+        // Only mark subsequent occurrences — keep the first one for import
         if (isDup) {
           dupes.add(i)
-          // Also mark the first occurrence as a duplicate
-          if (matchedFirst !== undefined) dupes.add(matchedFirst)
         }
       }
 
