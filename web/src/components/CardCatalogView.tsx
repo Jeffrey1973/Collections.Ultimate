@@ -473,9 +473,9 @@ function CardCatalogView({ book, displayFields }: CardCatalogViewProps) {
     color: activeCard === type
       ? (type === 'subject' ? '#c41e3a' : type === 'title' ? '#1a3a5c' : '#5c4b2e')
       : '#8b7355',
-    background: activeCard === type ? '#f5f1e8' : 'transparent',
-    border: activeCard === type ? '2px solid #8b7355' : '2px solid transparent',
-    borderBottom: activeCard === type ? '2px solid #f5f1e8' : '2px solid transparent',
+    background: activeCard === type ? '#f5f1e8' : '#e8e0d0',
+    border: activeCard === type ? '2px solid #8b7355' : '2px solid #c4b99a',
+    borderBottom: activeCard === type ? '2px solid #f5f1e8' : '2px solid #c4b99a',
     borderRadius: '4px 4px 0 0',
     cursor: 'pointer',
     marginBottom: '-2px',
