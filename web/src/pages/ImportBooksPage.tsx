@@ -428,6 +428,11 @@ export default function ImportBooksPage() {
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, phase: '' })
   const activeRowRef = useRef<HTMLTableRowElement | null>(null)
   const [importResults, setImportResults] = useState({ saved: 0, errors: 0, skipped: 0, duplicates: 0 })
+  const [allowDuplicates, setAllowDuplicates] = useState(false)
+  const [previewFilter, setPreviewFilter] = useState<'all' | 'duplicates-only' | 'new-only'>('all')
+  const [dupScanDone, setDupScanDone] = useState(false)
+  const [dupScanLoading, setDupScanLoading] = useState(false)
+  const [dupRowIndices, setDupRowIndices] = useState<Set<number>>(new Set())
   const abortRef = useRef(false)
 
   // Auto-scroll the active row into view during import
@@ -486,16 +491,76 @@ export default function ImportBooksPage() {
     setStep('preview')
   }, [rawRows, columnMapping, source])
 
+  // ─── Pre-scan for duplicates (does NOT import) ─────────────────────────
+
+  const preScanDuplicates = useCallback(async () => {
+    if (!selectedHousehold) return
+    setDupScanLoading(true)
+    try {
+      const idx = await getDedupIndex(selectedHousehold.id)
+      const existingBarcodes = new Set(idx.barcodes.map(b => b.toUpperCase()))
+      const existingTitles = new Set(idx.normalizedTitles.map(t => t.toUpperCase()))
+      const existingIdents = new Set(idx.identifiers.map(i => i.toUpperCase()))
+
+      const dupes = new Set<number>()
+      for (let i = 0; i < importRows.length; i++) {
+        const { mapped } = importRows[i]
+        const isbn = mapped.isbn13 || mapped.isbn10
+        let isDup = false
+
+        if (isbn) {
+          const normIsbn = isbn.toString().replace(/[^0-9Xx]/g, '').toUpperCase()
+          if (existingBarcodes.has(normIsbn)) isDup = true
+          if (!isDup) {
+            const isbn13Key = `2:${normIsbn}`
+            const isbn10Key = `1:${normIsbn}`
+            if (existingIdents.has(isbn13Key.toUpperCase()) || existingIdents.has(isbn10Key.toUpperCase())) isDup = true
+          }
+        }
+        if (!isDup && mapped.title) {
+          const normTitle = normalizeTitle(mapped.title)
+          if (existingTitles.has(normTitle)) isDup = true
+        }
+        if (isDup) dupes.add(i)
+      }
+
+      setDupRowIndices(dupes)
+      setDupScanDone(true)
+    } catch (err) {
+      console.error('Pre-scan failed:', err)
+    } finally {
+      setDupScanLoading(false)
+    }
+  }, [importRows, selectedHousehold])
+
+  // Filtered rows for display and import
+  const filteredImportRows = importRows.map((row, idx) => ({ row, originalIndex: idx })).filter(({ originalIndex }) => {
+    if (!dupScanDone || previewFilter === 'all') return true
+    const isDup = dupRowIndices.has(originalIndex)
+    return previewFilter === 'duplicates-only' ? isDup : !isDup
+  })
+
   // ─── Import logic ──────────────────────────────────────────────────────
 
   const startImport = useCallback(async () => {
     if (!selectedHousehold) return
 
+    // When a filter is active, narrow importRows to only the filtered set
+    const rowsToImport = dupScanDone && previewFilter !== 'all'
+      ? importRows.filter((_, idx) => {
+          const isDup = dupRowIndices.has(idx)
+          return previewFilter === 'duplicates-only' ? isDup : !isDup
+        })
+      : importRows
+    // If importing duplicates-only, force allowDuplicates behavior
+    const effectiveAllowDuplicates = allowDuplicates || previewFilter === 'duplicates-only'
+
+    setImportRows(rowsToImport)
     setIsImporting(true)
     setStep('importing')
     abortRef.current = false
 
-    const total = importRows.length
+    const total = rowsToImport.length
     let saved = 0
     let errors = 0
     let skipped = 0
@@ -521,10 +586,10 @@ export default function ImportBooksPage() {
     const existingTitles = new Set(dedupIndex.normalizedTitles.map(t => t.toUpperCase()))
     const existingIdents = new Set(dedupIndex.identifiers.map(i => i.toUpperCase()))
 
-    for (let i = 0; i < importRows.length; i++) {
+    for (let i = 0; i < rowsToImport.length; i++) {
       if (abortRef.current) break
 
-      const row = importRows[i]
+      const row = rowsToImport[i]
       const { mapped } = row
 
       // Skip rows that were already saved successfully (safe re-run)
@@ -547,44 +612,46 @@ export default function ImportBooksPage() {
       }
 
       // ── Dedup check ─────────────────────────────────────────────────
-      const isbn = mapped.isbn13 || mapped.isbn10
-      let dupReason: string | undefined
+      if (!effectiveAllowDuplicates) {
+        const isbn = mapped.isbn13 || mapped.isbn10
+        let dupReason: string | undefined
 
-      // 1. Check by ISBN as barcode
-      if (!dupReason && isbn) {
-        const normIsbn = isbn.toString().replace(/[^0-9Xx]/g, '').toUpperCase()
-        if (existingBarcodes.has(normIsbn)) {
-          dupReason = `ISBN ${isbn} already in library (barcode match)`
+        // 1. Check by ISBN as barcode
+        if (!dupReason && isbn) {
+          const normIsbn = isbn.toString().replace(/[^0-9Xx]/g, '').toUpperCase()
+          if (existingBarcodes.has(normIsbn)) {
+            dupReason = `ISBN ${isbn} already in library (barcode match)`
+          }
         }
-      }
 
-      // 2. Check by ISBN as edition identifier
-      if (!dupReason && isbn) {
-        const normIsbn = isbn.toString().replace(/[^0-9Xx]/g, '').toUpperCase()
-        const isbn13Key = `2:${normIsbn}` // IdentifierTypeId 2 = ISBN-13
-        const isbn10Key = `1:${normIsbn}` // IdentifierTypeId 1 = ISBN-10
-        if (existingIdents.has(isbn13Key.toUpperCase()) || existingIdents.has(isbn10Key.toUpperCase())) {
-          dupReason = `ISBN ${isbn} already in library (identifier match)`
+        // 2. Check by ISBN as edition identifier
+        if (!dupReason && isbn) {
+          const normIsbn = isbn.toString().replace(/[^0-9Xx]/g, '').toUpperCase()
+          const isbn13Key = `2:${normIsbn}` // IdentifierTypeId 2 = ISBN-13
+          const isbn10Key = `1:${normIsbn}` // IdentifierTypeId 1 = ISBN-10
+          if (existingIdents.has(isbn13Key.toUpperCase()) || existingIdents.has(isbn10Key.toUpperCase())) {
+            dupReason = `ISBN ${isbn} already in library (identifier match)`
+          }
         }
-      }
 
-      // 3. Check by normalized title
-      if (!dupReason && mapped.title) {
-        const normTitle = normalizeTitle(mapped.title)
-        if (existingTitles.has(normTitle)) {
-          dupReason = `Title "${mapped.title}" already in library`
+        // 3. Check by normalized title
+        if (!dupReason && mapped.title) {
+          const normTitle = normalizeTitle(mapped.title)
+          if (existingTitles.has(normTitle)) {
+            dupReason = `Title "${mapped.title}" already in library`
+          }
         }
-      }
 
-      if (dupReason) {
-        setImportRows(prev => {
-          const next = [...prev]
-          next[i] = { ...next[i], status: 'duplicate', dupReason }
-          return next
-        })
-        duplicates++
-        setImportProgress({ current: i + 1, total, phase: `Duplicate: "${mapped.title}"` })
-        continue
+        if (dupReason) {
+          setImportRows(prev => {
+            const next = [...prev]
+            next[i] = { ...next[i], status: 'duplicate', dupReason }
+            return next
+          })
+          duplicates++
+          setImportProgress({ current: i + 1, total, phase: `Duplicate: "${mapped.title}"` })
+          continue
+        }
       }
 
       // Phase 1: Enrich from APIs
@@ -766,7 +833,7 @@ export default function ImportBooksPage() {
       }
 
       // Small delay to avoid rate-limiting APIs
-      if (i < importRows.length - 1) {
+      if (i < rowsToImport.length - 1) {
         await new Promise(r => setTimeout(r, 500))
       }
     }
@@ -774,9 +841,46 @@ export default function ImportBooksPage() {
     setImportResults({ saved, errors, skipped, duplicates })
     setIsImporting(false)
     setStep('done')
-  }, [importRows, selectedHousehold, source])
+  }, [importRows, selectedHousehold, source, allowDuplicates, dupScanDone, previewFilter, dupRowIndices])
 
   const cancelImport = () => { abortRef.current = true }
+
+  const retryDuplicates = useCallback(() => {
+    // Re-queue only the rows that were flagged as duplicates, reset them to pending
+    const dupRows = importRows
+      .filter(r => r.status === 'duplicate')
+      .map(r => ({ ...r, status: 'pending' as const, dupReason: undefined }))
+    if (dupRows.length === 0) return
+    setImportRows(dupRows)
+    setAllowDuplicates(true)
+    setImportResults({ saved: 0, errors: 0, skipped: 0, duplicates: 0 })
+    setStep('preview')
+  }, [importRows])
+
+  const exportDuplicatesCsv = useCallback(() => {
+    const dupRows = importRows.filter(r => r.status === 'duplicate')
+    if (dupRows.length === 0) return
+
+    // Use the original raw CSV columns so the file can be re-imported directly
+    const allHeaders = Object.keys(dupRows[0].raw)
+    const csvLines = [
+      allHeaders.map(h => `"${h.replace(/"/g, '""')}"`).join(','),
+      ...dupRows.map(row =>
+        allHeaders.map(h => {
+          const val = row.raw[h] || ''
+          return `"${val.replace(/"/g, '""')}"`
+        }).join(',')
+      ),
+    ]
+
+    const blob = new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `duplicates-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [importRows])
 
   const resetImport = () => {
     setStep('upload')
@@ -786,6 +890,11 @@ export default function ImportBooksPage() {
     setColumnMapping({})
     setImportRows([])
     setImportResults({ saved: 0, errors: 0, skipped: 0, duplicates: 0 })
+    setAllowDuplicates(false)
+    setPreviewFilter('all')
+    setDupScanDone(false)
+    setDupScanLoading(false)
+    setDupRowIndices(new Set())
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -1055,9 +1164,74 @@ export default function ImportBooksPage() {
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button onClick={() => setStep('mapping')} style={{ ...btnStyle, ...btnSecondaryStyle }}>Back</button>
               <button onClick={startImport} style={{ ...btnStyle, ...btnPrimaryStyle }}>
-                Start Import ({importRows.length} books)
+                Start Import ({filteredImportRows.length} books)
               </button>
             </div>
+          </div>
+
+          {/* Duplicate options panel */}
+          <div style={{
+            marginBottom: '1rem', padding: '0.75rem 1rem',
+            borderRadius: '8px', border: '1px solid #e2e8f0',
+            backgroundColor: '#f8fafc', fontSize: '0.9rem',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <button
+                onClick={preScanDuplicates}
+                disabled={dupScanLoading}
+                style={{
+                  ...btnStyle, fontSize: '0.85rem', padding: '0.4rem 0.85rem',
+                  backgroundColor: dupScanDone ? '#dcfce7' : '#dbeafe',
+                  color: dupScanDone ? '#16a34a' : '#2563eb',
+                  border: `1px solid ${dupScanDone ? '#bbf7d0' : '#bfdbfe'}`,
+                }}
+              >
+                {dupScanLoading ? 'Scanning...' : dupScanDone ? `✓ ${dupRowIndices.size} duplicate${dupRowIndices.size !== 1 ? 's' : ''} found` : '🔍 Scan for Duplicates'}
+              </button>
+
+              {dupScanDone && (
+                <div style={{ display: 'flex', gap: '0.25rem', borderRadius: '6px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                  {[
+                    { value: 'all' as const, label: `All (${importRows.length})` },
+                    { value: 'duplicates-only' as const, label: `Duplicates (${dupRowIndices.size})` },
+                    { value: 'new-only' as const, label: `New (${importRows.length - dupRowIndices.size})` },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setPreviewFilter(opt.value)}
+                      style={{
+                        padding: '0.35rem 0.75rem', border: 'none', fontSize: '0.8rem', fontWeight: 500,
+                        cursor: 'pointer',
+                        backgroundColor: previewFilter === opt.value ? '#3b82f6' : '#fff',
+                        color: previewFilter === opt.value ? '#fff' : '#475569',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', marginLeft: 'auto' }}>
+                <input
+                  type="checkbox"
+                  checked={allowDuplicates}
+                  onChange={e => setAllowDuplicates(e.target.checked)}
+                  style={{ width: '0.9rem', height: '0.9rem', accentColor: '#f59e0b' }}
+                />
+                <span style={{ fontWeight: 500, fontSize: '0.85rem' }}>Allow all duplicates</span>
+              </label>
+            </div>
+            {dupScanDone && previewFilter === 'duplicates-only' && (
+              <p style={{ margin: '0.5rem 0 0', color: '#b45309', fontSize: '0.8rem' }}>
+                Only the {dupRowIndices.size} books already in your library will be imported (duplicates will be allowed automatically).
+              </p>
+            )}
+            {dupScanDone && previewFilter === 'new-only' && (
+              <p style={{ margin: '0.5rem 0 0', color: '#2563eb', fontSize: '0.8rem' }}>
+                Only the {importRows.length - dupRowIndices.size} books NOT already in your library will be imported.
+              </p>
+            )}
           </div>
 
           <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'auto', maxHeight: '60vh' }}>
@@ -1073,10 +1247,18 @@ export default function ImportBooksPage() {
                 </tr>
               </thead>
               <tbody>
-                {importRows.map((row, idx) => (
-                  <tr key={idx} style={{ borderTop: '1px solid #e2e8f0' }}>
-                    <td style={{ ...tdStyle, color: '#94a3b8' }}>{idx + 1}</td>
-                    <td style={{ ...tdStyle, fontWeight: 500 }}>{row.mapped.title || <span style={{ color: '#ef4444' }}>Missing</span>}</td>
+                {filteredImportRows.map(({ row, originalIndex }) => (
+                  <tr key={originalIndex} style={{
+                    borderTop: '1px solid #e2e8f0',
+                    backgroundColor: dupScanDone && dupRowIndices.has(originalIndex) ? '#fffbeb' : undefined,
+                  }}>
+                    <td style={{ ...tdStyle, color: '#94a3b8' }}>{originalIndex + 1}</td>
+                    <td style={{ ...tdStyle, fontWeight: 500 }}>
+                      {row.mapped.title || <span style={{ color: '#ef4444' }}>Missing</span>}
+                      {dupScanDone && dupRowIndices.has(originalIndex) && (
+                        <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', color: '#f59e0b', fontWeight: 600 }}>DUP</span>
+                      )}
+                    </td>
                     <td style={tdStyle}>{row.mapped.author || '—'}</td>
                     <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '0.8rem' }}>
                       {row.mapped.isbn13 || row.mapped.isbn10 || <span style={{ color: '#d1d5db' }}>none</span>}
@@ -1193,8 +1375,18 @@ export default function ImportBooksPage() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
             <button onClick={resetImport} style={{ ...btnStyle, ...btnSecondaryStyle }}>Import More</button>
+            {importResults.duplicates > 0 && (
+              <>
+                <button onClick={retryDuplicates} style={{ ...btnStyle, backgroundColor: '#f59e0b', color: '#fff' }}>
+                  Re-import {importResults.duplicates} Duplicate{importResults.duplicates !== 1 ? 's' : ''}
+                </button>
+                <button onClick={exportDuplicatesCsv} style={{ ...btnStyle, ...btnSecondaryStyle }}>
+                  ⬇ Export Duplicates CSV
+                </button>
+              </>
+            )}
             <a href="/library" style={{ ...btnStyle, ...btnPrimaryStyle, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
               View Library
             </a>
