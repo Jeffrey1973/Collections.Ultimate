@@ -536,9 +536,10 @@ export default function ImportBooksPage() {
           }
         }
 
-        // Only mark subsequent occurrences — keep the first one for import
-        if (isDup) {
-          dupes.add(i)
+        // Mark the FIRST occurrence as the duplicate (it's already in the library).
+        // Subsequent copies are the ones we want to import.
+        if (isDup && matchedFirst !== undefined) {
+          dupes.add(matchedFirst)
         }
       }
 
