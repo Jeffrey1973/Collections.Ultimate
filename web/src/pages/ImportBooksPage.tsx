@@ -491,37 +491,56 @@ export default function ImportBooksPage() {
     setStep('preview')
   }, [rawRows, columnMapping, source])
 
-  // ─── Pre-scan for duplicates (does NOT import) ─────────────────────────
+  // ─── Pre-scan for duplicates within the CSV (does NOT import) ───────────
 
   const preScanDuplicates = useCallback(async () => {
-    if (!selectedHousehold) return
     setDupScanLoading(true)
     try {
-      const idx = await getDedupIndex(selectedHousehold.id)
-      const existingBarcodes = new Set(idx.barcodes.map(b => b.toUpperCase()))
-      const existingTitles = new Set(idx.normalizedTitles.map(t => t.toUpperCase()))
-      const existingIdents = new Set(idx.identifiers.map(i => i.toUpperCase()))
+      // Build a map keyed by ISBN or normalized title → first row index seen
+      const seenByIsbn = new Map<string, number>()   // normIsbn → first row index
+      const seenByTitle = new Map<string, number>()   // normTitle → first row index
 
       const dupes = new Set<number>()
+
       for (let i = 0; i < importRows.length; i++) {
         const { mapped } = importRows[i]
         const isbn = mapped.isbn13 || mapped.isbn10
         let isDup = false
+        let matchedFirst: number | undefined
 
+        // Check ISBN match within CSV
         if (isbn) {
           const normIsbn = isbn.toString().replace(/[^0-9Xx]/g, '').toUpperCase()
-          if (existingBarcodes.has(normIsbn)) isDup = true
-          if (!isDup) {
-            const isbn13Key = `2:${normIsbn}`
-            const isbn10Key = `1:${normIsbn}`
-            if (existingIdents.has(isbn13Key.toUpperCase()) || existingIdents.has(isbn10Key.toUpperCase())) isDup = true
+          if (normIsbn) {
+            const firstIdx = seenByIsbn.get(normIsbn)
+            if (firstIdx !== undefined) {
+              isDup = true
+              matchedFirst = firstIdx
+            } else {
+              seenByIsbn.set(normIsbn, i)
+            }
           }
         }
+
+        // Check title match within CSV
         if (!isDup && mapped.title) {
           const normTitle = normalizeTitle(mapped.title)
-          if (existingTitles.has(normTitle)) isDup = true
+          if (normTitle) {
+            const firstIdx = seenByTitle.get(normTitle)
+            if (firstIdx !== undefined) {
+              isDup = true
+              matchedFirst = firstIdx
+            } else {
+              seenByTitle.set(normTitle, i)
+            }
+          }
         }
-        if (isDup) dupes.add(i)
+
+        if (isDup) {
+          dupes.add(i)
+          // Also mark the first occurrence as a duplicate
+          if (matchedFirst !== undefined) dupes.add(matchedFirst)
+        }
       }
 
       setDupRowIndices(dupes)
@@ -531,7 +550,7 @@ export default function ImportBooksPage() {
     } finally {
       setDupScanLoading(false)
     }
-  }, [importRows, selectedHousehold])
+  }, [importRows])
 
   // Filtered rows for display and import
   const filteredImportRows = importRows.map((row, idx) => ({ row, originalIndex: idx })).filter(({ originalIndex }) => {
@@ -1186,15 +1205,15 @@ export default function ImportBooksPage() {
                   border: `1px solid ${dupScanDone ? '#bbf7d0' : '#bfdbfe'}`,
                 }}
               >
-                {dupScanLoading ? 'Scanning...' : dupScanDone ? `✓ ${dupRowIndices.size} duplicate${dupRowIndices.size !== 1 ? 's' : ''} found` : '🔍 Scan for Duplicates'}
+                {dupScanLoading ? 'Scanning...' : dupScanDone ? `✓ ${dupRowIndices.size} CSV duplicate${dupRowIndices.size !== 1 ? 's' : ''} found` : '🔍 Scan for Duplicates in CSV'}
               </button>
 
               {dupScanDone && (
                 <div style={{ display: 'flex', gap: '0.25rem', borderRadius: '6px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
                   {[
                     { value: 'all' as const, label: `All (${importRows.length})` },
-                    { value: 'duplicates-only' as const, label: `Duplicates (${dupRowIndices.size})` },
-                    { value: 'new-only' as const, label: `New (${importRows.length - dupRowIndices.size})` },
+                    { value: 'duplicates-only' as const, label: `CSV Dupes (${dupRowIndices.size})` },
+                    { value: 'new-only' as const, label: `Unique (${importRows.length - dupRowIndices.size})` },
                   ].map(opt => (
                     <button
                       key={opt.value}
