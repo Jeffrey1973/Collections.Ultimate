@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getItem, updateItem, mapItemResponseToBook, getAllHouseholdLocations, getAllHouseholdCategories, createHouseholdCategory, ContributorRole } from '../api/backend'
+import { getItem, updateItem, mapItemResponseToBook, getAllHouseholdLocations, getAllHouseholdCategories, createHouseholdCategory, createHouseholdLocation, ContributorRole } from '../api/backend'
 import { Book } from '../api/books'
 import { FIELD_CATEGORIES, FIELD_DEFINITIONS, type FieldConfig } from '../config/field-config'
 import { useHousehold } from '../context/HouseholdContext'
@@ -69,6 +69,11 @@ function BookEditPage() {
   const [newCategory, setNewCategory] = useState('')
   const [knownLocations, setKnownLocations] = useState<{id: string, name: string}[]>([])
   const [knownCategories, setKnownCategories] = useState<string[]>([])
+  const [showNewLocationModal, setShowNewLocationModal] = useState(false)
+  const [newLocName, setNewLocName] = useState('')
+  const [newLocType, setNewLocType] = useState('shelf')
+  const [newLocDescription, setNewLocDescription] = useState('')
+  const [isCreatingLocation, setIsCreatingLocation] = useState(false)
   const [showCategorySuggestions, setShowCategorySuggestions] = useState(false)
   const [categoryHighlight, setCategoryHighlight] = useState(-1)
   const categoryInputRef = useRef<HTMLInputElement>(null)
@@ -120,6 +125,28 @@ function BookEditPage() {
       console.error('Failed to load book:', err)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  async function handleCreateLocation() {
+    if (!newLocName.trim() || !selectedHousehold) return
+    try {
+      setIsCreatingLocation(true)
+      const created = await createHouseholdLocation(selectedHousehold.id, newLocName.trim())
+      // Add to known locations list
+      setKnownLocations(prev => [...prev, { id: created.id, name: created.name }])
+      // Auto-select the newly created location
+      handleFieldChange('locationId', created.id)
+      handleFieldChange('location', created.name)
+      // Close modal & reset
+      setShowNewLocationModal(false)
+      setNewLocName('')
+      setNewLocDescription('')
+      setNewLocType('shelf')
+    } catch (err: any) {
+      alert(err.message || 'Failed to create location')
+    } finally {
+      setIsCreatingLocation(false)
     }
   }
 
@@ -745,29 +772,39 @@ function BookEditPage() {
               <option key={opt} value={opt}>{opt}</option>
             ))}
           </select>
-        ) : fieldConfig.key === 'location' && knownLocations.length > 0 ? (
-          <select
-            value={(formData as any).locationId as string || ''}
-            onChange={(e) => {
-              const locId = e.target.value
-              const locName = knownLocations.find(l => l.id === locId)?.name || ''
-              handleFieldChange('locationId', locId)
-              handleFieldChange('location', locName)
-            }}
-            style={{
-              width: '100%',
-              padding: '0.5rem',
-              borderRadius: '4px',
-              border: '1px solid #cbd5e1',
-              fontSize: '0.875rem',
-              backgroundColor: 'white'
-            }}
-          >
-            <option value="">— Select Location —</option>
-            {knownLocations.map(loc => (
-              <option key={loc.id} value={loc.id}>{loc.name}</option>
-            ))}
-          </select>
+        ) : fieldConfig.key === 'location' ? (
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <select
+              value={(formData as any).locationId as string || ''}
+              onChange={(e) => {
+                const locId = e.target.value
+                if (locId === '__add_new__') {
+                  setNewLocName('')
+                  setNewLocType('shelf')
+                  setNewLocDescription('')
+                  setShowNewLocationModal(true)
+                  return
+                }
+                const locName = knownLocations.find(l => l.id === locId)?.name || ''
+                handleFieldChange('locationId', locId)
+                handleFieldChange('location', locName)
+              }}
+              style={{
+                flex: 1,
+                padding: '0.5rem',
+                borderRadius: '4px',
+                border: '1px solid #cbd5e1',
+                fontSize: '0.875rem',
+                backgroundColor: 'white'
+              }}
+            >
+              <option value="">— Select Location —</option>
+              {knownLocations.map(loc => (
+                <option key={loc.id} value={loc.id}>{loc.name}</option>
+              ))}
+              <option value="__add_new__">＋ Add new location...</option>
+            </select>
+          </div>
         ) : (
           <input
             type="text"
@@ -962,6 +999,106 @@ function BookEditPage() {
           </button>
         </div>
       </form>
+
+      {/* Add New Location Modal */}
+      {showNewLocationModal && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        }} onClick={() => setShowNewLocationModal(false)}>
+          <div style={{
+            backgroundColor: 'white', borderRadius: '12px', padding: '2rem',
+            maxWidth: '480px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem' }}>
+              Add New Location
+            </h3>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontWeight: 500, fontSize: '0.875rem', color: '#374151', marginBottom: '0.35rem' }}>
+                Name <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <input
+                autoFocus
+                type="text"
+                value={newLocName}
+                onChange={e => setNewLocName(e.target.value)}
+                placeholder="e.g. Living Room Shelf"
+                style={{
+                  width: '100%', padding: '0.6rem 0.75rem', border: '1px solid #d1d5db',
+                  borderRadius: '6px', fontSize: '0.95rem', outline: 'none',
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && newLocName.trim()) {
+                    e.preventDefault()
+                    handleCreateLocation()
+                  }
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontWeight: 500, fontSize: '0.875rem', color: '#374151', marginBottom: '0.35rem' }}>
+                Type
+              </label>
+              <select
+                value={newLocType}
+                onChange={e => setNewLocType(e.target.value)}
+                style={{
+                  width: '100%', padding: '0.6rem 0.75rem', border: '1px solid #d1d5db',
+                  borderRadius: '6px', fontSize: '0.95rem', background: 'white', cursor: 'pointer',
+                }}
+              >
+                <option value="room">🏠 Room</option>
+                <option value="shelf">📚 Shelf / Bookcase</option>
+                <option value="cabinet">🗄️ Cabinet / Closet</option>
+                <option value="box">📦 Box / Container</option>
+                <option value="other">📍 Other</option>
+              </select>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontWeight: 500, fontSize: '0.875rem', color: '#374151', marginBottom: '0.35rem' }}>
+                Description
+              </label>
+              <textarea
+                value={newLocDescription}
+                onChange={e => setNewLocDescription(e.target.value)}
+                placeholder="Any notes about this location..."
+                style={{
+                  width: '100%', padding: '0.6rem 0.75rem', border: '1px solid #d1d5db',
+                  borderRadius: '6px', fontSize: '0.95rem', outline: 'none',
+                  resize: 'vertical', minHeight: '60px',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem' }}>
+              <button
+                onClick={() => { setShowNewLocationModal(false); setNewLocName(''); setNewLocDescription(''); setNewLocType('shelf') }}
+                style={{
+                  padding: '0.6rem 1.25rem', borderRadius: '8px', border: '1px solid #e2e8f0',
+                  backgroundColor: '#f8fafc', cursor: 'pointer', fontWeight: 600, color: '#64748b',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!newLocName.trim() || isCreatingLocation}
+                onClick={handleCreateLocation}
+                style={{
+                  padding: '0.6rem 1.25rem', borderRadius: '8px', border: 'none',
+                  backgroundColor: !newLocName.trim() ? '#cbd5e1' : '#3b82f6',
+                  color: 'white', fontWeight: 600, cursor: !newLocName.trim() ? 'default' : 'pointer',
+                  opacity: isCreatingLocation ? 0.7 : 1,
+                }}
+              >
+                {isCreatingLocation ? '⏳ Creating...' : 'Add Location'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
