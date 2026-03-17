@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useLocation } from 'react-router-dom'
 import BookCard from '../components/BookCard.tsx'
 import CardCatalogView from '../components/CardCatalogView.tsx'
@@ -1293,8 +1294,8 @@ function LibraryPage() {
         </>
       )}
 
-      {/* Move-to-Location dropdown (fixed position to avoid overflow clipping) */}
-      {moveLocationTarget && !showNewLocationModal && (() => {
+      {/* Move-to-Location dropdown (portal to avoid overflow clipping) */}
+      {moveLocationTarget && !showNewLocationModal && createPortal((() => {
         const r = moveLocationTarget.rect
         const dropW = 260
         const dropH = 340
@@ -1316,7 +1317,7 @@ function LibraryPage() {
             ref={moveLocationRef}
             onClick={(e) => e.stopPropagation()}
             style={{
-              position: 'fixed', left, top, zIndex: 999, width: dropW,
+              position: 'fixed', left, top, zIndex: 9999, width: dropW,
               backgroundColor: 'white', borderRadius: '8px',
               boxShadow: '0 4px 20px rgba(0,0,0,0.18)', border: '1px solid #e2e8f0',
               maxHeight: `${dropH}px`, display: 'flex', flexDirection: 'column',
@@ -1410,10 +1411,10 @@ function LibraryPage() {
             </div>
           </div>
         )
-      })()}
+      })(), document.body)}
 
-      {/* Catalog Card Popover (fixed position to avoid overflow clipping) */}
-      {catalogPopover && catalogPopoverBook && (() => {
+      {/* Catalog Card Popover (portal to avoid overflow clipping) */}
+      {catalogPopover && catalogPopoverBook && createPortal((() => {
         const r = catalogPopover.rect
         const cardW = 500
         const cardH = 340
@@ -1440,7 +1441,7 @@ function LibraryPage() {
             <CardCatalogView book={catalogPopoverBook} displayFields={displayFields} />
           </div>
         )
-      })()}
+      })(), document.body)}
 
       {/* Delete Confirmation Modal */}
       {deleteTarget && (
