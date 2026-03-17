@@ -1215,12 +1215,12 @@ function LibraryPage() {
                             width: '26px', height: '26px', borderRadius: '6px',
                             border: 'none', background: 'transparent', cursor: 'pointer',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.8rem', opacity: moveLocationTarget?.bookId === book.id ? 1 : 0.3, transition: 'opacity 0.15s',
+                            fontSize: '0.65rem', opacity: moveLocationTarget?.bookId === book.id ? 1 : 0.3, transition: 'opacity 0.15s',
                           }}
                           onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
                           onMouseLeave={e => { if (moveLocationTarget?.bookId !== book.id) e.currentTarget.style.opacity = '0.3' }}
                         >
-                          📍
+                          📚➡️
                         </button>}
                       </div>
 
