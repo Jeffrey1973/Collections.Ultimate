@@ -12,7 +12,7 @@ import ItemTimeline from '../components/ItemTimeline'
 function BookDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { households } = useHousehold()
+  const { households, canEdit } = useHousehold()
   const [book, setBook] = useState<Book | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -281,7 +281,7 @@ function BookDetailPage() {
           ← Back to Library
         </button>
         <div className="detail-actions" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          {(book as any).status === 'Previously Owned' && (
+          {canEdit && (book as any).status === 'Previously Owned' && (
             <button
               onClick={handleRestore}
               style={{
@@ -293,14 +293,14 @@ function BookDetailPage() {
               ↩ Restore to Library
             </button>
           )}
-          <button onClick={() => navigate(`/book/${id}/edit`)} style={{
+          {canEdit && <button onClick={() => navigate(`/book/${id}/edit`)} style={{
             padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid #3b82f6',
             background: '#eff6ff', color: '#2563eb', fontWeight: 600, cursor: 'pointer',
             fontSize: '0.85rem',
           }}>
             ✏️ Edit
-          </button>
-          <button
+          </button>}
+          {canEdit && <button
             title="Copy this book's data into a new Add Book form"
             onClick={() => {
               // Copy all book data but strip unique identifiers so it becomes a new entry
@@ -316,8 +316,8 @@ function BookDetailPage() {
             }}
           >
             📋 Make a Copy
-          </button>
-          <button
+          </button>}
+          {canEdit && <button
             onClick={handleVerifyToggle}
             disabled={isVerifying}
             style={{
@@ -332,8 +332,8 @@ function BookDetailPage() {
             {isVerifying ? '⏳ ...' : book.inventoryVerifiedDate
               ? `✅ Verified ${new Date(book.inventoryVerifiedDate).toLocaleDateString()}`
               : '☐ Verify'}
-          </button>
-          <button
+          </button>}
+          {canEdit && <button
             onClick={handleEnrich}
             disabled={isEnriching}
             style={{
@@ -344,9 +344,9 @@ function BookDetailPage() {
             }}
           >
             {isEnriching ? `⏳ ${enrichProgress || 'Enriching...'}` : '🔍 Enrich'}
-          </button>
+          </button>}
           {/* Move to another household */}
-          {otherHouseholds.length > 0 && (
+          {canEdit && otherHouseholds.length > 0 && (
             <div ref={moveDropdownRef} style={{ position: 'relative' }}>
               <button
                 onClick={() => setShowMoveDropdown(!showMoveDropdown)}
@@ -392,13 +392,13 @@ function BookDetailPage() {
               )}
             </div>
           )}
-          <button onClick={() => setShowDeleteModal(true)} style={{
+          {canEdit && <button onClick={() => setShowDeleteModal(true)} style={{
             padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid #ef4444',
             background: '#fef2f2', color: '#dc2626', fontWeight: 600, cursor: 'pointer',
             fontSize: '0.85rem',
           }}>
             🗑️ Remove
-          </button>
+          </button>}
         </div>
       </div>
 

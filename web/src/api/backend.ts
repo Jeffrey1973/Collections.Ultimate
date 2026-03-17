@@ -2001,7 +2001,8 @@ export async function getAllHouseholds(): Promise<any[]> {
       
       return {
         id: id,
-        name: household.name
+        name: household.name,
+        role: household.role || 'Member',
       }
     })
     

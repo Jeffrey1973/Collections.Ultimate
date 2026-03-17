@@ -709,11 +709,17 @@ app.MapGet("/api/households/{householdId:guid}/items/duplicates", async (
 
 // Merge duplicates — keep one item, delete the rest
 app.MapPost("/api/households/{householdId:guid}/items/merge-duplicates", async (
+    HttpContext http,
     Guid householdId,
     MergeDuplicatesRequest request,
     ILibraryItemRepository repo,
+    IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
     CancellationToken ct) =>
 {
+    var denied = await EnforceWriteAccessAsync(http, accountRepo, ahRepo, householdId, ct);
+    if (denied is not null) return denied;
+
     var deleted = 0;
     foreach (var id in request.DeleteItemIds)
     {
@@ -725,11 +731,17 @@ app.MapPost("/api/households/{householdId:guid}/items/merge-duplicates", async (
 
 // Bulk merge all duplicates — keeps oldest item per title+author group, deletes the rest
 app.MapPost("/api/households/{householdId:guid}/items/merge-all-duplicates", async (
+    HttpContext http,
     Guid householdId,
     IItemSearchRepository searchRepo,
     ILibraryItemRepository itemRepo,
+    IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
     CancellationToken ct) =>
 {
+    var denied = await EnforceWriteAccessAsync(http, accountRepo, ahRepo, householdId, ct);
+    if (denied is not null) return denied;
+
     var groups = await searchRepo.FindDuplicatesAsync(new HouseholdId(householdId), ct);
     var totalDeleted = 0;
     var groupsMerged = 0;
@@ -1098,8 +1110,12 @@ app.MapPost("/api/households/{householdId:guid}/items", async (
     ILibraryItemRepository repo,
     IItemEventRepository eventRepo,
     IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
     CancellationToken ct) =>
 {
+    var denied = await EnforceWriteAccessAsync(http, accountRepo, ahRepo, householdId, ct);
+    if (denied is not null) return denied;
+
     var item = new LibraryItem
     {
         OwnerHouseholdId = new HouseholdId(householdId),
@@ -1168,8 +1184,12 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
     IItemSearchRepository searchRepo,
     IItemEventRepository eventRepo,
     IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
     CancellationToken ct) =>
 {
+    var denied = await EnforceWriteAccessAsync(http, accountRepo, ahRepo, householdId, ct);
+    if (denied is not null) return denied;
+
     var work = new Work
     {
         Title = request.Work.Title,
@@ -1329,6 +1349,33 @@ static async Task<Guid?> ResolveAccountIdAsync(HttpContext http, IAccountReposit
     return account?.Id.Value;
 }
 
+/// <summary>
+/// Returns a 403 Forbidden result if the current user has ReadOnly role for the given household.
+/// Returns null when write access is allowed.
+/// </summary>
+static async Task<IResult?> EnforceWriteAccessAsync(
+    HttpContext http,
+    IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
+    Guid householdId,
+    CancellationToken ct)
+{
+    var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
+           ?? http.User.FindFirstValue("sub");
+    if (string.IsNullOrEmpty(sub)) return Results.Unauthorized();
+
+    var account = await accountRepo.GetByAuth0SubAsync(sub, ct);
+    if (account is null) return Results.Unauthorized();
+
+    var memberships = await ahRepo.ListHouseholdsAsync(account.Id, ct);
+    var membership = memberships.FirstOrDefault(m => m.HouseholdId.Value == householdId);
+    if (membership is null) return Results.Forbid();
+    if (string.Equals(membership.Role, "ReadOnly", StringComparison.OrdinalIgnoreCase))
+        return Results.Json(new { error = "ReadOnly members cannot modify data" }, statusCode: 403);
+
+    return null; // write access OK
+}
+
 static async Task RecordAcquiredEventAsync(IItemEventRepository eventRepo, ItemId itemId, DateOnly? acquiredOn, Guid? accountId = null)
 {
     try
@@ -1446,12 +1493,25 @@ app.MapDelete("/api/items/{itemId:guid}/events/{eventId:guid}", async (
     return deleted ? Results.NoContent() : Results.NotFound();
 }).RequireAuthorization();
 
-app.MapDelete("/api/items/{itemId:guid}", async (Guid itemId, ILibraryItemRepository repo, IMeilisearchService meili, CancellationToken ct) =>
+app.MapDelete("/api/items/{itemId:guid}", async (
+    HttpContext http,
+    Guid itemId,
+    ILibraryItemRepository repo,
+    IMeilisearchService meili,
+    IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
+    CancellationToken ct) =>
 {
+    // Look up item to find its household
+    var item = await repo.GetByIdAsync(new ItemId(itemId), ct);
+    if (item is null) return Results.NotFound();
+
+    var denied = await EnforceWriteAccessAsync(http, accountRepo, ahRepo, item.OwnerHouseholdId.Value, ct);
+    if (denied is not null) return denied;
+
     var deleted = await repo.DeleteAsync(new ItemId(itemId), ct);
     if (deleted)
     {
-        // Remove from Meilisearch (best effort)
         _ = Task.Run(async () =>
         {
             try { await meili.RemoveItemAsync(itemId, CancellationToken.None); } catch { }
@@ -1474,6 +1534,7 @@ app.MapPatch("/api/items/{itemId:guid}", async (
     IItemSearchRepository searchRepo,
     IItemEventRepository eventRepo,
     IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
     SqlConnectionFactory dbFactory,
     CancellationToken ct) =>
 {
@@ -1481,6 +1542,10 @@ app.MapPatch("/api/items/{itemId:guid}", async (
     var item = await itemRepo.GetByIdAsync(new ItemId(itemId), ct);
     if (item is null)
         return Results.NotFound();
+
+    // Enforce write access for ReadOnly members
+    var denied = await EnforceWriteAccessAsync(http, accountRepo, ahRepo, item.OwnerHouseholdId.Value, ct);
+    if (denied is not null) return denied;
 
     // Sync Title/Subtitle from Work into the denormalized LibraryItem columns
     var titlePatch = request.Work is not null ? ToPatchString(request.Work.Title) : PatchField<string>.Unspecified;
@@ -2115,10 +2180,14 @@ app.MapPost("/api/items/{itemId:guid}/verify", async (
     IItemUpdateRepository updateRepo,
     IItemEventRepository eventRepo,
     IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
     CancellationToken ct) =>
 {
     var item = await itemRepo.GetByIdAsync(new ItemId(itemId), ct);
     if (item is null) return Results.NotFound();
+
+    var denied = await EnforceWriteAccessAsync(http, accountRepo, ahRepo, item.OwnerHouseholdId.Value, ct);
+    if (denied is not null) return denied;
 
     // Merge inventoryVerifiedDate into existing metadata JSON
     var meta = new Dictionary<string, object?>();
@@ -2153,8 +2222,14 @@ app.MapDelete("/api/items/{itemId:guid}/verify", async (
     IItemUpdateRepository updateRepo,
     IItemEventRepository eventRepo,
     IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
     CancellationToken ct) =>
 {
+    var existingItem = await itemRepo.GetByIdAsync(new ItemId(itemId), ct);
+    if (existingItem is null) return Results.NotFound();
+
+    var denied = await EnforceWriteAccessAsync(http, accountRepo, ahRepo, existingItem.OwnerHouseholdId.Value, ct);
+    if (denied is not null) return denied;
     var item = await itemRepo.GetByIdAsync(new ItemId(itemId), ct);
     if (item is null) return Results.NotFound();
 

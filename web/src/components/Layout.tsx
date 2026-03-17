@@ -2,12 +2,14 @@ import { Link } from 'react-router-dom'
 import { ReactNode } from 'react'
 import HouseholdSelector from './HouseholdSelector.tsx'
 import UserMenu from './UserMenu.tsx'
+import { useHousehold } from '../context/HouseholdContext'
 
 interface LayoutProps {
   children: ReactNode
 }
 
 function Layout({ children }: LayoutProps) {
+  const { canEdit } = useHousehold()
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
@@ -26,9 +28,11 @@ function Layout({ children }: LayoutProps) {
             <Link to="/library" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 500 }}>
               Library
             </Link>
-            <Link to="/add-book" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 500 }}>
-              Add Book
-            </Link>
+            {canEdit && (
+              <Link to="/add-book" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 500 }}>
+                Add Book
+              </Link>
+            )}
           </div>
           <UserMenu />
         </nav>

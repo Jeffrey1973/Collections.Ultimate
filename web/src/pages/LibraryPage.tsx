@@ -59,7 +59,7 @@ function loadSavedFields(): string[] {
 }
 
 function LibraryPage() {
-  const { selectedHousehold, isLoading: isLoadingHousehold } = useHousehold()
+  const { selectedHousehold, isLoading: isLoadingHousehold, canEdit } = useHousehold()
   const navigate = useNavigate()
   const [books, setBooks] = useState<Book[]>([])
   const [totalCount, setTotalCount] = useState(0)
@@ -433,7 +433,7 @@ function LibraryPage() {
             }}>{activeFilterCount}</span>
           )}
         </button>
-          <div ref={toolsMenuRef} style={{ position: 'relative' }}>
+          {canEdit && <div ref={toolsMenuRef} style={{ position: 'relative' }}>
             <button
               type="button"
               className="btn btn-secondary"
@@ -476,7 +476,7 @@ function LibraryPage() {
                 </button>
               </div>
             )}
-          </div>
+          </div>}
       </form>
 
       {/* Filter Panel */}
@@ -1125,7 +1125,7 @@ function LibraryPage() {
 
                       {/* Delete button */}
                       <div style={{ padding: '0.5rem 0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
-                        <button
+                        {canEdit && <button
                           onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: book.id, title: book.title }) }}
                           title="Remove book"
                           style={{
@@ -1138,7 +1138,7 @@ function LibraryPage() {
                           onMouseLeave={e => (e.currentTarget.style.opacity = '0.3')}
                         >
                           🗑️
-                        </button>
+                        </button>}
                       </div>
                     </div>
                   ))}

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout.tsx'
 import ProtectedRoute from './components/ProtectedRoute.tsx'
+import EditRoute from './components/EditRoute.tsx'
 import LoginPage from './pages/LoginPage.tsx'
 import HomePage from './pages/HomePage.tsx'
 import LibraryPage from './pages/LibraryPage.tsx'
@@ -41,12 +42,12 @@ function AppContent() {
                   <Route path="/" element={<HomePage />} />
                   <Route path="/library" element={<LibraryPage />} />
                   <Route path="/book/:id" element={<BookDetailPage />} />
-                  <Route path="/book/:id/edit" element={<BookEditPage />} />
-                  <Route path="/add-book" element={<AddBookPage />} />
+                  <Route path="/book/:id/edit" element={<EditRoute><BookEditPage /></EditRoute>} />
+                  <Route path="/add-book" element={<EditRoute><AddBookPage /></EditRoute>} />
                   <Route path="/households" element={<HouseholdManagementPage />} />
-                  <Route path="/import" element={<ImportBooksPage />} />
-                  <Route path="/duplicates" element={<DuplicateReviewPage />} />
-                  <Route path="/enrich" element={<BatchEnrichmentPage />} />
+                  <Route path="/import" element={<EditRoute><ImportBooksPage /></EditRoute>} />
+                  <Route path="/duplicates" element={<EditRoute><DuplicateReviewPage /></EditRoute>} />
+                  <Route path="/enrich" element={<EditRoute><BatchEnrichmentPage /></EditRoute>} />
                   <Route path="/api-test" element={<ApiTestPage />} />
                 </Routes>
               </Layout>

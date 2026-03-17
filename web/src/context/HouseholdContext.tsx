@@ -5,6 +5,7 @@ import { useAuth } from './AuthContext'
 interface Household {
   id: string
   name: string
+  role: string
 }
 
 interface HouseholdContextType {
@@ -12,6 +13,8 @@ interface HouseholdContextType {
   selectedHousehold: Household | null
   isLoading: boolean
   error: string | null
+  userRole: string
+  canEdit: boolean
   selectHousehold: (household: Household) => void
   refreshHouseholds: () => Promise<void>
   createNewHousehold: (name: string) => Promise<void>
@@ -120,6 +123,9 @@ export function HouseholdProvider({ children }: HouseholdProviderProps) {
     setSelectedHousehold(household)
   }
 
+  const userRole = selectedHousehold?.role || 'Member'
+  const canEdit = userRole !== 'ReadOnly'
+
   return (
     <HouseholdContext.Provider
       value={{
@@ -127,6 +133,8 @@ export function HouseholdProvider({ children }: HouseholdProviderProps) {
         selectedHousehold,
         isLoading,
         error,
+        userRole,
+        canEdit,
         selectHousehold,
         refreshHouseholds,
         createNewHousehold,
