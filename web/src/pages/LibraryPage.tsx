@@ -379,12 +379,16 @@ function LibraryPage() {
       // Refresh locations list
       const updatedLocs = await getHouseholdLocations(selectedHousehold.id)
       setLocations(updatedLocs)
+      // Move the book to the new location BEFORE closing modals
+      await updateItem(bookId, { locationId: created.id })
+      // Now close everything and reload
       setShowNewLocationModal(false)
       setNewLocName('')
       setNewLocDescription('')
       setNewLocType('shelf')
-      // Now move the book to the new location
-      await handleMoveToLocation(bookId, created.id)
+      setMoveLocationTarget(null)
+      setLocationSearch('')
+      loadBooks()
     } catch (err: any) {
       alert(err.message || 'Failed to create location')
     } finally {
