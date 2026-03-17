@@ -101,7 +101,7 @@ function LibraryPage() {
   ].filter(Boolean).length
 
   // Move-to-location dropdown
-  const [moveLocationTarget, setMoveLocationTarget] = useState<{ bookId: string; bookTitle: string } | null>(null)
+  const [moveLocationTarget, setMoveLocationTarget] = useState<{ bookId: string; bookTitle: string; rect: DOMRect } | null>(null)
   const [locationSearch, setLocationSearch] = useState('')
   const moveLocationRef = useRef<HTMLDivElement>(null)
   const locationSearchRef = useRef<HTMLInputElement>(null)
@@ -1197,7 +1197,7 @@ function LibraryPage() {
                       </div>
 
                       {/* Move to location icon */}
-                      <div ref={moveLocationTarget?.bookId === book.id ? moveLocationRef : undefined} style={{ padding: '0.5rem 0.15rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white', position: 'relative' }}>
+                      <div style={{ padding: '0.5rem 0.15rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
                         {canEdit && <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -1205,7 +1205,7 @@ function LibraryPage() {
                               setMoveLocationTarget(null)
                               setLocationSearch('')
                             } else {
-                              setMoveLocationTarget({ bookId: book.id, bookTitle: book.title })
+                              setMoveLocationTarget({ bookId: book.id, bookTitle: book.title, rect: e.currentTarget.getBoundingClientRect() })
                               setLocationSearch('')
                             }
                           }}
@@ -1221,111 +1221,6 @@ function LibraryPage() {
                         >
                           📍
                         </button>}
-                        {/* Location dropdown */}
-                        {moveLocationTarget?.bookId === book.id && (() => {
-                          const filtered = locations.filter(l =>
-                            l.name.toLowerCase().includes(locationSearch.toLowerCase())
-                          )
-                          const currentLocId = (book as any).locationId
-                          return (
-                            <div
-                              onClick={(e) => e.stopPropagation()}
-                              style={{
-                                position: 'absolute', top: '100%', right: 0, marginTop: '2px',
-                                zIndex: 100, backgroundColor: 'white', borderRadius: '8px',
-                                boxShadow: '0 4px 20px rgba(0,0,0,0.18)', border: '1px solid #e2e8f0',
-                                minWidth: '240px', maxHeight: '320px', display: 'flex', flexDirection: 'column',
-                                overflow: 'hidden',
-                              }}
-                            >
-                              {/* Search / filter input */}
-                              <div style={{ padding: '0.5rem', borderBottom: '1px solid #f1f5f9' }}>
-                                <input
-                                  ref={locationSearchRef}
-                                  type="text"
-                                  placeholder="Filter locations..."
-                                  value={locationSearch}
-                                  onChange={e => setLocationSearch(e.target.value)}
-                                  style={{
-                                    width: '100%', padding: '0.4rem 0.6rem', border: '1px solid #d1d5db',
-                                    borderRadius: '6px', fontSize: '0.85rem', outline: 'none',
-                                  }}
-                                  onFocus={e => (e.currentTarget.style.borderColor = '#93c5fd')}
-                                  onBlur={e => (e.currentTarget.style.borderColor = '#d1d5db')}
-                                />
-                              </div>
-                              {/* Header */}
-                              <div style={{
-                                padding: '0.35rem 0.75rem', fontSize: '0.7rem', fontWeight: 600,
-                                color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em',
-                                borderBottom: '1px solid #f1f5f9',
-                              }}>
-                                Move to location
-                              </div>
-                              {/* Location list */}
-                              <div style={{ overflowY: 'auto', maxHeight: '200px' }}>
-                                {/* No location / clear */}
-                                <button
-                                  onClick={() => handleMoveToLocation(book.id, '')}
-                                  style={{
-                                    display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
-                                    padding: '0.5rem 0.75rem', border: 'none',
-                                    background: !currentLocId ? '#f0fdf4' : 'none',
-                                    cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left',
-                                    color: !currentLocId ? '#16a34a' : '#64748b', fontStyle: 'italic',
-                                  }}
-                                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
-                                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = !currentLocId ? '#f0fdf4' : 'transparent')}
-                                >
-                                  ✕ No location
-                                </button>
-                                {filtered.map(loc => (
-                                  <button
-                                    key={loc.id}
-                                    onClick={() => handleMoveToLocation(book.id, loc.id)}
-                                    style={{
-                                      display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
-                                      padding: '0.5rem 0.75rem', border: 'none',
-                                      background: currentLocId === loc.id ? '#f0fdf4' : 'none',
-                                      cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left',
-                                      color: currentLocId === loc.id ? '#16a34a' : '#1e293b',
-                                      fontWeight: currentLocId === loc.id ? 600 : 400,
-                                    }}
-                                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
-                                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = currentLocId === loc.id ? '#f0fdf4' : 'transparent')}
-                                  >
-                                    📍 {loc.name}
-                                    {currentLocId === loc.id && <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#16a34a' }}>✓</span>}
-                                  </button>
-                                ))}
-                                {filtered.length === 0 && locationSearch && (
-                                  <div style={{ padding: '0.75rem', color: '#94a3b8', fontSize: '0.85rem', textAlign: 'center' }}>
-                                    No matching locations
-                                  </div>
-                                )}
-                              </div>
-                              {/* Add new location */}
-                              <div style={{ borderTop: '1px solid #e2e8f0' }}>
-                                <button
-                                  onClick={() => {
-                                    setNewLocName(locationSearch)
-                                    setShowNewLocationModal(true)
-                                  }}
-                                  style={{
-                                    display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
-                                    padding: '0.6rem 0.75rem', border: 'none', background: 'none',
-                                    cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left',
-                                    color: '#2563eb', fontWeight: 500,
-                                  }}
-                                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#eff6ff')}
-                                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
-                                >
-                                  ＋ Add new location{locationSearch ? `: "${locationSearch}"` : ''}
-                                </button>
-                              </div>
-                            </div>
-                          )
-                        })()}
                       </div>
 
                       {/* Delete button */}
@@ -1397,6 +1292,125 @@ function LibraryPage() {
           )}
         </>
       )}
+
+      {/* Move-to-Location dropdown (fixed position to avoid overflow clipping) */}
+      {moveLocationTarget && !showNewLocationModal && (() => {
+        const r = moveLocationTarget.rect
+        const dropW = 260
+        const dropH = 340
+        // Position below the button, right-aligned
+        let left = r.right - dropW
+        if (left < 8) left = 8
+        if (left + dropW > window.innerWidth - 8) left = window.innerWidth - dropW - 8
+        let top = r.bottom + 4
+        // If not enough room below, show above
+        if (top + dropH > window.innerHeight - 8) top = r.top - dropH - 4
+        if (top < 8) top = 8
+        const targetBook = displayedBooks.find(b => b.id === moveLocationTarget.bookId)
+        const currentLocId = targetBook ? (targetBook as any).locationId : null
+        const filtered = locations.filter(l =>
+          l.name.toLowerCase().includes(locationSearch.toLowerCase())
+        )
+        return (
+          <div
+            ref={moveLocationRef}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed', left, top, zIndex: 999, width: dropW,
+              backgroundColor: 'white', borderRadius: '8px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.18)', border: '1px solid #e2e8f0',
+              maxHeight: `${dropH}px`, display: 'flex', flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Search / filter input */}
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid #f1f5f9' }}>
+              <input
+                ref={locationSearchRef}
+                type="text"
+                placeholder="Filter locations..."
+                value={locationSearch}
+                onChange={e => setLocationSearch(e.target.value)}
+                style={{
+                  width: '100%', padding: '0.4rem 0.6rem', border: '1px solid #d1d5db',
+                  borderRadius: '6px', fontSize: '0.85rem', outline: 'none',
+                }}
+                onFocus={e => (e.currentTarget.style.borderColor = '#93c5fd')}
+                onBlur={e => (e.currentTarget.style.borderColor = '#d1d5db')}
+              />
+            </div>
+            {/* Header */}
+            <div style={{
+              padding: '0.35rem 0.75rem', fontSize: '0.7rem', fontWeight: 600,
+              color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em',
+              borderBottom: '1px solid #f1f5f9',
+            }}>
+              Move to location
+            </div>
+            {/* Location list */}
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {/* No location / clear */}
+              <button
+                onClick={() => handleMoveToLocation(moveLocationTarget.bookId, '')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                  padding: '0.5rem 0.75rem', border: 'none',
+                  background: !currentLocId ? '#f0fdf4' : 'none',
+                  cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left',
+                  color: !currentLocId ? '#16a34a' : '#64748b', fontStyle: 'italic',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = !currentLocId ? '#f0fdf4' : 'transparent')}
+              >
+                ✕ No location
+              </button>
+              {filtered.map(loc => (
+                <button
+                  key={loc.id}
+                  onClick={() => handleMoveToLocation(moveLocationTarget.bookId, loc.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                    padding: '0.5rem 0.75rem', border: 'none',
+                    background: currentLocId === loc.id ? '#f0fdf4' : 'none',
+                    cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left',
+                    color: currentLocId === loc.id ? '#16a34a' : '#1e293b',
+                    fontWeight: currentLocId === loc.id ? 600 : 400,
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = currentLocId === loc.id ? '#f0fdf4' : 'transparent')}
+                >
+                  📍 {loc.name}
+                  {currentLocId === loc.id && <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#16a34a' }}>✓</span>}
+                </button>
+              ))}
+              {filtered.length === 0 && locationSearch && (
+                <div style={{ padding: '0.75rem', color: '#94a3b8', fontSize: '0.85rem', textAlign: 'center' }}>
+                  No matching locations
+                </div>
+              )}
+            </div>
+            {/* Add new location */}
+            <div style={{ borderTop: '1px solid #e2e8f0', flexShrink: 0 }}>
+              <button
+                onClick={() => {
+                  setNewLocName(locationSearch)
+                  setShowNewLocationModal(true)
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                  padding: '0.6rem 0.75rem', border: 'none', background: 'none',
+                  cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left',
+                  color: '#2563eb', fontWeight: 500,
+                }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#eff6ff')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                ＋ Add new location{locationSearch ? `: "${locationSearch}"` : ''}
+              </button>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Catalog Card Popover (fixed position to avoid overflow clipping) */}
       {catalogPopover && catalogPopoverBook && (() => {
