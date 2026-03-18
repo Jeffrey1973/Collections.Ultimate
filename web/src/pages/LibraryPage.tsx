@@ -482,6 +482,11 @@ function LibraryPage() {
           type="button" 
           className="btn btn-secondary"
           onClick={() => setShowSettings(!showSettings)}
+          style={{
+            backgroundColor: showSettings ? '#eff6ff' : undefined,
+            borderColor: showSettings ? '#93c5fd' : undefined,
+            color: showSettings ? '#2563eb' : undefined,
+          }}
         >
           ⚙️ Display
         </button>

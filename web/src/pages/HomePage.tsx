@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom'
+import { useHousehold } from '../context/HouseholdContext'
 
 function HomePage() {
+  const { canEdit } = useHousehold()
   return (
     <div>
       <div className="page-header">
@@ -22,6 +24,7 @@ function HomePage() {
           </p>
         </Link>
         
+        {canEdit && (
         <Link to="/add-book" className="card" style={{ textDecoration: 'none' }}>
           <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>➕</div>
           <h2 style={{ marginBottom: '0.5rem', color: '#1e293b' }}>Add New Book</h2>
@@ -29,6 +32,7 @@ function HomePage() {
             Add a book to your collection manually or by ISBN
           </p>
         </Link>
+        )}
 
         <Link to="/households" className="card" style={{ textDecoration: 'none' }}>
           <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🏠</div>
