@@ -249,6 +249,7 @@ export interface ItemSearchResponse {
   subtitle?: string
   barcode?: string
   locationId?: string
+  libraryId?: string
   locationName?: string
   status?: string
   condition?: string
@@ -1061,6 +1062,7 @@ export async function updateItem(
     // Item-level fields
     barcode?: string
     locationId?: string
+    libraryId?: string | null
     status?: string
     condition?: string
     acquiredOn?: string
@@ -1375,6 +1377,7 @@ export function mapSearchResultToBook(item: ItemSearchResponse): any {
     id: item.itemId,
     workId: item.workId,
     householdId: undefined, // not in list response
+    libraryId: item.libraryId,
     title: item.title || item.workTitle || 'Untitled',
     subtitle: item.subtitle,
     author: item.authors || 'Unknown Author',

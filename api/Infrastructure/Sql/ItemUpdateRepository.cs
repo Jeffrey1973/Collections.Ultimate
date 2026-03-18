@@ -21,6 +21,7 @@ public sealed class ItemUpdateRepository : IItemUpdateRepository
             set
                 Barcode = case when @Barcode_IsSpecified = 1 then @Barcode else Barcode end,
                 LocationId = case when @LocationId_IsSpecified = 1 then @LocationId else LocationId end,
+                LibraryId = case when @LibraryId_IsSpecified = 1 then @LibraryId else LibraryId end,
                 Status = case when @Status_IsSpecified = 1 then @Status else Status end,
                 Condition = case when @Condition_IsSpecified = 1 then @Condition else Condition end,
                 AcquiredOn = case when @AcquiredOn_IsSpecified = 1 then @AcquiredOn else AcquiredOn end,
@@ -48,6 +49,9 @@ public sealed class ItemUpdateRepository : IItemUpdateRepository
 
                 LocationId_IsSpecified = patch.LocationId.IsSpecified ? 1 : 0,
                 LocationId = patch.LocationId.Value,
+
+                LibraryId_IsSpecified = patch.LibraryId.IsSpecified ? 1 : 0,
+                LibraryId = patch.LibraryId.Value,
 
                 Status_IsSpecified = patch.Status.IsSpecified ? 1 : 0,
                 Status = NormalizeNullable(patch.Status.Value),

@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import BookCard from '../components/BookCard.tsx'
 import CardCatalogView from '../components/CardCatalogView.tsx'
 import { Book } from '../api/books'
-import { getItems, getHouseholdLocations, mapSearchResultToBook, softDeleteItem, hardDeleteItem, getUserPreference, setUserPreference, updateItem, createHouseholdLocation } from '../api/backend'
+import { getItems, getHouseholdLocations, mapSearchResultToBook, softDeleteItem, hardDeleteItem, getUserPreference, setUserPreference, updateItem, createHouseholdLocation, moveItemToHousehold } from '../api/backend'
 import { useHousehold } from '../context/HouseholdContext'
 import { useLibrary } from '../context/LibraryContext'
 import { FIELD_DEFINITIONS, FIELD_CATEGORIES, type CategoryKey } from '../config/field-config'
@@ -61,8 +61,8 @@ function loadSavedFields(): string[] {
 }
 
 function LibraryPage() {
-  const { selectedHousehold, isLoading: isLoadingHousehold, canEdit } = useHousehold()
-  const { selectedLibrary } = useLibrary()
+  const { selectedHousehold, households, isLoading: isLoadingHousehold, canEdit } = useHousehold()
+  const { selectedLibrary, libraries } = useLibrary()
   const navigate = useNavigate()
   const [books, setBooks] = useState<Book[]>([])
   const [totalCount, setTotalCount] = useState(0)
@@ -109,6 +109,15 @@ function LibraryPage() {
   const moveLocationRef = useRef<HTMLDivElement>(null)
   const locationSearchRef = useRef<HTMLInputElement>(null)
 
+  // Move-to-library dropdown
+  const [moveLibraryTarget, setMoveLibraryTarget] = useState<{ bookId: string; bookTitle: string; rect: DOMRect } | null>(null)
+  const moveLibraryRef = useRef<HTMLDivElement>(null)
+
+  // Move-to-household dropdown
+  const [moveHouseholdTarget, setMoveHouseholdTarget] = useState<{ bookId: string; bookTitle: string; rect: DOMRect } | null>(null)
+  const moveHouseholdRef = useRef<HTMLDivElement>(null)
+  const [isMovingHousehold, setIsMovingHousehold] = useState(false)
+
   // New location modal
   const [showNewLocationModal, setShowNewLocationModal] = useState(false)
   const [newLocName, setNewLocName] = useState('')
@@ -141,6 +150,32 @@ function LibraryPage() {
       setTimeout(() => locationSearchRef.current?.focus(), 50)
     }
   }, [moveLocationTarget])
+
+  // Close move-library dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (moveLibraryRef.current && !moveLibraryRef.current.contains(e.target as Node)) {
+        setMoveLibraryTarget(null)
+      }
+    }
+    if (moveLibraryTarget) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [moveLibraryTarget])
+
+  // Close move-household dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (moveHouseholdRef.current && !moveHouseholdRef.current.contains(e.target as Node)) {
+        setMoveHouseholdTarget(null)
+      }
+    }
+    if (moveHouseholdTarget) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [moveHouseholdTarget])
 
   // Close tools menu on outside click
   useEffect(() => {
@@ -372,6 +407,31 @@ function LibraryPage() {
     } catch (err) {
       console.error('Move to location failed:', err)
       alert('Failed to move book to location')
+    }
+  }
+
+  async function handleMoveToLibrary(bookId: string, libraryId: string | null) {
+    try {
+      await updateItem(bookId, { libraryId })
+      setMoveLibraryTarget(null)
+      loadBooks()
+    } catch (err) {
+      console.error('Move to library failed:', err)
+      alert('Failed to move book to library')
+    }
+  }
+
+  async function handleMoveToHousehold(bookId: string, targetHouseholdId: string, targetName: string) {
+    try {
+      setIsMovingHousehold(true)
+      await moveItemToHousehold(bookId, targetHouseholdId)
+      setMoveHouseholdTarget(null)
+      loadBooks()
+    } catch (err) {
+      console.error('Move to household failed:', err)
+      alert(`Failed to move book to ${targetName}`)
+    } finally {
+      setIsMovingHousehold(false)
     }
   }
 
@@ -1051,9 +1111,13 @@ function LibraryPage() {
           {viewMode === 'list' && (() => {
             const showCover = displayFields.includes('coverImage')
             const dataFields = displayFields.filter(f => f !== 'coverImage')
-            // Build grid template: optional cover + title + each display field + catalog icon + move-location icon + delete button
-            const colCount = (showCover ? 1 : 0) + 1 + dataFields.length + 3
-            const gridCols = `${showCover ? '50px ' : ''}minmax(200px, 2fr) ${dataFields.map(() => 'minmax(100px, 1fr)').join(' ')} 32px 32px 36px`
+            // Build grid template: optional cover + title + each display field + catalog icon + move-location icon + (optional move-library) + (optional move-household) + delete button
+            const hasMultipleLibraries = libraries.length > 1
+            const otherHouseholds = households.filter(h => h.id !== selectedHousehold?.id)
+            const hasMultipleHouseholds = otherHouseholds.length > 0
+            const extraCols = 2 + (hasMultipleLibraries ? 1 : 0) + (hasMultipleHouseholds ? 1 : 0) + 1  // catalog + move-loc + (move-lib?) + (move-hh?) + delete
+            const colCount = (showCover ? 1 : 0) + 1 + dataFields.length + extraCols
+            const gridCols = `${showCover ? '50px ' : ''}minmax(200px, 2fr) ${dataFields.map(() => 'minmax(100px, 1fr)').join(' ')} 32px 32px${hasMultipleLibraries ? ' 32px' : ''}${hasMultipleHouseholds ? ' 32px' : ''} 36px`
             
             // Helper to format a field value for display
             const formatValue = (value: any): string => {
@@ -1231,6 +1295,61 @@ function LibraryPage() {
                           📚➡️
                         </button>}
                       </div>
+
+                      {/* Move to library icon */}
+                      {libraries.length > 1 && (
+                        <div style={{ padding: '0.5rem 0.15rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
+                          {canEdit && <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (moveLibraryTarget?.bookId === book.id) {
+                                setMoveLibraryTarget(null)
+                              } else {
+                                setMoveLibraryTarget({ bookId: book.id, bookTitle: book.title, rect: e.currentTarget.getBoundingClientRect() })
+                              }
+                            }}
+                            title="Move to library"
+                            style={{
+                              width: '26px', height: '26px', borderRadius: '6px',
+                              border: 'none', background: 'transparent', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: '0.65rem', opacity: moveLibraryTarget?.bookId === book.id ? 1 : 0.3, transition: 'opacity 0.15s',
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                            onMouseLeave={e => { if (moveLibraryTarget?.bookId !== book.id) e.currentTarget.style.opacity = '0.3' }}
+                          >
+                            📖➡️
+                          </button>}
+                        </div>
+                      )}
+
+                      {/* Move to household icon */}
+                      {households.filter(h => h.id !== selectedHousehold?.id).length > 0 && (
+                        <div style={{ padding: '0.5rem 0.15rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
+                          {canEdit && <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (moveHouseholdTarget?.bookId === book.id) {
+                                setMoveHouseholdTarget(null)
+                              } else {
+                                setMoveHouseholdTarget({ bookId: book.id, bookTitle: book.title, rect: e.currentTarget.getBoundingClientRect() })
+                              }
+                            }}
+                            title="Move to household"
+                            disabled={isMovingHousehold}
+                            style={{
+                              width: '26px', height: '26px', borderRadius: '6px',
+                              border: 'none', background: 'transparent', cursor: isMovingHousehold ? 'wait' : 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: '0.65rem', opacity: moveHouseholdTarget?.bookId === book.id ? 1 : 0.3, transition: 'opacity 0.15s',
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                            onMouseLeave={e => { if (moveHouseholdTarget?.bookId !== book.id) e.currentTarget.style.opacity = '0.3' }}
+                          >
+                            📦➡️
+                          </button>}
+                        </div>
+                      )}
 
                       {/* Delete button */}
                       <div style={{ padding: '0.5rem 0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
@@ -1416,6 +1535,123 @@ function LibraryPage() {
               >
                 ＋ Add new location{locationSearch ? `: "${locationSearch}"` : ''}
               </button>
+            </div>
+          </div>
+        )
+      })(), document.body)}
+
+      {/* Move-to-Library dropdown (portal) */}
+      {moveLibraryTarget && createPortal((() => {
+        const r = moveLibraryTarget.rect
+        const dropW = 260
+        const dropH = 280
+        let left = r.right - dropW
+        if (left < 8) left = 8
+        if (left + dropW > window.innerWidth - 8) left = window.innerWidth - dropW - 8
+        let top = r.bottom + 4
+        if (top + dropH > window.innerHeight - 8) top = r.top - dropH - 4
+        if (top < 8) top = 8
+        const targetBook = displayedBooks.find(b => b.id === moveLibraryTarget.bookId)
+        const currentLibId = targetBook ? (targetBook as any).libraryId : null
+        return (
+          <div
+            ref={moveLibraryRef}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed', left, top, zIndex: 9999, width: dropW,
+              backgroundColor: 'white', borderRadius: '8px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.18)', border: '1px solid #e2e8f0',
+              maxHeight: `${dropH}px`, display: 'flex', flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <div style={{
+              padding: '0.35rem 0.75rem', fontSize: '0.7rem', fontWeight: 600,
+              color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em',
+              borderBottom: '1px solid #f1f5f9',
+            }}>
+              Move to library
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {libraries.map(lib => (
+                <button
+                  key={lib.id}
+                  onClick={() => handleMoveToLibrary(moveLibraryTarget.bookId, lib.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                    padding: '0.5rem 0.75rem', border: 'none',
+                    background: currentLibId === lib.id ? '#f0fdf4' : 'none',
+                    cursor: currentLibId === lib.id ? 'default' : 'pointer',
+                    fontSize: '0.875rem', textAlign: 'left',
+                    color: currentLibId === lib.id ? '#16a34a' : '#1e293b',
+                    fontWeight: currentLibId === lib.id ? 600 : 400,
+                  }}
+                  disabled={currentLibId === lib.id}
+                  onMouseEnter={e => { if (currentLibId !== lib.id) e.currentTarget.style.backgroundColor = '#f1f5f9' }}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = currentLibId === lib.id ? '#f0fdf4' : 'transparent')}
+                >
+                  📖 {lib.name}
+                  {currentLibId === lib.id && <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#16a34a' }}>✓</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        )
+      })(), document.body)}
+
+      {/* Move-to-Household dropdown (portal) */}
+      {moveHouseholdTarget && createPortal((() => {
+        const r = moveHouseholdTarget.rect
+        const dropW = 260
+        const dropH = 280
+        let left = r.right - dropW
+        if (left < 8) left = 8
+        if (left + dropW > window.innerWidth - 8) left = window.innerWidth - dropW - 8
+        let top = r.bottom + 4
+        if (top + dropH > window.innerHeight - 8) top = r.top - dropH - 4
+        if (top < 8) top = 8
+        const otherHh = households.filter(h => h.id !== selectedHousehold?.id)
+        return (
+          <div
+            ref={moveHouseholdRef}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed', left, top, zIndex: 9999, width: dropW,
+              backgroundColor: 'white', borderRadius: '8px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.18)', border: '1px solid #e2e8f0',
+              maxHeight: `${dropH}px`, display: 'flex', flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <div style={{
+              padding: '0.35rem 0.75rem', fontSize: '0.7rem', fontWeight: 600,
+              color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em',
+              borderBottom: '1px solid #f1f5f9',
+            }}>
+              Move to household
+            </div>
+            <div style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem', color: '#ef4444', borderBottom: '1px solid #f1f5f9' }}>
+              ⚠️ This will remove the book from this household
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {otherHh.map(h => (
+                <button
+                  key={h.id}
+                  onClick={() => handleMoveToHousehold(moveHouseholdTarget.bookId, h.id, h.name)}
+                  disabled={isMovingHousehold}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                    padding: '0.5rem 0.75rem', border: 'none', background: 'none',
+                    cursor: isMovingHousehold ? 'wait' : 'pointer',
+                    fontSize: '0.875rem', textAlign: 'left', color: '#1e293b',
+                    opacity: isMovingHousehold ? 0.6 : 1,
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                >
+                  🏠 {h.name}
+                </button>
+              ))}
             </div>
           </div>
         )

@@ -1802,6 +1802,7 @@ app.MapPatch("/api/items/{itemId:guid}", async (
     var patch = new ItemInventoryPatch(
         Barcode: ToPatchString(request.Barcode),
         LocationId: ToPatchGuid(request.LocationId),
+        LibraryId: ToPatchGuid(request.LibraryId),
         Status: ToPatchString(request.Status),
         Condition: ToPatchString(request.Condition),
         AcquiredOn: ToPatchDateOnly(request.AcquiredOn),
@@ -1866,6 +1867,31 @@ app.MapPatch("/api/items/{itemId:guid}", async (
                     ItemId = new ItemId(itemId),
                     EventTypeId = 3, // Moved
                     Notes = $"Moved from \"{oldName}\" to \"{newName}\"",
+                    AccountId = acctId
+                }, CancellationToken.None);
+            }
+
+            // Library changed (moved between libraries)
+            if (patch.LibraryId is { IsSpecified: true } patchLibId && patchLibId.Value != item.LibraryId?.Value)
+            {
+                string oldLib = "unassigned", newLib = "unassigned";
+                try
+                {
+                    using var libDb = dbFactory.Create();
+                    var libIds = new[] { item.LibraryId?.Value, patchLibId.Value }.Where(x => x.HasValue).Select(x => x!.Value).Distinct();
+                    var libNames = (await Dapper.SqlMapper.QueryAsync<(Guid Id, string Name)>(libDb,
+                        "SELECT Id, Name FROM dbo.Library WHERE Id IN (SELECT value FROM STRING_SPLIT(@Ids, ','))",
+                        new { Ids = string.Join(',', libIds) })).ToDictionary(x => x.Id, x => x.Name);
+                    if (item.LibraryId.HasValue && libNames.TryGetValue(item.LibraryId.Value.Value, out var ol)) oldLib = ol;
+                    if (patchLibId.Value.HasValue && libNames.TryGetValue(patchLibId.Value.Value, out var nl)) newLib = nl;
+                }
+                catch { /* best-effort name resolution */ }
+
+                await eventRepo.CreateAsync(new ItemEvent
+                {
+                    ItemId = new ItemId(itemId),
+                    EventTypeId = 3, // Moved
+                    Notes = $"Moved from library \"{oldLib}\" to \"{newLib}\"",
                     AccountId = acctId
                 }, CancellationToken.None);
             }
@@ -2697,6 +2723,7 @@ public sealed record PatchItemRequest(
     // Item-level fields
     JsonElement? Barcode,
     JsonElement? LocationId,
+    JsonElement? LibraryId,
     JsonElement? Status,
     JsonElement? Condition,
     JsonElement? AcquiredOn,

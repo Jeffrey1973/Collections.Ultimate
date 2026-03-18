@@ -3,6 +3,7 @@ namespace CollectionsUltimate.Domain;
 public sealed record ItemInventoryPatch(
     PatchField<string> Barcode,
     PatchField<Guid?> LocationId,
+    PatchField<Guid?> LibraryId,
     PatchField<string> Status,
     PatchField<string> Condition,
     PatchField<DateOnly?> AcquiredOn,

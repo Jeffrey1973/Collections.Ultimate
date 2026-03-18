@@ -13,6 +13,7 @@ public sealed record ItemSearchResult(
     string? Subtitle,
     string? Barcode,
     Guid? LocationId,
+    Guid? LibraryId,
     string? LocationName,
     string? Status,
     string? Condition,
