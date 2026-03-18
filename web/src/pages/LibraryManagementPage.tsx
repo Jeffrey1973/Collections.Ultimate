@@ -96,8 +96,9 @@ function LibraryCard({
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function LibraryManagementPage() {
-  const { selectedHousehold, canEdit } = useHousehold()
+  const { selectedHousehold, userRole } = useHousehold()
   const { refreshLibraries } = useLibrary()
+  const isOwner = userRole === 'Owner'
 
   // Library list
   const [libraries, setLibraries] = useState<LibrarySummary[]>([])
@@ -237,7 +238,7 @@ export default function LibraryManagementPage() {
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '2rem 1rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h1 style={{ margin: 0, fontSize: '1.5rem' }}>Libraries</h1>
-        {canEdit && (
+        {isOwner && (
           <button
             onClick={() => { setEditingId(null); setFormName(''); setFormDesc(''); setShowForm(true) }}
             style={{
@@ -366,7 +367,7 @@ export default function LibraryManagementPage() {
                     <td style={{ padding: '0.5rem', fontSize: '0.9rem' }}>{m.displayName}</td>
                     <td style={{ padding: '0.5rem', fontSize: '0.9rem', color: '#64748b' }}>{m.email ?? '—'}</td>
                     <td style={{ padding: '0.5rem' }}>
-                      {canEdit ? (
+                      {isOwner ? (
                         <select
                           value={m.role}
                           onChange={(e) => handleChangeRole(m.accountId, e.target.value)}
@@ -381,7 +382,7 @@ export default function LibraryManagementPage() {
                       )}
                     </td>
                     <td style={{ padding: '0.5rem', textAlign: 'right' }}>
-                      {canEdit && (
+                      {isOwner && (
                         <button
                           onClick={() => handleRemoveMember(m.accountId)}
                           style={{
@@ -405,7 +406,7 @@ export default function LibraryManagementPage() {
           )}
 
           {/* Add member */}
-          {canEdit && (
+          {isOwner && (
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <input
                 type="email"

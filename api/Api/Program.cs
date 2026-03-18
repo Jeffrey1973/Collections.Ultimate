@@ -925,7 +925,7 @@ app.MapPost("/api/households/{householdId:guid}/libraries", async (
     ILibraryRepository libraryRepo,
     CancellationToken ct) =>
 {
-    var denied = await EnforceWriteAccessAsync(http, accountRepo, ahRepo, householdId, ct);
+    var denied = await EnforceOwnerAccessAsync(http, accountRepo, ahRepo, householdId, ct);
     if (denied is not null) return denied;
 
     var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
@@ -956,23 +956,35 @@ app.MapPost("/api/households/{householdId:guid}/libraries", async (
 
 // Update a library
 app.MapPut("/api/libraries/{libraryId:guid}", async (
+    HttpContext http,
     Guid libraryId,
     CreateLibraryRequest request,
+    IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
     ILibraryRepository libraryRepo,
     CancellationToken ct) =>
 {
+    var library = await libraryRepo.GetByIdAsync(new LibraryId(libraryId), ct);
+    if (library is null) return Results.NotFound();
+    var denied = await EnforceOwnerAccessAsync(http, accountRepo, ahRepo, library.HouseholdId.Value, ct);
+    if (denied is not null) return denied;
     await libraryRepo.UpdateAsync(new LibraryId(libraryId), request.Name, request.Description, ct);
     return Results.NoContent();
 }).RequireAuthorization();
 
 // Delete a library (cannot delete default)
 app.MapDelete("/api/libraries/{libraryId:guid}", async (
+    HttpContext http,
     Guid libraryId,
+    IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
     ILibraryRepository libraryRepo,
     CancellationToken ct) =>
 {
     var library = await libraryRepo.GetByIdAsync(new LibraryId(libraryId), ct);
     if (library is null) return Results.NotFound();
+    var denied = await EnforceOwnerAccessAsync(http, accountRepo, ahRepo, library.HouseholdId.Value, ct);
+    if (denied is not null) return denied;
     if (library.IsDefault) return Results.BadRequest(new { error = "Cannot delete the default library" });
     await libraryRepo.DeleteAsync(new LibraryId(libraryId), ct);
     return Results.NoContent();
@@ -1008,12 +1020,19 @@ app.MapGet("/api/libraries/{libraryId:guid}/members", async (
 
 // Add member to library
 app.MapPost("/api/libraries/{libraryId:guid}/members", async (
+    HttpContext http,
     Guid libraryId,
     AddLibraryMemberRequest request,
     IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
     ILibraryRepository libraryRepo,
     CancellationToken ct) =>
 {
+    var library = await libraryRepo.GetByIdAsync(new LibraryId(libraryId), ct);
+    if (library is null) return Results.NotFound();
+    var denied = await EnforceOwnerAccessAsync(http, accountRepo, ahRepo, library.HouseholdId.Value, ct);
+    if (denied is not null) return denied;
+
     var account = await accountRepo.GetByEmailAsync(request.Email, ct);
     if (account is null)
         return Results.NotFound(new { message = $"No account found with email '{request.Email}'" });
@@ -1024,23 +1043,37 @@ app.MapPost("/api/libraries/{libraryId:guid}/members", async (
 
 // Update library member role
 app.MapPatch("/api/libraries/{libraryId:guid}/members/{accountId:guid}", async (
+    HttpContext http,
     Guid libraryId,
     Guid accountId,
     UpdateMemberRoleRequest request,
+    IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
     ILibraryRepository libraryRepo,
     CancellationToken ct) =>
 {
+    var library = await libraryRepo.GetByIdAsync(new LibraryId(libraryId), ct);
+    if (library is null) return Results.NotFound();
+    var denied = await EnforceOwnerAccessAsync(http, accountRepo, ahRepo, library.HouseholdId.Value, ct);
+    if (denied is not null) return denied;
     await libraryRepo.UpdateMemberRoleAsync(new LibraryId(libraryId), new AccountId(accountId), request.Role, ct);
     return Results.NoContent();
 }).RequireAuthorization();
 
 // Remove member from library
 app.MapDelete("/api/libraries/{libraryId:guid}/members/{accountId:guid}", async (
+    HttpContext http,
     Guid libraryId,
     Guid accountId,
+    IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
     ILibraryRepository libraryRepo,
     CancellationToken ct) =>
 {
+    var library = await libraryRepo.GetByIdAsync(new LibraryId(libraryId), ct);
+    if (library is null) return Results.NotFound();
+    var denied = await EnforceOwnerAccessAsync(http, accountRepo, ahRepo, library.HouseholdId.Value, ct);
+    if (denied is not null) return denied;
     await libraryRepo.RemoveMemberAsync(new LibraryId(libraryId), new AccountId(accountId), ct);
     return Results.NoContent();
 }).RequireAuthorization();
@@ -1562,6 +1595,33 @@ static async Task<IResult?> EnforceWriteAccessAsync(
         return Results.Json(new { error = "ReadOnly members cannot modify data" }, statusCode: 403);
 
     return null; // write access OK
+}
+
+/// <summary>
+/// Returns a 403 Forbidden result if the current user does not have Owner role for the given household.
+/// Returns null when owner access is confirmed.
+/// </summary>
+static async Task<IResult?> EnforceOwnerAccessAsync(
+    HttpContext http,
+    IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
+    Guid householdId,
+    CancellationToken ct)
+{
+    var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
+           ?? http.User.FindFirstValue("sub");
+    if (string.IsNullOrEmpty(sub)) return Results.Unauthorized();
+
+    var account = await accountRepo.GetByAuth0SubAsync(sub, ct);
+    if (account is null) return Results.Unauthorized();
+
+    var memberships = await ahRepo.ListHouseholdsAsync(account.Id, ct);
+    var membership = memberships.FirstOrDefault(m => m.HouseholdId.Value == householdId);
+    if (membership is null) return Results.Forbid();
+    if (!string.Equals(membership.Role, "Owner", StringComparison.OrdinalIgnoreCase))
+        return Results.Json(new { error = "Only owners can manage libraries" }, statusCode: 403);
+
+    return null; // owner access OK
 }
 
 static async Task RecordAcquiredEventAsync(IItemEventRepository eventRepo, ItemId itemId, DateOnly? acquiredOn, Guid? accountId = null)
