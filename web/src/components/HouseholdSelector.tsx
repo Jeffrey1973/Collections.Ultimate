@@ -27,19 +27,14 @@ export default function HouseholdSelector() {
       padding: '0.5rem 0',
     }}>
       <label htmlFor="household-select" style={{ fontSize: '0.9rem', fontWeight: 500 }}>
-        Library:
+        Household:
       </label>
       <select
         id="household-select"
         value={selectedHousehold?.id || ''}
         onChange={(e) => {
-          console.log('🔄 Household selection changed to:', e.target.value)
           const household = households.find(h => h.id === e.target.value)
-          console.log('🏠 Found household:', household)
-          if (household) {
-            selectHousehold(household)
-            console.log('✅ Called selectHousehold')
-          }
+          if (household) selectHousehold(household)
         }}
         style={{
           padding: '0.5rem 0.75rem',

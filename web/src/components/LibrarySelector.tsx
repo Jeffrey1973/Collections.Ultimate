@@ -1,10 +1,10 @@
+import { Link } from 'react-router-dom'
 import { useLibrary } from '../context/LibraryContext'
 
 export default function LibrarySelector() {
   const { libraries, selectedLibrary, selectLibrary, isLoading } = useLibrary()
 
-  // Don't show selector if there's only one library or still loading
-  if (isLoading || libraries.length <= 1) return null
+  if (isLoading || libraries.length === 0) return null
 
   return (
     <div style={{
@@ -14,7 +14,7 @@ export default function LibrarySelector() {
       padding: '0.5rem 0',
     }}>
       <label htmlFor="library-select" style={{ fontSize: '0.85rem', fontWeight: 500, color: '#64748b' }}>
-        Shelf:
+        Library:
       </label>
       <select
         id="library-select"
@@ -38,6 +38,18 @@ export default function LibrarySelector() {
           </option>
         ))}
       </select>
+      <Link
+        to="/libraries"
+        style={{
+          fontSize: '0.75rem',
+          color: '#3b82f6',
+          textDecoration: 'none',
+          whiteSpace: 'nowrap',
+        }}
+        title="Manage libraries"
+      >
+        Manage
+      </Link>
     </div>
   )
 }

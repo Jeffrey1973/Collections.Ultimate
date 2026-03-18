@@ -38,7 +38,15 @@ function HomePage() {
           <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🏠</div>
           <h2 style={{ marginBottom: '0.5rem', color: '#1e293b' }}>Households</h2>
           <p style={{ color: '#64748b' }}>
-            Manage household members and shared libraries
+            Manage household members and locations
+          </p>
+        </Link>
+
+        <Link to="/libraries" className="card" style={{ textDecoration: 'none' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>📚</div>
+          <h2 style={{ marginBottom: '0.5rem', color: '#1e293b' }}>Libraries</h2>
+          <p style={{ color: '#64748b' }}>
+            Create multiple libraries and manage per-library members
           </p>
         </Link>
 

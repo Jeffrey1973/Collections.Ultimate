@@ -1194,6 +1194,15 @@ export default function HouseholdManagementPage() {
         <button style={styles.tab(activeTab === 'categories')} onClick={() => setActiveTab('categories')}>
           🏷️ Categories
         </button>
+        <a href="/libraries" style={{
+          ...styles.tab(false),
+          textDecoration: 'none',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.25rem',
+        }}>
+          📚 Libraries ↗
+        </a>
       </div>
 
       {/* ─── Households Tab ───────────────────────────────────────────────── */}
