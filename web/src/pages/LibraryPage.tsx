@@ -1111,13 +1111,14 @@ function LibraryPage() {
           {viewMode === 'list' && (() => {
             const showCover = displayFields.includes('coverImage')
             const dataFields = displayFields.filter(f => f !== 'coverImage')
-            // Build grid template: optional cover + title + each display field + catalog icon + move-location icon + (optional move-library) + (optional move-household) + delete button
+            // Build grid template: optional cover + title + each display field + action icons
             const hasMultipleLibraries = libraries.length > 1
             const otherHouseholds = households.filter(h => h.id !== selectedHousehold?.id)
             const hasMultipleHouseholds = otherHouseholds.length > 0
-            const extraCols = 2 + (hasMultipleLibraries ? 1 : 0) + (hasMultipleHouseholds ? 1 : 0) + 1  // catalog + move-loc + (move-lib?) + (move-hh?) + delete
-            const colCount = (showCover ? 1 : 0) + 1 + dataFields.length + extraCols
-            const gridCols = `${showCover ? '50px ' : ''}minmax(200px, 2fr) ${dataFields.map(() => 'minmax(100px, 1fr)').join(' ')} 32px 32px${hasMultipleLibraries ? ' 32px' : ''}${hasMultipleHouseholds ? ' 32px' : ''} 36px`
+            const actionColCount = 2 + (hasMultipleLibraries ? 1 : 0) + (hasMultipleHouseholds ? 1 : 0) + 1  // catalog + move-loc + (move-lib?) + (move-hh?) + delete
+            const dataColCount = (showCover ? 1 : 0) + 1 + dataFields.length
+            const gridCols = `${showCover ? '50px ' : ''}minmax(200px, 2fr) ${dataFields.map(() => 'minmax(100px, 1fr)').join(' ')} ${Array(actionColCount).fill('28px').join(' ')}`
+            const minWidth = dataColCount * 120 + actionColCount * 28
             
             // Helper to format a field value for display
             const formatValue = (value: any): string => {
@@ -1137,7 +1138,7 @@ function LibraryPage() {
                   display: 'grid',
                   gridTemplateColumns: gridCols,
                   gap: '0',
-                  minWidth: `${colCount * 120}px`,
+                  minWidth: `${minWidth}px`,
                 }}>
                   {/* Header row */}
                   <div style={{ display: 'contents' }}>
@@ -1151,9 +1152,9 @@ function LibraryPage() {
                         </div>
                       )
                     })}
-                    <div style={{ padding: '0.5rem 0.25rem', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1 }} />
-                    <div style={{ padding: '0.5rem 0.25rem', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1 }} />
-                    <div style={{ padding: '0.5rem 0.75rem', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1 }} />
+                    {Array.from({ length: actionColCount }).map((_, i) => (
+                      <div key={`action-hdr-${i}`} style={{ padding: '0.5rem 0.1rem', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1 }} />
+                    ))}
                   </div>
 
                   {/* Data rows */}
@@ -1242,7 +1243,7 @@ function LibraryPage() {
                       ))}
 
                       {/* Catalog card icon */}
-                      <div style={{ padding: '0.5rem 0.15rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
+                      <div style={{ padding: '0.35rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -1259,10 +1260,10 @@ function LibraryPage() {
                           }}
                           title="View catalog card"
                           style={{
-                            width: '26px', height: '26px', borderRadius: '6px',
+                            width: '24px', height: '24px', borderRadius: '4px',
                             border: 'none', background: 'transparent', cursor: 'pointer',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.75rem', opacity: catalogPopover?.bookId === book.id ? 1 : 0.35, transition: 'opacity 0.15s',
+                            fontSize: '0.7rem', opacity: catalogPopover?.bookId === book.id ? 1 : 0.35, transition: 'opacity 0.15s',
                           }}
                         >
                           📇
@@ -1270,7 +1271,7 @@ function LibraryPage() {
                       </div>
 
                       {/* Move to location icon */}
-                      <div style={{ padding: '0.5rem 0.15rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
+                      <div style={{ padding: '0.35rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
                         {canEdit && <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -1284,21 +1285,21 @@ function LibraryPage() {
                           }}
                           title="Move to location"
                           style={{
-                            width: '26px', height: '26px', borderRadius: '6px',
+                            width: '24px', height: '24px', borderRadius: '4px',
                             border: 'none', background: 'transparent', cursor: 'pointer',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.65rem', opacity: moveLocationTarget?.bookId === book.id ? 1 : 0.3, transition: 'opacity 0.15s',
+                            fontSize: '0.7rem', opacity: moveLocationTarget?.bookId === book.id ? 1 : 0.3, transition: 'opacity 0.15s',
                           }}
                           onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
                           onMouseLeave={e => { if (moveLocationTarget?.bookId !== book.id) e.currentTarget.style.opacity = '0.3' }}
                         >
-                          📚➡️
+                          📍
                         </button>}
                       </div>
 
                       {/* Move to library icon */}
                       {libraries.length > 1 && (
-                        <div style={{ padding: '0.5rem 0.15rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
+                        <div style={{ padding: '0.35rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
                           {canEdit && <button
                             onClick={(e) => {
                               e.stopPropagation()
@@ -1310,22 +1311,22 @@ function LibraryPage() {
                             }}
                             title="Move to library"
                             style={{
-                              width: '26px', height: '26px', borderRadius: '6px',
+                              width: '24px', height: '24px', borderRadius: '4px',
                               border: 'none', background: 'transparent', cursor: 'pointer',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              fontSize: '0.65rem', opacity: moveLibraryTarget?.bookId === book.id ? 1 : 0.3, transition: 'opacity 0.15s',
+                              fontSize: '0.7rem', opacity: moveLibraryTarget?.bookId === book.id ? 1 : 0.3, transition: 'opacity 0.15s',
                             }}
                             onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
                             onMouseLeave={e => { if (moveLibraryTarget?.bookId !== book.id) e.currentTarget.style.opacity = '0.3' }}
                           >
-                            📖➡️
+                            📚
                           </button>}
                         </div>
                       )}
 
                       {/* Move to household icon */}
                       {households.filter(h => h.id !== selectedHousehold?.id).length > 0 && (
-                        <div style={{ padding: '0.5rem 0.15rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
+                        <div style={{ padding: '0.35rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
                           {canEdit && <button
                             onClick={(e) => {
                               e.stopPropagation()
@@ -1338,29 +1339,29 @@ function LibraryPage() {
                             title="Move to household"
                             disabled={isMovingHousehold}
                             style={{
-                              width: '26px', height: '26px', borderRadius: '6px',
+                              width: '24px', height: '24px', borderRadius: '4px',
                               border: 'none', background: 'transparent', cursor: isMovingHousehold ? 'wait' : 'pointer',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              fontSize: '0.65rem', opacity: moveHouseholdTarget?.bookId === book.id ? 1 : 0.3, transition: 'opacity 0.15s',
+                              fontSize: '0.7rem', opacity: moveHouseholdTarget?.bookId === book.id ? 1 : 0.3, transition: 'opacity 0.15s',
                             }}
                             onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
                             onMouseLeave={e => { if (moveHouseholdTarget?.bookId !== book.id) e.currentTarget.style.opacity = '0.3' }}
                           >
-                            📦➡️
+                            📦
                           </button>}
                         </div>
                       )}
 
                       {/* Delete button */}
-                      <div style={{ padding: '0.5rem 0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
+                      <div style={{ padding: '0.35rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: showPreviouslyOwned ? '#fffbeb' : 'white' }}>
                         {canEdit && <button
                           onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: book.id, title: book.title }) }}
                           title="Remove book"
                           style={{
-                            width: '28px', height: '28px', borderRadius: '6px',
+                            width: '24px', height: '24px', borderRadius: '4px',
                             border: 'none', background: 'transparent', cursor: 'pointer',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.8rem', opacity: 0.3, transition: 'opacity 0.15s',
+                            fontSize: '0.7rem', opacity: 0.3, transition: 'opacity 0.15s',
                           }}
                           onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
                           onMouseLeave={e => (e.currentTarget.style.opacity = '0.3')}
