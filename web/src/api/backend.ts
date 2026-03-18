@@ -913,6 +913,7 @@ export async function getItems(
     barcode?: string
     status?: string
     locationId?: string
+    libraryId?: string
     verified?: string
     enriched?: string
     take?: number
@@ -926,6 +927,7 @@ export async function getItems(
   if (params?.barcode) queryParams.append('barcode', params.barcode)
   if (params?.status) queryParams.append('status', params.status)
   if (params?.locationId) queryParams.append('locationId', params.locationId)
+  if (params?.libraryId) queryParams.append('libraryId', params.libraryId)
   if (params?.verified) queryParams.append('verified', params.verified)
   if (params?.enriched) queryParams.append('enriched', params.enriched)
   if (params?.take !== undefined) queryParams.append('take', params.take.toString())
@@ -2122,4 +2124,112 @@ export async function deleteItemEvent(itemId: string, eventId: string): Promise<
     method: 'DELETE',
   })
   if (!response.ok) throw new Error('Failed to delete item event')
+}
+
+// ─── Libraries ──────────────────────────────────────────────────────────────
+
+export interface LibrarySummary {
+  id: string
+  name: string
+  description: string | null
+  isDefault: boolean
+}
+
+export interface LibraryMemberDetail {
+  accountId: string
+  displayName: string
+  firstName: string | null
+  lastName: string | null
+  email: string | null
+  role: string
+  joinedUtc: string
+}
+
+export async function getLibraries(householdId: string): Promise<LibrarySummary[]> {
+  const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/libraries`)
+  if (!resp.ok) throw new Error('Failed to fetch libraries')
+  return resp.json()
+}
+
+export async function createLibrary(
+  householdId: string,
+  name: string,
+  description?: string
+): Promise<LibrarySummary> {
+  const resp = await authFetch(`${API_BASE_URL}/api/households/${householdId}/libraries`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, description: description ?? null }),
+  })
+  if (!resp.ok) throw new Error('Failed to create library')
+  return resp.json()
+}
+
+export async function updateLibrary(
+  libraryId: string,
+  name: string,
+  description?: string
+): Promise<void> {
+  const resp = await authFetch(`${API_BASE_URL}/api/libraries/${libraryId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, description: description ?? null }),
+  })
+  if (!resp.ok) throw new Error('Failed to update library')
+}
+
+export async function deleteLibrary(libraryId: string): Promise<void> {
+  const resp = await authFetch(`${API_BASE_URL}/api/libraries/${libraryId}`, {
+    method: 'DELETE',
+  })
+  if (!resp.ok) throw new Error('Failed to delete library')
+}
+
+export async function getLibrary(libraryId: string): Promise<LibrarySummary & { householdId: string }> {
+  const resp = await authFetch(`${API_BASE_URL}/api/libraries/${libraryId}`)
+  if (!resp.ok) throw new Error('Failed to fetch library')
+  return resp.json()
+}
+
+export async function getLibraryMembers(libraryId: string): Promise<LibraryMemberDetail[]> {
+  const resp = await authFetch(`${API_BASE_URL}/api/libraries/${libraryId}/members`)
+  if (!resp.ok) throw new Error('Failed to fetch library members')
+  return resp.json()
+}
+
+export async function addLibraryMember(
+  libraryId: string,
+  email: string,
+  role?: string
+): Promise<{ accountId: string; displayName: string; role: string }> {
+  const resp = await authFetch(`${API_BASE_URL}/api/libraries/${libraryId}/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, role: role ?? 'Member' }),
+  })
+  if (!resp.ok) throw new Error('Failed to add library member')
+  return resp.json()
+}
+
+export async function updateLibraryMemberRole(
+  libraryId: string,
+  accountId: string,
+  role: string
+): Promise<void> {
+  const resp = await authFetch(`${API_BASE_URL}/api/libraries/${libraryId}/members/${accountId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role }),
+  })
+  if (!resp.ok) throw new Error('Failed to update library member role')
+}
+
+export async function removeLibraryMember(
+  libraryId: string,
+  accountId: string
+): Promise<void> {
+  const resp = await authFetch(`${API_BASE_URL}/api/libraries/${libraryId}/members/${accountId}`, {
+    method: 'DELETE',
+  })
+  if (!resp.ok) throw new Error('Failed to remove library member')
 }

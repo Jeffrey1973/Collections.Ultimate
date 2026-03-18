@@ -52,6 +52,7 @@ public sealed class MeilisearchSyncHostedService : BackgroundService
                 // Fetch all items for this household using existing SQL search (no query = all items)
                 var result = await searchRepo.SearchAsync(
                     h.Id,
+                    null, // libraryId
                     null, null, null, null, null, null,
                     false,
                     null, null,

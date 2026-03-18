@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ReactNode } from 'react'
 import HouseholdSelector from './HouseholdSelector.tsx'
+import LibrarySelector from './LibrarySelector.tsx'
 import UserMenu from './UserMenu.tsx'
 import { useHousehold } from '../context/HouseholdContext'
 
@@ -24,6 +25,7 @@ function Layout({ children }: LayoutProps) {
             📚 Collections
           </Link>
           <HouseholdSelector />
+          <LibrarySelector />
           <div className="header-links">
             <Link to="/library" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 500 }}>
               Library

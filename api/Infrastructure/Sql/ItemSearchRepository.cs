@@ -15,6 +15,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
 
     public async Task<SearchPagedResult> SearchAsync(
         HouseholdId householdId,
+        LibraryId? libraryId,
         string? query,
         string? tag,
         string? subject,
@@ -39,6 +40,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
         // Build per-term AND clauses dynamically
         var parameters = new DynamicParameters();
         parameters.Add("HouseholdId", householdId.Value);
+        parameters.Add("LibraryId", libraryId?.Value);
         parameters.Add("TagNorm", tagNorm);
         parameters.Add("SubjectNorm", subjectNorm);
         parameters.Add("Barcode", string.IsNullOrWhiteSpace(barcode) ? null : barcode.Trim());
@@ -169,6 +171,7 @@ public sealed class ItemSearchRepository : IItemSearchRepository
             left join dbo.WorkSeries ws3 on ws3.WorkId = i.WorkId
             left join dbo.Series s on s.Id = ws3.SeriesId
             where i.HouseholdId = @HouseholdId
+              and (@LibraryId is null or i.LibraryId = @LibraryId)
               and (@Barcode is null or i.Barcode = @Barcode)
               and (@Status is null or i.Status = @Status)
               and (@NoLocation = 0 or i.LocationId is null)

@@ -46,6 +46,7 @@ export default function UserMenu() {
   const menuItems = [
     { label: '📥 Import Books', path: '/import' },
     { label: '🏠 Households', path: '/households' },
+    { label: '📚 Libraries', path: '/libraries' },
     { label: '✨ Batch Enrich', path: '/enrich' },
     { label: '🔍 Duplicates', path: '/duplicates' },
   ];

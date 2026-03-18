@@ -42,6 +42,7 @@ builder.Services.AddScoped<IItemSearchRepository, ItemSearchRepository>();
 builder.Services.AddScoped<IItemUpdateRepository, ItemUpdateRepository>();
 builder.Services.AddScoped<ITagRepository, TagRepository>();
 builder.Services.AddScoped<IItemEventRepository, ItemEventRepository>();
+builder.Services.AddScoped<ILibraryRepository, LibraryRepository>();
 
 // Register Meilisearch
 var meiliUrl = builder.Configuration["Meilisearch:Url"] ?? "http://localhost:7700";
@@ -305,6 +306,7 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
     string? barcode,
     string? status,
     string? locationId,
+    string? libraryId,
     string? verified,
     string? enriched,
     int? take,
@@ -318,11 +320,13 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
     // Parse locationId: "none" = no location assigned, valid GUID = specific location, null = no filter
     var noLocation = string.Equals(locationId, "none", StringComparison.OrdinalIgnoreCase);
     Guid? parsedLocationId = !noLocation && Guid.TryParse(locationId, out var locGuid) ? locGuid : null;
+    // Parse libraryId
+    LibraryId? parsedLibraryId = Guid.TryParse(libraryId, out var libGuid) ? new LibraryId(libGuid) : null;
     // Parse verified/enriched tri-state: "true" | "false" | null (no filter)
     bool? verifiedFilter = verified?.ToLowerInvariant() switch { "true" => true, "false" => false, _ => null };
     bool? enrichedFilter = enriched?.ToLowerInvariant() switch { "true" => true, "false" => false, _ => null };
     var hasFilters = tag is not null || subject is not null || barcode is not null
-                  || status is not null || locationId is not null
+                  || status is not null || locationId is not null || libraryId is not null
                   || verifiedFilter is not null || enrichedFilter is not null;
 
     // Use Meilisearch for free-text queries (it has typo tolerance),
@@ -345,6 +349,7 @@ app.MapGet("/api/households/{householdId:guid}/items", async (
     // Fallback: SQL multi-word AND search
     var sqlPaged = await repo.SearchAsync(
         new HouseholdId(householdId),
+        parsedLibraryId,
         q,
         tag,
         subject,
@@ -884,6 +889,162 @@ app.MapDelete("/api/households/{householdId:guid}/members/{accountId:guid}", asy
     return Results.NoContent();
 }).RequireAuthorization();
 
+// ─── Libraries ────────────────────────────────────────────────────────────────
+
+// List libraries the current user has access to in a household
+app.MapGet("/api/households/{householdId:guid}/libraries", async (
+    HttpContext http,
+    Guid householdId,
+    IAccountRepository accountRepo,
+    ILibraryRepository libraryRepo,
+    CancellationToken ct) =>
+{
+    var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
+           ?? http.User.FindFirstValue("sub");
+    if (string.IsNullOrEmpty(sub)) return Results.Unauthorized();
+    var account = await accountRepo.GetByAuth0SubAsync(sub, ct);
+    if (account is null) return Results.Unauthorized();
+
+    var libraries = await libraryRepo.ListByAccountAsync(new HouseholdId(householdId), account.Id, ct);
+    return Results.Ok(libraries.Select(l => new
+    {
+        id = l.Id.Value,
+        name = l.Name,
+        description = l.Description,
+        isDefault = l.IsDefault
+    }));
+}).RequireAuthorization();
+
+// Create a new library in a household
+app.MapPost("/api/households/{householdId:guid}/libraries", async (
+    HttpContext http,
+    Guid householdId,
+    CreateLibraryRequest request,
+    IAccountRepository accountRepo,
+    IAccountHouseholdRepository ahRepo,
+    ILibraryRepository libraryRepo,
+    CancellationToken ct) =>
+{
+    var denied = await EnforceWriteAccessAsync(http, accountRepo, ahRepo, householdId, ct);
+    if (denied is not null) return denied;
+
+    var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
+           ?? http.User.FindFirstValue("sub");
+    var account = await accountRepo.GetByAuth0SubAsync(sub!, ct);
+
+    var library = new Library
+    {
+        HouseholdId = new HouseholdId(householdId),
+        Name = request.Name,
+        Description = request.Description,
+        IsDefault = false
+    };
+    await libraryRepo.CreateAsync(library, ct);
+
+    // Auto-add the creating user as Owner of this library
+    if (account is not null)
+        await libraryRepo.AddMemberAsync(library.Id, account.Id, "Owner", ct);
+
+    return Results.Created($"/api/libraries/{library.Id.Value}", new
+    {
+        id = library.Id.Value,
+        name = library.Name,
+        description = library.Description,
+        isDefault = library.IsDefault
+    });
+}).RequireAuthorization();
+
+// Update a library
+app.MapPut("/api/libraries/{libraryId:guid}", async (
+    Guid libraryId,
+    CreateLibraryRequest request,
+    ILibraryRepository libraryRepo,
+    CancellationToken ct) =>
+{
+    await libraryRepo.UpdateAsync(new LibraryId(libraryId), request.Name, request.Description, ct);
+    return Results.NoContent();
+}).RequireAuthorization();
+
+// Delete a library (cannot delete default)
+app.MapDelete("/api/libraries/{libraryId:guid}", async (
+    Guid libraryId,
+    ILibraryRepository libraryRepo,
+    CancellationToken ct) =>
+{
+    var library = await libraryRepo.GetByIdAsync(new LibraryId(libraryId), ct);
+    if (library is null) return Results.NotFound();
+    if (library.IsDefault) return Results.BadRequest(new { error = "Cannot delete the default library" });
+    await libraryRepo.DeleteAsync(new LibraryId(libraryId), ct);
+    return Results.NoContent();
+}).RequireAuthorization();
+
+// Get library details
+app.MapGet("/api/libraries/{libraryId:guid}", async (
+    Guid libraryId,
+    ILibraryRepository libraryRepo,
+    CancellationToken ct) =>
+{
+    var library = await libraryRepo.GetByIdAsync(new LibraryId(libraryId), ct);
+    if (library is null) return Results.NotFound();
+    return Results.Ok(new
+    {
+        id = library.Id.Value,
+        name = library.Name,
+        description = library.Description,
+        isDefault = library.IsDefault,
+        householdId = library.HouseholdId.Value
+    });
+}).RequireAuthorization();
+
+// List library members
+app.MapGet("/api/libraries/{libraryId:guid}/members", async (
+    Guid libraryId,
+    ILibraryRepository libraryRepo,
+    CancellationToken ct) =>
+{
+    var members = await libraryRepo.ListMembersAsync(new LibraryId(libraryId), ct);
+    return Results.Ok(members);
+}).RequireAuthorization();
+
+// Add member to library
+app.MapPost("/api/libraries/{libraryId:guid}/members", async (
+    Guid libraryId,
+    AddLibraryMemberRequest request,
+    IAccountRepository accountRepo,
+    ILibraryRepository libraryRepo,
+    CancellationToken ct) =>
+{
+    var account = await accountRepo.GetByEmailAsync(request.Email, ct);
+    if (account is null)
+        return Results.NotFound(new { message = $"No account found with email '{request.Email}'" });
+
+    await libraryRepo.AddMemberAsync(new LibraryId(libraryId), account.Id, request.Role ?? "Member", ct);
+    return Results.Ok(new { accountId = account.Id.Value, displayName = account.DisplayName, role = request.Role ?? "Member" });
+}).RequireAuthorization();
+
+// Update library member role
+app.MapPatch("/api/libraries/{libraryId:guid}/members/{accountId:guid}", async (
+    Guid libraryId,
+    Guid accountId,
+    UpdateMemberRoleRequest request,
+    ILibraryRepository libraryRepo,
+    CancellationToken ct) =>
+{
+    await libraryRepo.UpdateMemberRoleAsync(new LibraryId(libraryId), new AccountId(accountId), request.Role, ct);
+    return Results.NoContent();
+}).RequireAuthorization();
+
+// Remove member from library
+app.MapDelete("/api/libraries/{libraryId:guid}/members/{accountId:guid}", async (
+    Guid libraryId,
+    Guid accountId,
+    ILibraryRepository libraryRepo,
+    CancellationToken ct) =>
+{
+    await libraryRepo.RemoveMemberAsync(new LibraryId(libraryId), new AccountId(accountId), ct);
+    return Results.NoContent();
+}).RequireAuthorization();
+
 // ─── Auth endpoints ───────────────────────────────────────────────────────────
 
 // POST /api/auth/login — called after Auth0 login; auto-provisions account + default household
@@ -892,6 +1053,7 @@ app.MapPost("/api/auth/login", async (
     IAccountRepository accountRepo,
     IHouseholdRepository householdRepo,
     IAccountHouseholdRepository accountHouseholdRepo,
+    ILibraryRepository libraryRepo,
     CancellationToken ct) =>
 {
     var sub = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
@@ -954,6 +1116,9 @@ app.MapPost("/api/auth/login", async (
                 var defaultHousehold = new Household { Name = $"{account.DisplayName}'s Library" };
                 await householdRepo.CreateAsync(defaultHousehold, ct);
                 await accountHouseholdRepo.AddAsync(account.Id, defaultHousehold.Id, "Owner", ct);
+                var defaultLib = new Library { HouseholdId = defaultHousehold.Id, Name = "Main Library", IsDefault = true };
+                await libraryRepo.CreateAsync(defaultLib, ct);
+                await libraryRepo.AddMemberAsync(defaultLib.Id, account.Id, "Owner", ct);
                 existingHouseholds = await accountHouseholdRepo.ListHouseholdsAsync(account.Id, ct);
             }
 
@@ -982,6 +1147,9 @@ app.MapPost("/api/auth/login", async (
     var household = new Household { Name = $"{displayName}'s Library" };
     await householdRepo.CreateAsync(household, ct);
     await accountHouseholdRepo.AddAsync(account.Id, household.Id, "Owner", ct);
+    var defaultLibrary = new Library { HouseholdId = household.Id, Name = "Main Library", IsDefault = true };
+    await libraryRepo.CreateAsync(defaultLibrary, ct);
+    await libraryRepo.AddMemberAsync(defaultLibrary.Id, account.Id, "Owner", ct);
 
     var households = await accountHouseholdRepo.ListHouseholdsAsync(account.Id, ct);
     return Results.Ok(new AuthLoginResponse(
@@ -1111,14 +1279,24 @@ app.MapPost("/api/households/{householdId:guid}/items", async (
     IItemEventRepository eventRepo,
     IAccountRepository accountRepo,
     IAccountHouseholdRepository ahRepo,
+    ILibraryRepository libraryRepo,
     CancellationToken ct) =>
 {
     var denied = await EnforceWriteAccessAsync(http, accountRepo, ahRepo, householdId, ct);
     if (denied is not null) return denied;
 
+    // Resolve LibraryId: use provided or fall back to default
+    Guid? resolvedLibraryId = request.LibraryId;
+    if (resolvedLibraryId is null)
+    {
+        var defaultLib = await libraryRepo.GetDefaultAsync(new HouseholdId(householdId), ct);
+        resolvedLibraryId = defaultLib?.Id.Value;
+    }
+
     var item = new LibraryItem
     {
         OwnerHouseholdId = new HouseholdId(householdId),
+        LibraryId = resolvedLibraryId is null ? null : new LibraryId(resolvedLibraryId.Value),
         Kind = request.Kind,
         WorkId = new WorkId(request.WorkId),
         EditionId = request.EditionId is null ? null : new EditionId(request.EditionId.Value),
@@ -1185,6 +1363,7 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
     IItemEventRepository eventRepo,
     IAccountRepository accountRepo,
     IAccountHouseholdRepository ahRepo,
+    ILibraryRepository libraryRepo,
     CancellationToken ct) =>
 {
     var denied = await EnforceWriteAccessAsync(http, accountRepo, ahRepo, householdId, ct);
@@ -1234,9 +1413,18 @@ app.MapPost("/api/households/{householdId:guid}/library/books", async (
         }
     }
 
+    // Resolve LibraryId: use provided or fall back to default
+    Guid? resolvedBookLibraryId = request.Item.LibraryId;
+    if (resolvedBookLibraryId is null)
+    {
+        var defaultLib = await libraryRepo.GetDefaultAsync(new HouseholdId(householdId), ct);
+        resolvedBookLibraryId = defaultLib?.Id.Value;
+    }
+
     var item = new LibraryItem
     {
         OwnerHouseholdId = new HouseholdId(householdId),
+        LibraryId = resolvedBookLibraryId is null ? null : new LibraryId(resolvedBookLibraryId.Value),
         Kind = ItemKind.Book,
         WorkId = work.Id,
         EditionId = editionId,
@@ -2322,7 +2510,8 @@ string? ReadStatus,
 string? CompletedDate,
 string? DateStarted,
 decimal? UserRating,
-string? MetadataJson);
+string? MetadataJson,
+Guid? LibraryId);
 
 public sealed record AddContributorRequest(
     Guid? PersonId,
@@ -2377,7 +2566,8 @@ string? CompletedDate,
 string? DateStarted,
 decimal? UserRating,
 int? LibraryOrder,
-string? MetadataJson);
+string? MetadataJson,
+Guid? LibraryId);
 
 public sealed record CreateBookIngestEdition(
 string? EditionTitle,
@@ -2480,3 +2670,7 @@ public sealed record UpdateMemberRoleRequest(string Role);
 
 // Item events
 public sealed record CreateItemEventRequest(int EventTypeId, DateTimeOffset? OccurredUtc, string? Notes, string? DetailJson);
+
+// Library management
+public sealed record CreateLibraryRequest(string Name, string? Description);
+public sealed record AddLibraryMemberRequest(string Email, string? Role);

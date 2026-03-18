@@ -10,10 +10,12 @@ import ApiTestPage from './pages/ApiTestPage.tsx'
 import BookDetailPage from './pages/BookDetailPage.tsx'
 import BookEditPage from './pages/BookEditPage.tsx'
 import HouseholdManagementPage from './pages/HouseholdManagementPage.tsx'
+import LibraryManagementPage from './pages/LibraryManagementPage.tsx'
 import ImportBooksPage from './pages/ImportBooksPage.tsx'
 import DuplicateReviewPage from './pages/DuplicateReviewPage.tsx'
 import BatchEnrichmentPage from './pages/BatchEnrichmentPage.tsx'
 import { HouseholdProvider } from './context/HouseholdContext.tsx'
+import { LibraryProvider } from './context/LibraryContext.tsx'
 import { useAuth } from './context/AuthContext.tsx'
 import CompleteProfileModal from './components/CompleteProfileModal.tsx'
 
@@ -45,6 +47,7 @@ function AppContent() {
                   <Route path="/book/:id/edit" element={<EditRoute><BookEditPage /></EditRoute>} />
                   <Route path="/add-book" element={<EditRoute><AddBookPage /></EditRoute>} />
                   <Route path="/households" element={<HouseholdManagementPage />} />
+                  <Route path="/libraries" element={<LibraryManagementPage />} />
                   <Route path="/import" element={<EditRoute><ImportBooksPage /></EditRoute>} />
                   <Route path="/duplicates" element={<EditRoute><DuplicateReviewPage /></EditRoute>} />
                   <Route path="/enrich" element={<EditRoute><BatchEnrichmentPage /></EditRoute>} />
@@ -62,7 +65,9 @@ function AppContent() {
 function App() {
   return (
     <HouseholdProvider>
-      <AppContent />
+      <LibraryProvider>
+        <AppContent />
+      </LibraryProvider>
     </HouseholdProvider>
   )
 }

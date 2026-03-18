@@ -6,6 +6,7 @@ public interface IItemSearchRepository
 {
     Task<SearchPagedResult> SearchAsync(
         HouseholdId householdId,
+        LibraryId? libraryId,
         string? query,
         string? tag,
         string? subject,

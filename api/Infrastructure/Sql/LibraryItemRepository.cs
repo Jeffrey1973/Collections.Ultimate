@@ -20,6 +20,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
             (
                 Id,
                 HouseholdId,
+                LibraryId,
                 Kind,
                 WorkId,
                 EditionId,
@@ -44,6 +45,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
             (
                 @Id,
                 @HouseholdId,
+                @LibraryId,
                 @Kind,
                 @WorkId,
                 @EditionId,
@@ -71,6 +73,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
         {
             Id = item.Id.Value,
             HouseholdId = item.OwnerHouseholdId.Value,
+            LibraryId = item.LibraryId?.Value,
             Kind = (int)item.Kind,
             WorkId = item.WorkId.Value,
             EditionId = item.EditionId?.Value,
@@ -99,6 +102,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
             select
                 Id,
                 HouseholdId,
+                LibraryId,
                 Kind,
                 WorkId,
                 EditionId,
@@ -159,6 +163,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
             select
                 i.Id as ItemId,
                 i.HouseholdId,
+                i.LibraryId,
                 i.Kind,
                 i.Title,
                 i.Subtitle,
@@ -345,6 +350,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
         {
             ItemId = mainRow.ItemId,
             HouseholdId = mainRow.HouseholdId,
+            LibraryId = mainRow.LibraryId,
             Kind = mainRow.Kind,
             Title = mainRow.Title,
             Subtitle = mainRow.Subtitle,
@@ -407,6 +413,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
     {
         Id = new ItemId(r.Id),
         OwnerHouseholdId = new HouseholdId(r.HouseholdId),
+        LibraryId = r.LibraryId is null ? null : new LibraryId(r.LibraryId.Value),
         Kind = (ItemKind)r.Kind,
         WorkId = new WorkId(r.WorkId),
         EditionId = r.EditionId is null ? null : new EditionId(r.EditionId.Value),
@@ -432,6 +439,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
     private sealed record ItemRow(
         Guid Id,
         Guid HouseholdId,
+        Guid? LibraryId,
         int Kind,
         Guid WorkId,
         Guid? EditionId,
@@ -456,6 +464,7 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
     private sealed record ItemFullRow(
         Guid ItemId,
         Guid HouseholdId,
+        Guid? LibraryId,
         int Kind,
         string Title,
         string? Subtitle,

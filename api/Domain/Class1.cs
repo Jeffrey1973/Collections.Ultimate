@@ -3,6 +3,7 @@
 public readonly record struct AccountId(Guid Value);
 public readonly record struct HouseholdId(Guid Value);
 public readonly record struct ItemId(Guid Value);
+public readonly record struct LibraryId(Guid Value);
 
 public sealed class Account
 {

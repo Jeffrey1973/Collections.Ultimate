@@ -6,6 +6,7 @@ import CardCatalogView from '../components/CardCatalogView.tsx'
 import { Book } from '../api/books'
 import { getItems, getHouseholdLocations, mapSearchResultToBook, softDeleteItem, hardDeleteItem, getUserPreference, setUserPreference, updateItem, createHouseholdLocation } from '../api/backend'
 import { useHousehold } from '../context/HouseholdContext'
+import { useLibrary } from '../context/LibraryContext'
 import { FIELD_DEFINITIONS, FIELD_CATEGORIES, type CategoryKey } from '../config/field-config'
 
 // Default fields shown in list/grid/catalog views
@@ -61,6 +62,7 @@ function loadSavedFields(): string[] {
 
 function LibraryPage() {
   const { selectedHousehold, isLoading: isLoadingHousehold, canEdit } = useHousehold()
+  const { selectedLibrary } = useLibrary()
   const navigate = useNavigate()
   const [books, setBooks] = useState<Book[]>([])
   const [totalCount, setTotalCount] = useState(0)
@@ -262,7 +264,7 @@ function LibraryPage() {
         .then(setLocations)
         .catch(() => setLocations([]))
     }
-  }, [selectedHousehold, refreshTs])
+  }, [selectedHousehold, selectedLibrary?.id, refreshTs])
 
   // Debounced search: fires 300ms after the user stops typing (skip initial mount)
   const searchMountSkipped = useRef(false)
@@ -299,6 +301,7 @@ function LibraryPage() {
         verified,
         enriched,
         locationId: locationFilter || undefined,
+        libraryId: selectedLibrary?.id || undefined,
         status: statusFilter || undefined,
         tag: tagFilter.trim() || undefined,
         subject: subjectFilter.trim() || undefined,

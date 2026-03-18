@@ -100,6 +100,7 @@ public sealed class LibraryItem
 {
     public ItemId Id { get; init; } = new(Guid.NewGuid());
     public required HouseholdId OwnerHouseholdId { get; init; }
+    public LibraryId? LibraryId { get; init; }
     public required ItemKind Kind { get; init; }
 
     public required WorkId WorkId { get; init; }
@@ -141,6 +142,42 @@ public sealed class LibraryItem
 
     public DateTimeOffset CreatedUtc { get; init; } = DateTimeOffset.UtcNow;
 }
+
+/// <summary>
+/// A named library within a household. Each household has at least one default library.
+/// </summary>
+public sealed class Library
+{
+    public LibraryId Id { get; init; } = new(Guid.NewGuid());
+    public required HouseholdId HouseholdId { get; init; }
+    public required string Name { get; init; }
+    public string? Description { get; init; }
+    public bool IsDefault { get; init; }
+    public DateTimeOffset CreatedUtc { get; init; } = DateTimeOffset.UtcNow;
+}
+
+/// <summary>
+/// Per-library membership with role (Owner, Member, ReadOnly).
+/// </summary>
+public sealed record LibraryMember(
+    LibraryId LibraryId,
+    AccountId AccountId,
+    string Role,
+    DateTimeOffset CreatedUtc
+);
+
+/// <summary>
+/// Library member with display info for UI.
+/// </summary>
+public sealed record LibraryMemberDetail(
+    Guid AccountId,
+    string DisplayName,
+    string? FirstName,
+    string? LastName,
+    string? Email,
+    string Role,
+    DateTimeOffset JoinedUtc
+);
 
 public sealed class Person
 {
@@ -196,6 +233,7 @@ public sealed class ItemFullResponse
 {
     public required Guid ItemId { get; init; }
     public required Guid HouseholdId { get; init; }
+    public Guid? LibraryId { get; init; }
     public required int Kind { get; init; }
 
     // Item-level fields
