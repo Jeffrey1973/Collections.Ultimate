@@ -426,6 +426,7 @@ export default function ImportBooksPage() {
   const [importRows, setImportRows] = useState<ImportRow[]>([])
   const [_isImporting, setIsImporting] = useState(false)
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, phase: '' })
+  const importStartTimeRef = useRef<number>(0)
   const activeRowRef = useRef<HTMLTableRowElement | null>(null)
   const [importResults, setImportResults] = useState({ saved: 0, errors: 0, skipped: 0, duplicates: 0 })
   const [allowDuplicates, setAllowDuplicates] = useState(false)
@@ -590,6 +591,7 @@ export default function ImportBooksPage() {
     let locationMap: Map<string, string> = new Map() // lowercased name → id
     try {
       setImportProgress({ current: 0, total, phase: 'Loading existing library for dedup check\u2026' })
+      importStartTimeRef.current = Date.now()
       const [idx, locs] = await Promise.all([
         getDedupIndex(selectedHousehold.id),
         getAllHouseholdLocations(selectedHousehold.id)
@@ -1317,6 +1319,23 @@ export default function ImportBooksPage() {
                 transition: 'width 0.3s ease',
               }} />
             </div>
+            {importProgress.current > 0 && importProgress.total > 0 && (() => {
+              const pct = Math.round((importProgress.current / importProgress.total) * 100)
+              const elapsed = (Date.now() - importStartTimeRef.current) / 1000
+              const perItem = elapsed / importProgress.current
+              const remaining = perItem * (importProgress.total - importProgress.current)
+              const mins = Math.floor(remaining / 60)
+              const secs = Math.round(remaining % 60)
+              const eta = remaining < 2 ? 'almost done'
+                : mins > 0 ? `~${mins}m ${secs}s remaining`
+                : `~${secs}s remaining`
+              return (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem' }}>
+                  <span>{pct}% complete</span>
+                  <span>{eta}</span>
+                </div>
+              )
+            })()}
           </div>
 
           {/* Live status table */}
