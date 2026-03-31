@@ -106,6 +106,7 @@ function LibraryPage() {
   // Move-to-location dropdown
   const [moveLocationTarget, setMoveLocationTarget] = useState<{ bookId: string; bookTitle: string; rect: DOMRect } | null>(null)
   const [locationSearch, setLocationSearch] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const moveLocationRef = useRef<HTMLDivElement>(null)
   const locationSearchRef = useRef<HTMLInputElement>(null)
 
@@ -508,6 +509,7 @@ function LibraryPage() {
       <form onSubmit={handleSearch} className="search-bar">
         <div style={{ position: 'relative', flex: 1 }}>
           <input
+            ref={searchInputRef}
             type="text"
             className="search-input"
             placeholder="Search by title, author, ISBN..."
@@ -524,7 +526,7 @@ function LibraryPage() {
           {!isSearching && searchQuery && (
             <button
               type="button"
-              onClick={() => setSearchQuery('')}
+              onClick={() => { setSearchQuery(''); searchInputRef.current?.focus(); }}
               style={{
                 position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)',
                 background: 'none', border: 'none', cursor: 'pointer',
