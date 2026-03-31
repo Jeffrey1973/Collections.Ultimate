@@ -126,6 +126,13 @@ function LibraryPage() {
   const [newLocType, setNewLocType] = useState('shelf')
   const [isCreatingLocation, setIsCreatingLocation] = useState(false)
 
+  // Batch operations
+  const [batchAction, setBatchAction] = useState<'delete' | 'move-location' | 'move-library' | null>(null)
+  const [batchConfirmText, setBatchConfirmText] = useState('')
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false)
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null)
+  const [batchLocationSearch, setBatchLocationSearch] = useState('')
+
   // Tools dropdown
   const [showToolsMenu, setShowToolsMenu] = useState(false)
   const toolsMenuRef = useRef<HTMLDivElement>(null)
@@ -459,6 +466,80 @@ function LibraryPage() {
     } finally {
       setIsCreatingLocation(false)
     }
+  }
+
+  // ── Batch operations ──────────────────────────────────────────────────────
+  const hasActiveFilters = activeFilterCount > 0 || searchQuery.trim() !== ''
+
+  async function handleBatchSoftDelete(bookIds: string[]) {
+    setIsBatchProcessing(true)
+    setBatchProgress({ done: 0, total: bookIds.length })
+    let failed = 0
+    for (let i = 0; i < bookIds.length; i++) {
+      try {
+        await softDeleteItem(bookIds[i])
+      } catch { failed++ }
+      setBatchProgress({ done: i + 1, total: bookIds.length })
+    }
+    setIsBatchProcessing(false)
+    setBatchProgress(null)
+    setBatchAction(null)
+    setBatchConfirmText('')
+    loadBooks()
+    if (failed > 0) alert(`${failed} of ${bookIds.length} books failed to update.`)
+  }
+
+  async function handleBatchHardDelete(bookIds: string[]) {
+    setIsBatchProcessing(true)
+    setBatchProgress({ done: 0, total: bookIds.length })
+    let failed = 0
+    for (let i = 0; i < bookIds.length; i++) {
+      try {
+        await hardDeleteItem(bookIds[i])
+      } catch { failed++ }
+      setBatchProgress({ done: i + 1, total: bookIds.length })
+    }
+    setIsBatchProcessing(false)
+    setBatchProgress(null)
+    setBatchAction(null)
+    setBatchConfirmText('')
+    loadBooks()
+    if (failed > 0) alert(`${failed} of ${bookIds.length} books failed to delete.`)
+  }
+
+  async function handleBatchMoveToLocation(bookIds: string[], locationId: string) {
+    setIsBatchProcessing(true)
+    setBatchProgress({ done: 0, total: bookIds.length })
+    let failed = 0
+    for (let i = 0; i < bookIds.length; i++) {
+      try {
+        await updateItem(bookIds[i], { locationId })
+      } catch { failed++ }
+      setBatchProgress({ done: i + 1, total: bookIds.length })
+    }
+    setIsBatchProcessing(false)
+    setBatchProgress(null)
+    setBatchAction(null)
+    setBatchLocationSearch('')
+    loadBooks()
+    if (failed > 0) alert(`${failed} of ${bookIds.length} books failed to move.`)
+  }
+
+  async function handleBatchMoveToLibrary(bookIds: string[], libraryId: string) {
+    setIsBatchProcessing(true)
+    setBatchProgress({ done: 0, total: bookIds.length })
+    let failed = 0
+    for (let i = 0; i < bookIds.length; i++) {
+      try {
+        await updateItem(bookIds[i], { libraryId })
+      } catch { failed++ }
+      setBatchProgress({ done: i + 1, total: bookIds.length })
+    }
+    setIsBatchProcessing(false)
+    setBatchProgress(null)
+    setBatchAction(null)
+    loadBooks()
+    if (failed > 0) alert(`${failed} of ${bookIds.length} books failed to move.`)
   }
 
   // Show loading state while households are loading
@@ -1077,6 +1158,47 @@ function LibraryPage() {
                 </div>
               )
             })}
+        </div>
+      )}
+
+      {/* Batch Action Bar — shown when filters/search produce a subset */}
+      {canEdit && hasActiveFilters && !showPreviouslyOwned && displayedBooks.length > 0 && !isLoading && (
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem',
+          padding: '0.75rem 1rem', marginBottom: '0.75rem',
+          backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px',
+        }}>
+          <span style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 500 }}>
+            ⚡ <strong>{displayedBooks.length}</strong> book{displayedBooks.length !== 1 ? 's' : ''} match current filters
+          </span>
+          <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => { setBatchAction('move-location'); setBatchLocationSearch('') }}
+              className="btn btn-secondary"
+              style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
+            >
+              📍 Move All to Location
+            </button>
+            {libraries.length > 1 && (
+              <button
+                onClick={() => setBatchAction('move-library')}
+                className="btn btn-secondary"
+                style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
+              >
+                📚 Move All to Library
+              </button>
+            )}
+            <button
+              onClick={() => { setBatchAction('delete'); setBatchConfirmText('') }}
+              className="btn btn-secondary"
+              style={{
+                padding: '0.35rem 0.75rem', fontSize: '0.8rem',
+                borderColor: '#fca5a5', color: '#dc2626', backgroundColor: '#fef2f2',
+              }}
+            >
+              🗑️ Delete All
+            </button>
+          </div>
         </div>
       )}
 
@@ -1853,6 +1975,318 @@ function LibraryPage() {
                 {isCreatingLocation ? '⏳ Creating...' : 'Add & Move Here'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Batch Delete Confirmation Modal ── */}
+      {batchAction === 'delete' && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200,
+        }} onClick={() => { if (!isBatchProcessing) { setBatchAction(null); setBatchConfirmText('') } }}>
+          <div style={{
+            backgroundColor: 'white', borderRadius: '12px', padding: '2rem',
+            maxWidth: '520px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          }} onClick={e => e.stopPropagation()}>
+            {!isBatchProcessing ? (
+              <>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem', color: '#dc2626' }}>
+                  ⚠️ Batch Delete — {displayedBooks.length} Book{displayedBooks.length !== 1 ? 's' : ''}
+                </h3>
+                <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '1rem', lineHeight: 1.6 }}>
+                  This will affect <strong>all {displayedBooks.length} books</strong> matching your current filters.
+                  Please choose an action below.
+                </p>
+
+                <div style={{
+                  backgroundColor: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '8px',
+                  padding: '0.75rem 1rem', marginBottom: '1.25rem',
+                }}>
+                  <p style={{ fontSize: '0.85rem', color: '#991b1b', fontWeight: 600, margin: 0, marginBottom: '0.5rem' }}>
+                    To confirm, type the number <strong>{displayedBooks.length}</strong> below:
+                  </p>
+                  <input
+                    type="text"
+                    value={batchConfirmText}
+                    onChange={e => setBatchConfirmText(e.target.value)}
+                    placeholder={`Type ${displayedBooks.length} to confirm`}
+                    autoFocus
+                    style={{
+                      width: '100%', padding: '0.5rem 0.75rem', border: '2px solid #fca5a5',
+                      borderRadius: '6px', fontSize: '1rem', outline: 'none', textAlign: 'center',
+                      fontWeight: 700,
+                    }}
+                    onFocus={e => (e.currentTarget.style.borderColor = '#ef4444')}
+                    onBlur={e => (e.currentTarget.style.borderColor = '#fca5a5')}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <button
+                    onClick={() => handleBatchSoftDelete(displayedBooks.map(b => b.id))}
+                    disabled={batchConfirmText !== String(displayedBooks.length)}
+                    style={{
+                      padding: '1rem', borderRadius: '8px', border: '2px solid #f59e0b',
+                      backgroundColor: '#fffbeb', cursor: batchConfirmText === String(displayedBooks.length) ? 'pointer' : 'not-allowed',
+                      textAlign: 'left',
+                      opacity: batchConfirmText === String(displayedBooks.length) ? 1 : 0.5,
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, color: '#92400e', marginBottom: '0.25rem' }}>
+                      📦 Mark All as Previously Owned
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#a16207' }}>
+                      Keep the records but mark them as no longer in your collection.
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => handleBatchHardDelete(displayedBooks.map(b => b.id))}
+                    disabled={batchConfirmText !== String(displayedBooks.length)}
+                    style={{
+                      padding: '1rem', borderRadius: '8px', border: '2px solid #ef4444',
+                      backgroundColor: '#fef2f2', cursor: batchConfirmText === String(displayedBooks.length) ? 'pointer' : 'not-allowed',
+                      textAlign: 'left',
+                      opacity: batchConfirmText === String(displayedBooks.length) ? 1 : 0.5,
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, color: '#dc2626', marginBottom: '0.25rem' }}>
+                      🗑️ Permanently Delete All
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#b91c1c' }}>
+                      Remove all {displayedBooks.length} books completely. This cannot be undone.
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => { setBatchAction(null); setBatchConfirmText('') }}
+                    style={{
+                      padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0',
+                      backgroundColor: '#f8fafc', cursor: 'pointer', fontWeight: 600, color: '#64748b',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>⏳</div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.75rem' }}>
+                  Processing...
+                </h3>
+                {batchProgress && (
+                  <>
+                    <div style={{
+                      width: '100%', height: '8px', backgroundColor: '#e2e8f0',
+                      borderRadius: '4px', overflow: 'hidden', marginBottom: '0.5rem',
+                    }}>
+                      <div style={{
+                        height: '100%', backgroundColor: '#3b82f6', borderRadius: '4px',
+                        width: `${(batchProgress.done / batchProgress.total) * 100}%`,
+                        transition: 'width 0.2s',
+                      }} />
+                    </div>
+                    <p style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                      {batchProgress.done} of {batchProgress.total} books processed
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Batch Move to Location Modal ── */}
+      {batchAction === 'move-location' && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200,
+        }} onClick={() => { if (!isBatchProcessing) { setBatchAction(null); setBatchLocationSearch('') } }}>
+          <div style={{
+            backgroundColor: 'white', borderRadius: '12px', padding: '2rem',
+            maxWidth: '480px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          }} onClick={e => e.stopPropagation()}>
+            {!isBatchProcessing ? (
+              <>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 700, marginBottom: '0.25rem' }}>
+                  📍 Move {displayedBooks.length} Book{displayedBooks.length !== 1 ? 's' : ''} to Location
+                </h3>
+                <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                  Choose a location for all books matching current filters.
+                </p>
+
+                <input
+                  type="text"
+                  placeholder="Filter locations..."
+                  value={batchLocationSearch}
+                  onChange={e => setBatchLocationSearch(e.target.value)}
+                  autoFocus
+                  style={{
+                    width: '100%', padding: '0.5rem 0.75rem', border: '1px solid #d1d5db',
+                    borderRadius: '6px', fontSize: '0.9rem', outline: 'none', marginBottom: '0.75rem',
+                    boxSizing: 'border-box',
+                  }}
+                />
+
+                <div style={{ maxHeight: '280px', overflowY: 'auto', marginBottom: '1rem' }}>
+                  <button
+                    onClick={() => handleBatchMoveToLocation(displayedBooks.map(b => b.id), '')}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                      padding: '0.6rem 0.75rem', border: 'none', background: 'none',
+                      cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left',
+                      color: '#64748b', fontStyle: 'italic', borderRadius: '6px',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    ✕ Clear location (no location)
+                  </button>
+                  {locations
+                    .filter(l => l.name.toLowerCase().includes(batchLocationSearch.toLowerCase()))
+                    .map(loc => (
+                      <button
+                        key={loc.id}
+                        onClick={() => handleBatchMoveToLocation(displayedBooks.map(b => b.id), loc.id)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                          padding: '0.6rem 0.75rem', border: 'none', background: 'none',
+                          cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left',
+                          color: '#1e293b', borderRadius: '6px',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                        onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                      >
+                        📍 {loc.name}
+                      </button>
+                    ))}
+                  {locations.filter(l => l.name.toLowerCase().includes(batchLocationSearch.toLowerCase())).length === 0 && batchLocationSearch && (
+                    <div style={{ padding: '0.75rem', color: '#94a3b8', fontSize: '0.85rem', textAlign: 'center' }}>
+                      No matching locations
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => { setBatchAction(null); setBatchLocationSearch('') }}
+                  style={{
+                    width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0',
+                    backgroundColor: '#f8fafc', cursor: 'pointer', fontWeight: 600, color: '#64748b',
+                  }}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>📍</div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.75rem' }}>
+                  Moving books...
+                </h3>
+                {batchProgress && (
+                  <>
+                    <div style={{
+                      width: '100%', height: '8px', backgroundColor: '#e2e8f0',
+                      borderRadius: '4px', overflow: 'hidden', marginBottom: '0.5rem',
+                    }}>
+                      <div style={{
+                        height: '100%', backgroundColor: '#3b82f6', borderRadius: '4px',
+                        width: `${(batchProgress.done / batchProgress.total) * 100}%`,
+                        transition: 'width 0.2s',
+                      }} />
+                    </div>
+                    <p style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                      {batchProgress.done} of {batchProgress.total} books moved
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Batch Move to Library Modal ── */}
+      {batchAction === 'move-library' && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200,
+        }} onClick={() => { if (!isBatchProcessing) setBatchAction(null) }}>
+          <div style={{
+            backgroundColor: 'white', borderRadius: '12px', padding: '2rem',
+            maxWidth: '480px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          }} onClick={e => e.stopPropagation()}>
+            {!isBatchProcessing ? (
+              <>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 700, marginBottom: '0.25rem' }}>
+                  📚 Move {displayedBooks.length} Book{displayedBooks.length !== 1 ? 's' : ''} to Library
+                </h3>
+                <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                  Choose a library for all books matching current filters.
+                </p>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  {libraries.map(lib => (
+                    <button
+                      key={lib.id}
+                      onClick={() => handleBatchMoveToLibrary(displayedBooks.map(b => b.id), lib.id)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                        padding: '0.7rem 0.75rem', border: 'none', background: 'none',
+                        cursor: selectedLibrary?.id === lib.id ? 'default' : 'pointer',
+                        fontSize: '0.9rem', textAlign: 'left', borderRadius: '6px',
+                        color: selectedLibrary?.id === lib.id ? '#16a34a' : '#1e293b',
+                        fontWeight: selectedLibrary?.id === lib.id ? 600 : 400,
+                        backgroundColor: selectedLibrary?.id === lib.id ? '#f0fdf4' : 'transparent',
+                      }}
+                      disabled={selectedLibrary?.id === lib.id}
+                      onMouseEnter={e => { if (selectedLibrary?.id !== lib.id) e.currentTarget.style.backgroundColor = '#f1f5f9' }}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = selectedLibrary?.id === lib.id ? '#f0fdf4' : 'transparent')}
+                    >
+                      📖 {lib.name}
+                      {selectedLibrary?.id === lib.id && <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#16a34a' }}>current</span>}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setBatchAction(null)}
+                  style={{
+                    width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0',
+                    backgroundColor: '#f8fafc', cursor: 'pointer', fontWeight: 600, color: '#64748b',
+                  }}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>📚</div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.75rem' }}>
+                  Moving books...
+                </h3>
+                {batchProgress && (
+                  <>
+                    <div style={{
+                      width: '100%', height: '8px', backgroundColor: '#e2e8f0',
+                      borderRadius: '4px', overflow: 'hidden', marginBottom: '0.5rem',
+                    }}>
+                      <div style={{
+                        height: '100%', backgroundColor: '#3b82f6', borderRadius: '4px',
+                        width: `${(batchProgress.done / batchProgress.total) * 100}%`,
+                        transition: 'width 0.2s',
+                      }} />
+                    </div>
+                    <p style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                      {batchProgress.done} of {batchProgress.total} books moved
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
