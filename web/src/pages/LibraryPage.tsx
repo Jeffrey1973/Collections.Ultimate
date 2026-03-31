@@ -130,7 +130,7 @@ function LibraryPage() {
   const [batchAction, setBatchAction] = useState<'delete' | 'move-location' | 'move-library' | null>(null)
   const [batchConfirmText, setBatchConfirmText] = useState('')
   const [isBatchProcessing, setIsBatchProcessing] = useState(false)
-  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null)
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number; startedAt: number } | null>(null)
   const [batchLocationSearch, setBatchLocationSearch] = useState('')
 
   // Tools dropdown
@@ -473,7 +473,7 @@ function LibraryPage() {
 
   async function handleBatchSoftDelete(bookIds: string[]) {
     setIsBatchProcessing(true)
-    setBatchProgress({ done: 0, total: bookIds.length })
+    setBatchProgress({ done: 0, total: bookIds.length, startedAt: Date.now() })
     let failed = 0
     for (let i = 0; i < bookIds.length; i++) {
       try {
@@ -491,7 +491,7 @@ function LibraryPage() {
 
   async function handleBatchHardDelete(bookIds: string[]) {
     setIsBatchProcessing(true)
-    setBatchProgress({ done: 0, total: bookIds.length })
+    setBatchProgress({ done: 0, total: bookIds.length, startedAt: Date.now() })
     let failed = 0
     for (let i = 0; i < bookIds.length; i++) {
       try {
@@ -509,7 +509,7 @@ function LibraryPage() {
 
   async function handleBatchMoveToLocation(bookIds: string[], locationId: string) {
     setIsBatchProcessing(true)
-    setBatchProgress({ done: 0, total: bookIds.length })
+    setBatchProgress({ done: 0, total: bookIds.length, startedAt: Date.now() })
     let failed = 0
     for (let i = 0; i < bookIds.length; i++) {
       try {
@@ -527,7 +527,7 @@ function LibraryPage() {
 
   async function handleBatchMoveToLibrary(bookIds: string[], libraryId: string) {
     setIsBatchProcessing(true)
-    setBatchProgress({ done: 0, total: bookIds.length })
+    setBatchProgress({ done: 0, total: bookIds.length, startedAt: Date.now() })
     let failed = 0
     for (let i = 0; i < bookIds.length; i++) {
       try {
@@ -2088,9 +2088,17 @@ function LibraryPage() {
                         transition: 'width 0.2s',
                       }} />
                     </div>
-                    <p style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                      {batchProgress.done} of {batchProgress.total} books processed
+                    <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0.25rem 0' }}>
+                      {batchProgress.done} of {batchProgress.total} books processed — {Math.round((batchProgress.done / batchProgress.total) * 100)}%
                     </p>
+                    {batchProgress.done > 0 && (() => {
+                      const elapsed = (Date.now() - batchProgress.startedAt) / 1000
+                      const perItem = elapsed / batchProgress.done
+                      const remaining = Math.ceil(perItem * (batchProgress.total - batchProgress.done))
+                      const mins = Math.floor(remaining / 60)
+                      const secs = remaining % 60
+                      return <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: 0 }}>~{mins > 0 ? `${mins}m ` : ''}{secs}s remaining</p>
+                    })()}
                   </>
                 )}
               </div>
@@ -2198,9 +2206,17 @@ function LibraryPage() {
                         transition: 'width 0.2s',
                       }} />
                     </div>
-                    <p style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                      {batchProgress.done} of {batchProgress.total} books moved
+                    <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0.25rem 0' }}>
+                      {batchProgress.done} of {batchProgress.total} books moved — {Math.round((batchProgress.done / batchProgress.total) * 100)}%
                     </p>
+                    {batchProgress.done > 0 && (() => {
+                      const elapsed = (Date.now() - batchProgress.startedAt) / 1000
+                      const perItem = elapsed / batchProgress.done
+                      const remaining = Math.ceil(perItem * (batchProgress.total - batchProgress.done))
+                      const mins = Math.floor(remaining / 60)
+                      const secs = remaining % 60
+                      return <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: 0 }}>~{mins > 0 ? `${mins}m ` : ''}{secs}s remaining</p>
+                    })()}
                   </>
                 )}
               </div>
@@ -2280,9 +2296,17 @@ function LibraryPage() {
                         transition: 'width 0.2s',
                       }} />
                     </div>
-                    <p style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                      {batchProgress.done} of {batchProgress.total} books moved
+                    <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0.25rem 0' }}>
+                      {batchProgress.done} of {batchProgress.total} books moved — {Math.round((batchProgress.done / batchProgress.total) * 100)}%
                     </p>
+                    {batchProgress.done > 0 && (() => {
+                      const elapsed = (Date.now() - batchProgress.startedAt) / 1000
+                      const perItem = elapsed / batchProgress.done
+                      const remaining = Math.ceil(perItem * (batchProgress.total - batchProgress.done))
+                      const mins = Math.floor(remaining / 60)
+                      const secs = remaining % 60
+                      return <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: 0 }}>~{mins > 0 ? `${mins}m ` : ''}{secs}s remaining</p>
+                    })()}
                   </>
                 )}
               </div>
