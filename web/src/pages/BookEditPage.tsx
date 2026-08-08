@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getItem, updateItem, mapItemResponseToBook, getAllHouseholdLocations, getAllHouseholdCategories, createHouseholdCategory, createHouseholdLocation, ContributorRole } from '../api/backend'
+import { getItem, updateItem, mapItemResponseToBook, getAllHouseholdLocations, getAllHouseholdCategories, createHouseholdCategory, createHouseholdLocation, ContributorRole, IdentifierType } from '../api/backend'
 import { Book } from '../api/books'
 import { FIELD_CATEGORIES, FIELD_DEFINITIONS, type FieldConfig } from '../config/field-config'
 import { useHousehold } from '../context/HouseholdContext'
@@ -209,7 +209,8 @@ function BookEditPage() {
       }
 
       // --- Build identifiers from form data ---
-      const IdentifierType = { ISBN10: 1, ISBN13: 2, ISSN: 3, LCCN: 4, OCLC: 5, DOI: 6, ASIN: 7, GoogleBooksId: 8, GoodreadsId: 9, LibraryThingId: 10, OpenLibraryId: 11, OCLCWorkId: 12, DNB: 13, BNF: 14, NLA: 15, NDL: 16, LAC: 17, BL: 18 }
+      // IdentifierType is imported from api/lookups — this used to be a local literal
+      // that disagreed with both the database and backend.ts. See ops/README.md.
       const identifiers: Array<{ identifierTypeId: number; value: string; isPrimary?: boolean }> = []
       const idFields: Array<[string, number, boolean?]> = [
         ['isbn13', IdentifierType.ISBN13, true],

@@ -339,20 +339,24 @@ public sealed class WorkMetadataRepository : IWorkMetadataRepository
             "delete from dbo.EditionIdentifier where EditionId = @EditionId;",
             new { EditionId = editionId.Value }, transaction: tx, cancellationToken: ct));
 
-        // Dedup by (TypeId, Value) and truncate values to fit nvarchar(50)
+        // Dedup by (TypeId, Value). Value and NormalizedValue are nvarchar(400);
+        // over-length values are skipped rather than silently truncated, because a
+        // truncated identifier is worse than a missing one (it looks valid but resolves
+        // to nothing, and Value is part of PK_EditionIdentifier).
+        const int MaxIdentifierLength = 400;
         var insertedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var i in identifiers)
         {
             if (string.IsNullOrWhiteSpace(i.Value)) continue;
 
             var trimmedValue = i.Value.Trim();
-            if (trimmedValue.Length > 50) trimmedValue = trimmedValue[..50];
+            if (trimmedValue.Length > MaxIdentifierLength) continue;
 
             var dedupeKey = $"{i.TypeId.Value}:{trimmedValue.ToUpperInvariant()}";
             if (!insertedKeys.Add(dedupeKey)) continue;
 
             var normalized = NormalizeIdentifierValue(trimmedValue);
-            if (normalized.Length > 50) normalized = normalized[..50];
+            if (normalized.Length > MaxIdentifierLength) continue;
 
             await conn.ExecuteAsync(new CommandDefinition(
                 "insert into dbo.EditionIdentifier (EditionId, IdentifierTypeId, Value, NormalizedValue, IsPrimary) values (@EditionId, @IdentifierTypeId, @Value, @NormalizedValue, @IsPrimary);",

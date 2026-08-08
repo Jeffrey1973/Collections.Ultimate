@@ -357,54 +357,11 @@ export interface BookResponse {
   // ... other fields
 }
 
-// IdentifierTypeId enum (based on common library standards)
-export const IdentifierType = {
-  ISBN10: 1,
-  ISBN13: 2,
-  LCCN: 3,
-  OCLC: 4,
-  ISSN: 5,
-  DOI: 6,
-  ASIN: 7, // Amazon
-  GoogleBooksId: 8,
-  GoodreadsId: 9,
-  LibraryThingId: 10,
-  OpenLibraryId: 11,
-  DNB: 12, // Deutsche Nationalbibliothek (German)
-  BNF: 13, // Bibliothèque nationale de France
-  NLA: 14, // National Library of Australia
-  NDL: 15, // National Diet Library (Japan)
-  LAC: 16, // Library and Archives Canada
-  BL: 17, // British Library
-  OCLCWorkId: 18, // OCLC Work-level ID
-  // Add more as needed
-} as const
-
-// Contributor Role IDs (common roles)
-export const ContributorRole = {
-  Author: 1,
-  Editor: 2,
-  Translator: 3,
-  Illustrator: 4,
-  Contributor: 5,
-  Narrator: 6, // For audiobooks
-  Introduction: 7,
-  Foreword: 8,
-  Afterword: 9,
-  Photographer: 10,
-  Designer: 11,
-  // Add more as needed
-} as const
-
-// Subject Scheme IDs
-export const SubjectScheme = {
-  LCSH: 1,    // Library of Congress Subject Headings
-  BISAC: 2,   // BISAC (Book Industry Standards)
-  Custom: 3,  // Custom / user-defined
-  LCC: 4,     // Library of Congress Classification
-  Thema: 6,   // Thema (international)
-  FAST: 7,    // FAST (Faceted Application of Subject Terminology)
-} as const
+// Lookup IDs live in ./lookups, transcribed from the production database.
+// They used to be declared here from "common library standards" and disagreed with
+// both the database and BookEditPage.tsx — see ops/README.md.
+export { IdentifierType, ContributorRole, SubjectScheme } from './lookups'
+import { IdentifierType, ContributorRole, SubjectScheme } from './lookups'
 
 /**
  * Map frontend Book interface to backend CreateBookIngestRequest
@@ -688,7 +645,8 @@ export function mapBookToIngestRequest(book: any): CreateBookIngestRequest {
       'translator': ContributorRole.Translator,
       'illustrator': ContributorRole.Illustrator,
       'narrator': ContributorRole.Narrator,
-      'introduction': ContributorRole.Introduction,
+      // dbo.ContributorRole has no "Introduction" row; fall back rather than invent an ID
+      'introduction': ContributorRole.Contributor,
       'foreword': ContributorRole.Foreword,
       'afterword': ContributorRole.Afterword,
     }
