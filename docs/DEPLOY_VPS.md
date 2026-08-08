@@ -132,25 +132,35 @@ nano .env
 
 Fill in your `.env`:
 
+> **Never commit real values here.** This file is tracked in git. Keep the only
+> copy of your secrets in a password manager, and treat anything that has ever
+> appeared in this repository as compromised and in need of rotation.
+
 ```dotenv
-DOMAIN=collections.collectionsultimate.com
+DOMAIN=your-domain.example.com
 
 # Must be 8+ chars with uppercase, lowercase, number, and symbol
-SA_PASSWORD=&hg5$3#mklYoooP
+SA_PASSWORD=<from password manager>
 
-MEILI_MASTER_KEY=hjnadsbcijwqhed8374f83872939""[+_^&5fxctr]
+MEILI_MASTER_KEY=<from password manager>
 
-AUTH0_DOMAIN=dev-3817i0s85bpfq13x.us.auth0.com
-AUTH0_CLIENT_ID=S6QHriD13lhlzbuUyM5XXmZHCpgfw3Tk
+AUTH0_DOMAIN=<your-tenant>.us.auth0.com
+AUTH0_CLIENT_ID=<from Auth0 dashboard>
 AUTH0_AUDIENCE=Collections
 
-# Optional — your API keys from .env.local
+# Optional — external metadata API keys
 # Google Books API (get from: https://console.cloud.google.com/apis/library/books.googleapis.com)
-VITE_GOOGLE_BOOKS_API_KEY=AIzaSyDk717PAap9RcClImcr_u8w5XAA1HRula8
+VITE_GOOGLE_BOOKS_API_KEY=<from Google Cloud console>
 
 # ISBNdb API (get from: https://isbndb.com/apidocs/v2)
-VITE_ISBNDB_API_KEY=66982_7aaad5d907bb62277568c5425dedc898
+VITE_ISBNDB_API_KEY=<from ISBNdb dashboard>
 ```
+
+> **Note on the `VITE_` keys:** anything prefixed `VITE_` is compiled into the
+> public JavaScript bundle at build time and is extractable from any visitor's
+> browser. These are not secrets in the deployed app. Move external metadata
+> lookups behind a server-side endpoint before charging money — see the
+> enrichment worker in the productization plan.
 
 Save and exit (`Ctrl+X`, `Y`, `Enter` in nano).
 
@@ -258,33 +268,35 @@ docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml down
 ```
 
-### Stop everything AND delete data (nuclear option)
-```bash
-docker compose -f docker-compose.prod.yml down -v
-```
+### Stop everything AND delete data
 
-### Backup the database
-```bash
-# Create a backup
-docker exec cu-sqlserver /opt/mssql-tools18/bin/sqlcmd \
-  -S localhost -U sa -P "$(grep SA_PASSWORD .env | cut -d= -f2)" -C \
-  -Q "BACKUP DATABASE CollectionsUltimate TO DISK='/var/opt/mssql/backup/cu_backup.bak'"
+> **This command is deliberately not written out here.**
+>
+> Adding `-v` to `docker compose down` irreversibly destroys all five volumes:
+> the database, every uploaded cover photo, the Meilisearch index, and the TLS
+> certificates. The volumes are anonymous and project-scoped — there is no
+> external declaration protecting them.
+>
+> There is no legitimate reason to run it against production. If you genuinely
+> need to reset a *local* environment, type the flag yourself, having first
+> confirmed which Docker context you are pointed at.
 
-# Copy backup to host
-docker cp cu-sqlserver:/var/opt/mssql/backup/cu_backup.bak ./backups/
+### Backup and restore
 
-# Download to your local machine (from your PC)
-scp root@164.90.xxx.xxx:/opt/collections~/backups/cu_backup.bak .
-```
+**See [`ops/README.md`](../ops/README.md).** Do not use an ad-hoc `BACKUP DATABASE`
+here.
 
-### Restore from backup
-```bash
-docker cp ./backups/cu_backup.bak cu-sqlserver:/var/opt/mssql/backup/cu_backup.bak
+The procedure that used to live in this section wrote the `.bak` to
+`/var/opt/mssql/backup/`, which `docker-compose.prod.yml` mounts **from the same
+volume as the live `.mdf` and `.ldf` files** — so the backup shared a failure
+domain with the thing it was backing up. It also never touched the `api_uploads`
+volume, meaning every cover photo (the only data that cannot be re-fetched from an
+external API) was silently excluded.
 
-docker exec cu-sqlserver /opt/mssql-tools18/bin/sqlcmd \
-  -S localhost -U sa -P "$(grep SA_PASSWORD .env | cut -d= -f2)" -C \
-  -Q "RESTORE DATABASE CollectionsUltimate FROM DISK='/var/opt/mssql/backup/cu_backup.bak' WITH REPLACE"
-```
+`ops/cu-backup.sh` replaces it: host-side storage, verified backups, an offsite
+push with append-only credentials, a database-to-blob referential check, and a
+dead-man's switch. `ops/verify.sql` is the assertion set that proves a restore
+actually worked.
 
 ### Set up automatic backups (cron)
 ```bash

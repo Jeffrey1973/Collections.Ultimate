@@ -429,3 +429,9 @@ tools/meilisearch/data.ms/
 
 # Vite build output (Dockerfile rebuilds from source; was committed by accident)
 web/dist/
+
+# Diagnostic/verification OUTPUT contains real library data (titles, identifiers).
+# The repo is public - keep artifacts local. The .sql that generates them is tracked.
+ops/*-output.txt
+ops/verify-prod*.txt
+ops/verify-restore*.txt
