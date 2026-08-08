@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Source of truth for the app icon. The PNG variants in this directory are
+       rasterised from this design; colours come from src/index.css. -->
+  <rect width="512" height="512" rx="92" ry="92" fill="#1e293b"/>
+  <g>
+    <rect x="113" y="152" width="80" height="247" fill="#3b82f6"/>
+    <rect x="216" y="112" width="80" height="287" fill="#e2e8f0"/>
+    <rect x="319" y="187" width="80" height="212" fill="#94a3b8"/>
+  </g>
+</svg>

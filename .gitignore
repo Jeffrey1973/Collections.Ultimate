@@ -426,3 +426,6 @@ FodyWeavers.xsd
 # Meilisearch binary & data
 tools/meilisearch/meilisearch.exe
 tools/meilisearch/data.ms/
+
+# Vite build output (Dockerfile rebuilds from source; was committed by accident)
+web/dist/
