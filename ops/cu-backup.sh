@@ -103,14 +103,24 @@ backup_uploads() {
     trap 'rm -f "$refs" "$have"' RETURN
 
     docker exec "$SQL_CONTAINER" /opt/mssql-tools18/bin/sqlcmd \
-        -S localhost -U sa -P "$SA_PASSWORD" -C -b -h -1 -W -s "|" -Q \
+        -S localhost -U sa -P "$SA_PASSWORD" -C -b -d "$DB_NAME" -h -1 -W -s "|" -Q \
         "SET NOCOUNT ON;
          SELECT CustomCoverUrl FROM dbo.LibraryItem WHERE CustomCoverUrl LIKE '/uploads/%'
          UNION ALL
          SELECT CoverImageUrl  FROM dbo.Edition     WHERE CoverImageUrl  LIKE '/uploads/%';" \
-        | sed 's#^/uploads/#./#' | grep -E '^\./' | sort -u > "$refs" || true
+        | sed 's#^/uploads/#./#' | grep -E '^\./' | sort -u > "$refs"
 
     tar tzf "$archive" | sort -u > "$have"
+
+    # A check that cannot fail is not a check. Cross-verify the extracted
+    # reference count against the database, so an empty $refs (bad query,
+    # wrong database, changed schema) fails loudly instead of passing.
+    local expected
+    expected="$(docker exec "$SQL_CONTAINER" /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -d "$DB_NAME" -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM (SELECT CustomCoverUrl AS u FROM dbo.LibraryItem WHERE CustomCoverUrl LIKE '/uploads/%' UNION ALL SELECT CoverImageUrl FROM dbo.Edition WHERE CoverImageUrl LIKE '/uploads/%') x;" | tr -d "[:space:]")"
+    if [ "$(wc -l < "$refs")" -ne "$expected" ]; then
+        log "ERROR: extracted $(wc -l < "$refs") references but the database reports ${expected}"
+        return 1
+    fi
 
     missing="$(comm -23 "$refs" "$have" | wc -l)"
     if [ "$missing" -ne 0 ]; then
