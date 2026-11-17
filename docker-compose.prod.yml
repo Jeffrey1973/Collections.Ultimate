@@ -7,12 +7,21 @@
 #   3. Run schema init (first time only — see DEPLOY_VPS.md)
 # =============================================================================
 
+# Default log rotation for every service. Without this, json-file logs grow
+# without bound: one container's log reached 1.6 GB before this was added.
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
 
   # ── Reverse Proxy (HTTPS termination + routing) ────────────
   caddy:
     image: caddy:2-alpine
     container_name: cu-caddy
+    logging: *default-logging
     restart: unless-stopped
     ports:
       - "80:80"
@@ -33,6 +42,7 @@ services:
       context: ./api
       dockerfile: Dockerfile
     container_name: cu-api
+    logging: *default-logging
     restart: unless-stopped
     environment:
       ASPNETCORE_ENVIRONMENT: Production
@@ -68,12 +78,14 @@ services:
         VITE_GOOGLE_BOOKS_API_KEY: "${GOOGLE_BOOKS_API_KEY:-}"
         VITE_ISBNDB_API_KEY: "${ISBNDB_API_KEY:-}"
     container_name: cu-frontend
+    logging: *default-logging
     restart: unless-stopped
 
   # ── SQL Server 2022 ───────────────────────────────────────
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: cu-sqlserver
+    logging: *default-logging
     restart: unless-stopped
     environment:
       ACCEPT_EULA: "Y"
@@ -81,6 +93,7 @@ services:
       MSSQL_PID: Express
     volumes:
       - sqlserver_data:/var/opt/mssql
+      - /opt/cu/backups:/backups
     healthcheck:
       test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$${MSSQL_SA_PASSWORD}" -C -Q "SELECT 1" || exit 1
       interval: 10s
@@ -92,6 +105,7 @@ services:
   meilisearch:
     image: getmeili/meilisearch:v1.12
     container_name: cu-meilisearch
+    logging: *default-logging
     restart: unless-stopped
     environment:
       MEILI_MASTER_KEY: "${MEILI_MASTER_KEY}"

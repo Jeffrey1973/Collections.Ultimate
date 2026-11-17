@@ -6,8 +6,11 @@
 #   1. the SQL Server database
 #   2. the api_uploads volume (cover photos — the ONLY data not re-fetchable
 #      from any external API)
-#   3. /opt/collections~/.env (the only copy of SA_PASSWORD; without it every
-#      .bak is a brick)
+#   3. /opt/collections~/.env (the only copy of SA_PASSWORD and the Meili key)
+#      NOTE: a .bak is NOT encrypted (Express cannot encrypt backups), so it
+#      restores to any SQL Server 2022 instance WITHOUT the original password.
+#      .env is needed to redeploy the stack, not to recover the data. Treat the
+#      .bak itself as sensitive: whoever holds it holds the whole library.
 # Everything else is derivable from those three plus source control.
 #
 # PREREQUISITES (one-time, see ops/README.md):
@@ -54,7 +57,7 @@ trap on_error ERR
 log() { echo "${LOG_PREFIX} $*"; }
 
 sqlcmd_exec() {
-    docker exec -i "$SQL_CONTAINER" /opt/mssql-tools18/bin/sqlcmd \
+    docker exec "$SQL_CONTAINER" /opt/mssql-tools18/bin/sqlcmd \
         -S localhost -U sa -P "$SA_PASSWORD" -C -b -Q "$1"
 }
 
@@ -99,7 +102,7 @@ backup_uploads() {
     refs="$(mktemp)"; have="$(mktemp)"
     trap 'rm -f "$refs" "$have"' RETURN
 
-    docker exec -i "$SQL_CONTAINER" /opt/mssql-tools18/bin/sqlcmd \
+    docker exec "$SQL_CONTAINER" /opt/mssql-tools18/bin/sqlcmd \
         -S localhost -U sa -P "$SA_PASSWORD" -C -b -h -1 -W -s "|" -Q \
         "SET NOCOUNT ON;
          SELECT CustomCoverUrl FROM dbo.LibraryItem WHERE CustomCoverUrl LIKE '/uploads/%'
@@ -130,9 +133,19 @@ esac
 # This is the step that makes it a backup rather than a second copy on the same
 # disk. The B2 key MUST be append-only so a compromised VPS cannot erase history;
 # run `restic forget --prune` from your workstation with a separate key.
-log "pushing to offsite repository"
-restic backup --tag "$MODE" --host cu-prod "$BACKUP_DIR" \
-    --exclude '*.tmp' --quiet
+# Dormant until B2 is configured. Deliberately NOT fatal: the local backup has
+# already succeeded and been verified by this point, so failing here would skip
+# retention and fire the dead-man's switch over a gap that is already known.
+# Set RESTIC_REPOSITORY in /opt/cu/backup.env to activate.
+if [ -n "${RESTIC_REPOSITORY:-}" ] && command -v restic >/dev/null 2>&1; then
+    log "pushing to offsite repository"
+    restic backup --tag "$MODE" --host cu-prod "$BACKUP_DIR" --exclude "*.tmp" --quiet
+    OFFSITE=1
+else
+    log "WARNING: no offsite copy (RESTIC_REPOSITORY unset or restic missing)."
+    log "WARNING: ${BACKUP_DIR} is on the SAME DISK as the database."
+    OFFSITE=0
+fi
 
 # --- Local retention ---------------------------------------------------------
 # Offsite retention is handled by restic policy from the workstation. Locally we
@@ -143,5 +156,9 @@ find "$BACKUP_DIR" -name 'full_*.bak'       -mtime +15 -delete
 find "$BACKUP_DIR" -name 'uploads_*.tar.gz' -mtime +8  -delete
 
 # --- Success -----------------------------------------------------------------
-[ -n "${HC_URL:-}" ] && curl -fsS -m 10 --retry 3 "$HC_URL" >/dev/null 2>&1 || true
-log "OK"
+if [ -n "${HC_URL:-}" ] && [ "${OFFSITE:-0}" = "1" ]; then
+    # Ping success ONLY when a real offsite copy exists. A green dashboard
+    # reflecting a same-disk copy would lie about what protects the data.
+    curl -fsS -m 10 --retry 3 "$HC_URL" >/dev/null 2>&1 || true
+fi
+log "OK (offsite=${OFFSITE:-0})"

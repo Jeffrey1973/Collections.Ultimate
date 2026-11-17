@@ -1,0 +1,2 @@
+# Shell scripts execute on Linux: CRLF would make the shebang "/usr/bin/env bash".
+*.sh text eol=lf
